@@ -30,7 +30,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          uv sync --dev
+          uv sync --extra dev
 
       - name: Check code formatting with black
         run: |
@@ -67,12 +67,12 @@ jobs:
 
       - name: Install dependencies
         run: |
-          uv sync --dev
+          uv sync --extra dev
 
       - name: Run tests with pytest
         run: |
           if [ -d "tests" ] && [ "$(ls -A tests 2>/dev/null)" ]; then
-            uv run pytest tests/ -v
+            uv run pytest tests/ -v --cov=github_pm --cov-report=term
           else
             echo "No tests directory or tests found, skipping pytest"
           fi
