@@ -69,10 +69,6 @@ jobs:
         run: |
           uv sync --dev
 
-      - name: Install pytest
-        run: |
-          uv add --dev pytest || uv pip install pytest || echo "pytest installation skipped"
-
       - name: Run tests with pytest
         run: |
           if [ -d "tests" ] && [ "$(ls -A tests 2>/dev/null)" ]; then
@@ -128,4 +124,3 @@ jobs:
 
       - name: Run tests with Vitest
         run: npm test -- --run
-

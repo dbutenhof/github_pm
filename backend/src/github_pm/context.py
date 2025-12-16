@@ -17,4 +17,3 @@ class Settings(BaseSettings):
 
 
 context = Settings()
-print(context.model_dump_json(indent=2))

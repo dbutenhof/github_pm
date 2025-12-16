@@ -32,7 +32,6 @@ async def connection() -> AsyncGenerator[Repository, None]:
         raise
     except Exception as e:
         print(f"Error interacting with GitHub: {type(e).__name__}->{str(e)!r}")
-        raise
         raise HTTPException(
             status_code=400, detail=f"Can't interact with GitHub: {str(e)!r}"
         )
@@ -283,3 +282,4 @@ async def remove_label_from_issue(
     print(
         f"[{label_name} label removed from issue {issue_number}: {time.time() - start:.3f} seconds]"
     )
+    return
