@@ -1,11 +1,13 @@
-"""Pytest configuration and fixtures."""
+"""Pytest configuration and fixtures.
 
-import sys
+ai-generated: Cursor
+"""
+
 from pathlib import Path
+import sys
 
 # Add src directory to Python path for imports
 backend_dir = Path(__file__).parent.parent
 src_dir = backend_dir / "src"
 if str(src_dir) not in sys.path:
     sys.path.insert(0, str(src_dir))
-
