@@ -1,0 +1,131 @@
+name: CI
+
+on:
+  pull_request:
+    branches: ['*']
+  push:
+    branches: ['main', 'master']
+
+jobs:
+  backend-lint:
+    name: Backend Linting & Formatting
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./backend
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Install dependencies
+        run: |
+          uv sync --dev
+
+      - name: Check code formatting with black
+        run: |
+          uv run black --check src tests
+
+      - name: Check import sorting with isort
+        run: |
+          uv run isort --check src tests
+
+      - name: Lint with flake8
+        run: |
+          uv run flake8 src tests
+
+  backend-test:
+    name: Backend Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./backend
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Install dependencies
+        run: |
+          uv sync --dev
+
+      - name: Install pytest
+        run: |
+          uv add --dev pytest || uv pip install pytest || echo "pytest installation skipped"
+
+      - name: Run tests with pytest
+        run: |
+          if [ -d "tests" ] && [ "$(ls -A tests 2>/dev/null)" ]; then
+            uv run pytest tests/ -v
+          else
+            echo "No tests directory or tests found, skipping pytest"
+          fi
+
+  frontend-lint:
+    name: Frontend Linting & Formatting
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./frontend
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: ./frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check code formatting with Prettier
+        run: npm run format:check
+
+  frontend-test:
+    name: Frontend Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./frontend
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: ./frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests with Vitest
+        run: npm test -- --run
+
