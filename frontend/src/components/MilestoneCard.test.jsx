@@ -55,7 +55,7 @@ describe('MilestoneCard', () => {
     await user.click(expandButton);
 
     await waitFor(() => {
-      expect(api.fetchIssues).toHaveBeenCalledWith(6);
+      expect(api.fetchIssues).toHaveBeenCalledWith(6, []);
     });
 
     await waitFor(() => {
