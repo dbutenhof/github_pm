@@ -1,3 +1,4 @@
+// ai-generated: Cursor
 import React, { useState, useEffect, useRef } from 'react';
 import {
   Card,
@@ -16,6 +17,7 @@ import {
   Form,
   FormGroup,
 } from '@patternfly/react-core';
+import { CodeBranchIcon } from '@patternfly/react-icons';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { getDaysSince, formatDate } from '../utils/dateUtils';
@@ -451,6 +453,18 @@ const IssueCard = ({ issue, onMilestoneChange }) => {
           >
             #{issue.number}
           </a>
+          {issue.pull_request && (
+            <Tooltip content="Pull Request">
+              <CodeBranchIcon
+                style={{
+                  marginLeft: '0.5rem',
+                  color: '#0066cc',
+                  verticalAlign: 'middle',
+                  userSelect: 'none',
+                }}
+              />
+            </Tooltip>
+          )}
           {' - '}
           {issue.title}
           {issue.type && (

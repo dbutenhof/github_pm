@@ -1,3 +1,4 @@
+// ai-generated: Cursor
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -54,7 +55,7 @@ describe('MilestoneCard', () => {
     await user.click(expandButton);
 
     await waitFor(() => {
-      expect(api.fetchIssues).toHaveBeenCalledWith(6);
+      expect(api.fetchIssues).toHaveBeenCalledWith(6, []);
     });
 
     await waitFor(() => {

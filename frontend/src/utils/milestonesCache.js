@@ -1,3 +1,4 @@
+// ai-generated: Cursor
 // Shared milestones cache - loaded once and shared across all components
 let milestonesCache = {
   data: [],

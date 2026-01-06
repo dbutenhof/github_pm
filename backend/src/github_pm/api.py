@@ -1,8 +1,9 @@
+from collections import defaultdict
 from datetime import date
 import time
 from typing import Annotated, AsyncGenerator
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Path
+from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query
 from github import Auth, Github, Repository
 from github.GithubObject import NotSet
 from pydantic import BaseModel, Field
@@ -52,7 +53,15 @@ async def get_project():
 async def get_issues(
     repo: Annotated[Repository, Depends(connection)],
     milestone_number: Annotated[int, Path(title="Milestone")],
+    sort: Annotated[
+        str | None, Query(title="Sort", description="List of labels to sort by")
+    ] = None,
 ):
+    if sort:
+        sort_by = [s.strip() for s in sort.split(",")]
+    else:
+        sort_by = []
+    sorted_issues = defaultdict(list)
     start = time.time()
     if milestone_number == 0:
         milestone = "none"
@@ -62,11 +71,22 @@ async def get_issues(
             f"[Milestone {milestone_number} found: {milestone.title}: {time.time() - start:.3f} seconds]"
         )
     issues = repo.get_issues(milestone=milestone, state="open")
-    simplified = [i.raw_data for i in issues]
+    for i in issues:
+        labels = set([label.name.lower() for label in i.labels])
+        for label in sort_by:
+            if label in labels:
+                sorted_issues[label].append(i.raw_data)
+                break
+        else:
+            sorted_issues["other"].append(i.raw_data)
+    all_issues = []
+    for label in sort_by:
+        all_issues.extend(sorted_issues[label])
+    all_issues.extend(sorted_issues["other"])
     print(
-        f"[{issues.totalCount}({len(simplified)}) issues: {time.time() - start:.3f} seconds]"
+        f"[{issues.totalCount}({len(all_issues)}) issues: {time.time() - start:.3f} seconds]"
     )
-    return simplified
+    return all_issues
 
 
 @api_router.get("/comments/{issue_number}")

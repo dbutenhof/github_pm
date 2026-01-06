@@ -1,3 +1,4 @@
+// ai-generated: Cursor
 import React, { useState, useEffect, useRef } from 'react';
 import {
   Card,
@@ -11,7 +12,7 @@ import {
 import { fetchIssues } from '../services/api';
 import IssueCard from './IssueCard';
 
-const MilestoneCard = ({ milestone }) => {
+const MilestoneCard = ({ milestone, sortOrder = [] }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [issues, setIssues] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -34,7 +35,7 @@ const MilestoneCard = ({ milestone }) => {
     if (isExpanded && !hasLoadedOnce && !loading) {
       setLoading(true);
       setError(null);
-      fetchIssues(milestone.number)
+      fetchIssues(milestone.number, sortOrder)
         .then((data) => {
           setIssues(data);
           setLoading(false);
@@ -46,7 +47,32 @@ const MilestoneCard = ({ milestone }) => {
           setHasLoadedOnce(true);
         });
     }
-  }, [isExpanded, milestone.number, hasLoadedOnce, loading]);
+  }, [isExpanded, milestone.number, hasLoadedOnce, loading, sortOrder]);
+
+  // Re-fetch issues when sort order changes (if already loaded)
+  const prevSortOrderRef = useRef(sortOrder);
+  useEffect(() => {
+    // Only refetch if sort order actually changed and issues are already loaded
+    const sortOrderChanged =
+      JSON.stringify(prevSortOrderRef.current) !== JSON.stringify(sortOrder);
+    if (isExpanded && hasLoadedOnce && !loading && sortOrderChanged) {
+      prevSortOrderRef.current = sortOrder;
+      setLoading(true);
+      setError(null);
+      fetchIssues(milestone.number, sortOrder)
+        .then((data) => {
+          setIssues(data);
+          setLoading(false);
+        })
+        .catch((err) => {
+          setError(err.message);
+          setLoading(false);
+        });
+    } else {
+      prevSortOrderRef.current = sortOrder;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sortOrder]);
 
   const formatDueDate = (dueOn) => {
     if (!dueOn) return 'No due date';
@@ -120,7 +146,7 @@ const MilestoneCard = ({ milestone }) => {
                     if (isExpanded) {
                       setLoading(true);
                       setError(null);
-                      fetchIssues(milestone.number)
+                      fetchIssues(milestone.number, sortOrder)
                         .then((data) => {
                           setIssues(data);
                           setLoading(false);
