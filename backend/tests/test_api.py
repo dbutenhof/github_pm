@@ -1,21 +1,24 @@
-"""Tests for the api module."""
+"""Tests for the api module.
+
+ai-generated: Cursor
+"""
 
 from datetime import date
-from unittest.mock import AsyncMock, MagicMock, Mock, patch
+from unittest.mock import Mock, patch
 
-import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
+import pytest
 
 from github_pm.api import (
-    CreateLabel,
-    CreateMilestone,
     add_label_to_issue,
     add_milestone_to_issue,
     api_router,
     connection,
     create_label,
     create_milestone,
+    CreateLabel,
+    CreateMilestone,
     delete_label,
     delete_milestone,
     get_comments,
@@ -41,9 +44,10 @@ class TestConnection:
         mock_github = Mock()
         mock_github.get_repo.return_value = mock_repo
 
-        with patch("github_pm.api.Github", return_value=mock_github), patch(
-            "github_pm.api.context"
-        ) as mock_context:
+        with (
+            patch("github_pm.api.Github", return_value=mock_github),
+            patch("github_pm.api.context") as mock_context,
+        ):
             mock_context.github_repo = "test/repo"
             mock_context.github_token = "test_token"
 
@@ -54,7 +58,7 @@ class TestConnection:
             # Assert
             assert repo == mock_repo
             mock_github.get_repo.assert_called_once_with("test/repo")
-            
+
             # Clean up - trigger the finally block
             try:
                 await async_gen.__anext__()
@@ -66,9 +70,10 @@ class TestConnection:
     async def test_connection_github_init_error(self):
         """Test connection when GitHub initialization fails."""
         # Arrange
-        with patch("github_pm.api.Github", side_effect=Exception("Auth failed")), patch(
-            "github_pm.api.context"
-        ) as mock_context:
+        with (
+            patch("github_pm.api.Github", side_effect=Exception("Auth failed")),
+            patch("github_pm.api.context") as mock_context,
+        ):
             mock_context.github_repo = "test/repo"
             mock_context.github_token = "test_token"
 
@@ -85,9 +90,10 @@ class TestConnection:
         mock_github = Mock()
         mock_github.get_repo.side_effect = Exception("Repo not found")
 
-        with patch("github_pm.api.Github", return_value=mock_github), patch(
-            "github_pm.api.context"
-        ) as mock_context:
+        with (
+            patch("github_pm.api.Github", return_value=mock_github),
+            patch("github_pm.api.context") as mock_context,
+        ):
             mock_context.github_repo = "test/repo"
             mock_context.github_token = "test_token"
 
@@ -106,9 +112,10 @@ class TestConnection:
         mock_github = Mock()
         mock_github.get_repo.return_value = mock_repo
 
-        with patch("github_pm.api.Github", return_value=mock_github), patch(
-            "github_pm.api.context"
-        ) as mock_context:
+        with (
+            patch("github_pm.api.Github", return_value=mock_github),
+            patch("github_pm.api.context") as mock_context,
+        ):
             mock_context.github_repo = "test/repo"
             mock_context.github_token = "test_token"
 
@@ -116,7 +123,7 @@ class TestConnection:
             async_gen = connection()
             repo = await async_gen.__anext__()
             assert repo == mock_repo
-            
+
             # Trigger cleanup by consuming the generator
             try:
                 await async_gen.__anext__()
@@ -157,17 +164,31 @@ class TestGetIssues:
         # Arrange
         mock_milestone = Mock()
         mock_milestone.title = "Test Milestone"
+        mock_label1 = Mock()
+        mock_label1.name = "bug"
+        mock_label2 = Mock()
+        mock_label2.name = "feature"
         mock_issue1 = Mock()
         mock_issue1.raw_data = {"id": 1, "title": "Issue 1"}
+        mock_issue1.labels = [mock_label1]
         mock_issue2 = Mock()
         mock_issue2.raw_data = {"id": 2, "title": "Issue 2"}
-        mock_issues = Mock()
-        mock_issues.totalCount = 2
-        mock_issues.__iter__ = Mock(return_value=iter([mock_issue1, mock_issue2]))
+        mock_issue2.labels = [mock_label2]
+
+        # Create an iterable mock with totalCount
+        class IterableIssues:
+            def __init__(self, issues):
+                self.issues = issues
+                self.totalCount = len(issues)
+
+            def __iter__(self):
+                return iter(self.issues)
+
+        mock_issues_obj = IterableIssues([mock_issue1, mock_issue2])
 
         mock_repo = Mock()
         mock_repo.get_milestone.return_value = mock_milestone
-        mock_repo.get_issues.return_value = mock_issues
+        mock_repo.get_issues.return_value = mock_issues_obj
 
         # Act
         result = await get_issues(mock_repo, milestone_number=1)
@@ -177,7 +198,9 @@ class TestGetIssues:
         assert result[0]["id"] == 1
         assert result[1]["id"] == 2
         mock_repo.get_milestone.assert_called_once_with(1)
-        mock_repo.get_issues.assert_called_once_with(milestone=mock_milestone, state="open")
+        mock_repo.get_issues.assert_called_once_with(
+            milestone=mock_milestone, state="open"
+        )
 
     @pytest.mark.asyncio
     async def test_get_issues_with_no_milestone(self):
@@ -185,12 +208,21 @@ class TestGetIssues:
         # Arrange
         mock_issue1 = Mock()
         mock_issue1.raw_data = {"id": 1, "title": "Issue 1"}
-        mock_issues = Mock()
-        mock_issues.totalCount = 1
-        mock_issues.__iter__ = Mock(return_value=iter([mock_issue1]))
+        mock_issue1.labels = []
+
+        # Create an iterable mock with totalCount
+        class IterableIssues:
+            def __init__(self, issues):
+                self.issues = issues
+                self.totalCount = len(issues)
+
+            def __iter__(self):
+                return iter(self.issues)
+
+        mock_issues_obj = IterableIssues([mock_issue1])
 
         mock_repo = Mock()
-        mock_repo.get_issues.return_value = mock_issues
+        mock_repo.get_issues.return_value = mock_issues_obj
 
         # Act
         result = await get_issues(mock_repo, milestone_number=0)
@@ -288,7 +320,9 @@ class TestCreateMilestone:
         mock_repo.create_milestone.return_value = mock_milestone
 
         milestone_data = CreateMilestone(
-            title="New Milestone", description="Test description", due_on=date(2024, 12, 31)
+            title="New Milestone",
+            description="Test description",
+            due_on=date(2024, 12, 31),
         )
 
         # Act
@@ -377,7 +411,9 @@ class TestAddMilestoneToIssue:
         mock_repo.get_milestone.return_value = mock_milestone
 
         # Act
-        result = await add_milestone_to_issue(mock_repo, issue_number=123, milestone_number=1)
+        result = await add_milestone_to_issue(
+            mock_repo, issue_number=123, milestone_number=1
+        )
 
         # Assert
         assert result == {"message": "1 milestone added to issue 123"}
@@ -400,7 +436,9 @@ class TestRemoveMilestoneFromIssue:
         mock_repo.get_issue.return_value = mock_issue
 
         # Act
-        result = await remove_milestone_from_issue(mock_repo, issue_number=123, milestone_number=1)
+        result = await remove_milestone_from_issue(
+            mock_repo, issue_number=123, milestone_number=1
+        )
 
         # Assert
         assert result == {"message": "1 milestone removed from issue 123"}
@@ -450,7 +488,9 @@ class TestCreateLabel:
         mock_repo = Mock()
         mock_repo.create_label.return_value = mock_label
 
-        label_data = CreateLabel(name="new-label", color="green", description="Test label")
+        label_data = CreateLabel(
+            name="new-label", color="green", description="Test label"
+        )
 
         # Act
         result = await create_label(mock_repo, label_data)
@@ -555,7 +595,9 @@ class TestRemoveLabelFromIssue:
         mock_repo.get_issue.return_value = mock_issue
 
         # Act
-        result = await remove_label_from_issue(mock_repo, issue_number=123, label_name="bug")
+        result = await remove_label_from_issue(
+            mock_repo, issue_number=123, label_name="bug"
+        )
 
         # Assert
         assert result is None
@@ -591,4 +633,3 @@ class TestAPIRouterIntegration:
         data = response.json()
         assert "app_name" in data
         assert "github_repo" in data
-

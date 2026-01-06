@@ -1,4 +1,7 @@
-"""Tests for the app module."""
+"""Tests for the app module.
+
+ai-generated: Cursor
+"""
 
 from fastapi.testclient import TestClient
 
@@ -145,4 +148,3 @@ class TestApp:
         # Verify that the same route without prefix doesn't exist
         response_no_prefix = client.get("/project")
         assert response_no_prefix.status_code == 404
-

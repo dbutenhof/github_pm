@@ -1,3 +1,4 @@
+// ai-generated: Cursor
 // Shared labels cache - loaded once and shared across all components
 let labelsCache = {
   data: [],

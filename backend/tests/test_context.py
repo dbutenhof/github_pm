@@ -1,13 +1,12 @@
-"""Tests for the context module."""
+"""Tests for the context module.
+
+ai-generated: Cursor
+"""
 
 import os
-from pathlib import Path
-from tempfile import NamedTemporaryFile
 from unittest.mock import patch
 
-import pytest
-
-from github_pm.context import Settings, context
+from github_pm.context import context, Settings
 
 
 class TestSettings:
@@ -24,6 +23,7 @@ class TestSettings:
         try:
             # Act - Create settings without .env file by using a temp directory
             import tempfile
+
             with tempfile.TemporaryDirectory() as tmpdir:
                 original_cwd = os.getcwd()
                 try:
@@ -233,6 +233,7 @@ class TestSettings:
             # Act
             with patch.dict(os.environ, env_vars, clear=False):
                 import tempfile
+
                 with tempfile.TemporaryDirectory() as tmpdir:
                     original_cwd = os.getcwd()
                     try:
@@ -274,6 +275,7 @@ class TestSettings:
 
         try:
             import tempfile
+
             with tempfile.TemporaryDirectory() as tmpdir:
                 original_cwd = os.getcwd()
                 try:
@@ -327,4 +329,3 @@ class TestContext:
         # Assert
         assert context1 is context2
         assert id(context1) == id(context2)
-

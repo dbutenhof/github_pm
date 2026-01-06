@@ -1,3 +1,4 @@
+// ai-generated: Cursor
 import React, { useState, useEffect } from 'react';
 import {
   Page,
@@ -12,6 +13,7 @@ import { fetchMilestones, fetchProject, fetchLabels } from './services/api';
 import MilestoneCard from './components/MilestoneCard';
 import ManageMilestones from './components/ManageMilestones';
 import ManageLabels from './components/ManageLabels';
+import ManageSort from './components/ManageSort';
 import milestonesCache from './utils/milestonesCache';
 import labelsCache, { clearLabelsCache } from './utils/labelsCache';
 
@@ -24,6 +26,8 @@ const App = () => {
   const [projectLoading, setProjectLoading] = useState(true);
   const [isManageMilestonesOpen, setIsManageMilestonesOpen] = useState(false);
   const [isManageLabelsOpen, setIsManageLabelsOpen] = useState(false);
+  const [isManageSortOpen, setIsManageSortOpen] = useState(false);
+  const [sortOrder, setSortOrder] = useState([]);
 
   useEffect(() => {
     fetchProject()
@@ -174,6 +178,12 @@ const App = () => {
             >
               Manage Labels
             </Button>
+            <Button
+              variant="secondary"
+              onClick={() => setIsManageSortOpen(true)}
+            >
+              Sort
+            </Button>
           </div>
         </div>
       </PageSection>
@@ -201,7 +211,11 @@ const App = () => {
             style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}
           >
             {milestones.map((milestone) => (
-              <MilestoneCard key={milestone.number} milestone={milestone} />
+              <MilestoneCard
+                key={milestone.number}
+                milestone={milestone}
+                sortOrder={sortOrder}
+              />
             ))}
           </div>
         )}
@@ -215,6 +229,12 @@ const App = () => {
         isOpen={isManageLabelsOpen}
         onClose={() => setIsManageLabelsOpen(false)}
         onLabelChange={handleLabelChange}
+      />
+      <ManageSort
+        isOpen={isManageSortOpen}
+        onClose={() => setIsManageSortOpen(false)}
+        sortOrder={sortOrder}
+        onSortChange={setSortOrder}
       />
     </Page>
   );

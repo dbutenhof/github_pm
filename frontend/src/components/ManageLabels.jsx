@@ -1,3 +1,4 @@
+// ai-generated: Cursor
 import React, { useState, useEffect } from 'react';
 import {
   Modal,

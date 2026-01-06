@@ -1,3 +1,4 @@
+// ai-generated: Cursor
 const API_BASE = '/api/v1';
 
 export const fetchMilestones = async () => {
@@ -8,8 +9,13 @@ export const fetchMilestones = async () => {
   return response.json();
 };
 
-export const fetchIssues = async (milestoneNumber) => {
-  const response = await fetch(`${API_BASE}/issues/${milestoneNumber}`);
+export const fetchIssues = async (milestoneNumber, sortOrder = []) => {
+  let url = `${API_BASE}/issues/${milestoneNumber}`;
+  if (sortOrder && sortOrder.length > 0) {
+    const sortParam = sortOrder.join(',');
+    url += `?sort=${encodeURIComponent(sortParam)}`;
+  }
+  const response = await fetch(url);
   if (!response.ok) {
     throw new Error(`Failed to fetch issues: ${response.statusText}`);
   }

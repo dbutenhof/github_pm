@@ -1,3 +1,4 @@
+// ai-generated: Cursor
 export const getDaysSince = (dateString) => {
   if (!dateString) return 0;
   const date = new Date(dateString);
