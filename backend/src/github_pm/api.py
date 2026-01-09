@@ -1,4 +1,5 @@
 from collections import defaultdict
+from dataclasses import dataclass
 from datetime import date
 import time
 from typing import Annotated, AsyncGenerator
@@ -13,12 +14,18 @@ from github_pm.context import context
 api_router = APIRouter()
 
 
-async def connection() -> AsyncGenerator[Repository, None]:
+@dataclass
+class GitHubCtx:
+    github: Github
+    repo: Repository
+
+
+async def connection() -> AsyncGenerator[GitHubCtx, None]:
     """FastAPI Dependency to open & close Github connections"""
-    c = None
+    gh = None
     print(f"Opening GitHub connection for repo {context.github_repo}")
     try:
-        c = Github(auth=Auth.Token(context.github_token))
+        gh = Github(auth=Auth.Token(context.github_token))
     except Exception as e:
         print(f"Error opening GitHub service: {e}")
         raise HTTPException(
@@ -26,9 +33,9 @@ async def connection() -> AsyncGenerator[Repository, None]:
         )
     try:
         # yield the repository object
-        repo = c.get_repo(context.github_repo)
+        repo = gh.get_repo(context.github_repo)
         print(f"Repository: {repo.name}")
-        yield repo
+        yield GitHubCtx(github=gh, repo=repo)
     except HTTPException:
         raise
     except Exception as e:
@@ -37,8 +44,8 @@ async def connection() -> AsyncGenerator[Repository, None]:
             status_code=400, detail=f"Can't interact with GitHub: {str(e)!r}"
         )
     finally:
-        if c:
-            c.close()
+        if gh:
+            gh.close()
 
 
 @api_router.get("/project")
@@ -51,12 +58,13 @@ async def get_project():
 
 @api_router.get("/issues/{milestone_number}")
 async def get_issues(
-    repo: Annotated[Repository, Depends(connection)],
+    gitctx: Annotated[GitHubCtx, Depends(connection)],
     milestone_number: Annotated[int, Path(title="Milestone")],
     sort: Annotated[
         str | None, Query(title="Sort", description="List of labels to sort by")
     ] = None,
 ):
+    repo = gitctx.repo
     if sort:
         sort_by = [s.strip() for s in sort.split(",")]
     else:
@@ -73,6 +81,48 @@ async def get_issues(
     issues = repo.get_issues(milestone=milestone, state="open")
     for i in issues:
         labels = set([label.name.lower() for label in i.labels])
+        if "pull_request" not in i.raw_data:
+            query = """query($owner: String!, $repo: String!, $issue: Int!) {
+                repository(owner: $owner, name: $repo, followRenames: true) {
+                    issue(number: $issue) {
+                        closedByPullRequestsReferences(first: 100, includeClosedPrs: true) {
+                            nodes {
+                                number
+                                title
+                                url
+                            }
+                        }
+                    }
+                }
+            }
+            """
+            owner, repo = context.github_repo.split("/", maxsplit=1)
+            try:
+                gql_response = gitctx.github.requester.graphql_query(
+                    query=query,
+                    variables={
+                        "owner": owner,
+                        "repo": repo,
+                        "issue": i.number,
+                    },
+                )
+                data = gql_response[1]["data"]
+                issue_node = data["repository"]["issue"]
+                closed = issue_node["closedByPullRequestsReferences"]["nodes"]
+                if len(closed) > 0:
+                    i.raw_data["closed_by"] = [
+                        {
+                            "number": linked["number"],
+                            "title": linked["title"],
+                            "url": linked["url"],
+                        }
+                        for linked in closed
+                    ]
+            except Exception as e:
+                print(
+                    f"Error finding linked PRs for issue {i.number}: {e!r}", flush=True
+                )
+                continue
         for label in sort_by:
             if label in labels:
                 sorted_issues[label].append(i.raw_data)
@@ -80,9 +130,8 @@ async def get_issues(
         else:
             sorted_issues["other"].append(i.raw_data)
     all_issues = []
-    for label in sort_by:
+    for label in sort_by + ["other"]:
         all_issues.extend(sorted_issues[label])
-    all_issues.extend(sorted_issues["other"])
     print(
         f"[{issues.totalCount}({len(all_issues)}) issues: {time.time() - start:.3f} seconds]"
     )
@@ -91,11 +140,11 @@ async def get_issues(
 
 @api_router.get("/comments/{issue_number}")
 async def get_comments(
-    repo: Annotated[Repository, Depends(connection)],
+    gitctx: Annotated[GitHubCtx, Depends(connection)],
     issue_number: Annotated[int, Path(title="Issue")],
 ):
     start = time.time()
-    comments = repo.get_issue(issue_number).get_comments()
+    comments = gitctx.repo.get_issue(issue_number).get_comments()
     simplified = [i.raw_data for i in comments]
     print(f"[{len(simplified)} comments: {time.time() - start:.3f} seconds]")
     return simplified
@@ -105,7 +154,8 @@ async def get_comments(
 
 
 @api_router.get("/milestones")
-async def get_milestones(repo: Annotated[Repository, Depends(connection)]):
+async def get_milestones(gitctx: Annotated[GitHubCtx, Depends(connection)]):
+    repo = gitctx.repo
     milestones = repo.get_milestones()
     response = [
         {
@@ -135,13 +185,13 @@ class CreateMilestone(BaseModel):
 
 @api_router.post("/milestones")
 async def create_milestone(
-    repo: Annotated[Repository, Depends(connection)],
+    gitctx: Annotated[GitHubCtx, Depends(connection)],
     milestone: Annotated[CreateMilestone, Body(title="Milestone")],
 ):
     start = time.time()
     print(f"Creating milestone: {milestone!r}", flush=True)
     try:
-        m = repo.create_milestone(
+        m = gitctx.repo.create_milestone(
             title=milestone.title,
             state="open",
             description=milestone.description,
@@ -161,12 +211,12 @@ async def create_milestone(
 
 @api_router.delete("/milestones/{milestone_number}")
 async def delete_milestone(
-    repo: Annotated[Repository, Depends(connection)],
+    gitctx: Annotated[GitHubCtx, Depends(connection)],
     milestone_number: Annotated[int, Path(title="Milestone")],
 ):
     start = time.time()
     try:
-        milestone = repo.get_milestone(milestone_number)
+        milestone = gitctx.repo.get_milestone(milestone_number)
     except Exception as e:
         print(f"Milestone not found: {milestone_number!r}", flush=True)
         raise HTTPException(
@@ -188,13 +238,13 @@ async def delete_milestone(
 
 @api_router.post("/issues/{issue_number}/milestone/{milestone_number}")
 async def add_milestone_to_issue(
-    repo: Annotated[Repository, Depends(connection)],
+    gitctx: Annotated[GitHubCtx, Depends(connection)],
     issue_number: Annotated[int, Path(title="Issue")],
     milestone_number: Annotated[int, Path(title="Milestone")],
 ):
     start = time.time()
-    issue = repo.get_issue(issue_number)
-    milestone = repo.get_milestone(milestone_number)
+    issue = gitctx.repo.get_issue(issue_number)
+    milestone = gitctx.repo.get_milestone(milestone_number)
     issue.edit(milestone=milestone)
     print(
         f"[{milestone_number} milestone added to issue {issue_number}: {time.time() - start:.3f} seconds]"
@@ -204,12 +254,12 @@ async def add_milestone_to_issue(
 
 @api_router.delete("/issues/{issue_number}/milestone/{milestone_number}")
 async def remove_milestone_from_issue(
-    repo: Annotated[Repository, Depends(connection)],
+    gitctx: Annotated[GitHubCtx, Depends(connection)],
     issue_number: Annotated[int, Path(title="Issue")],
     milestone_number: Annotated[int, Path(title="Milestone")],
 ):
     start = time.time()
-    issue = repo.get_issue(issue_number)
+    issue = gitctx.repo.get_issue(issue_number)
     issue.edit(milestone=None)
     print(
         f"[{milestone_number} milestone removed from issue {issue_number}: {time.time() - start:.3f} seconds]"
@@ -223,9 +273,9 @@ async def remove_milestone_from_issue(
 
 
 @api_router.get("/labels")
-async def get_labels(repo: Annotated[Repository, Depends(connection)]):
+async def get_labels(gitctx: Annotated[GitHubCtx, Depends(connection)]):
     start = time.time()
-    labels = [label.raw_data for label in repo.get_labels()]
+    labels = [label.raw_data for label in gitctx.repo.get_labels()]
     print(f"[{len(labels)} labels: {time.time() - start:.3f} seconds]")
     return labels
 
@@ -238,12 +288,12 @@ class CreateLabel(BaseModel):
 
 @api_router.post("/labels")
 async def create_label(
-    repo: Annotated[Repository, Depends(connection)],
+    gitctx: Annotated[GitHubCtx, Depends(connection)],
     label: Annotated[CreateLabel, Body(title="Label")],
 ):
     start = time.time()
     try:
-        label = repo.create_label(
+        label = gitctx.repo.create_label(
             name=label.name, color=label.color, description=label.description
         )
         print(f"[{label.name} label created: {time.time() - start:.3f} seconds]")
@@ -256,11 +306,11 @@ async def create_label(
 
 @api_router.delete("/labels/{label_name}")
 async def delete_label(
-    repo: Annotated[Repository, Depends(connection)], label_name: str
+    gitctx: Annotated[GitHubCtx, Depends(connection)], label_name: str
 ):
     start = time.time()
     try:
-        label = repo.get_label(label_name)
+        label = gitctx.repo.get_label(label_name)
     except Exception as e:
         print(f"Label not found: {label_name!r}", flush=True)
         raise HTTPException(
@@ -277,12 +327,12 @@ async def delete_label(
 
 @api_router.post("/issues/{issue_number}/labels/{label_name}")
 async def add_label_to_issue(
-    repo: Annotated[Repository, Depends(connection)],
+    gitctx: Annotated[GitHubCtx, Depends(connection)],
     issue_number: Annotated[int, Path(title="Issue")],
     label_name: Annotated[str, Path(title="Label")],
 ):
     start = time.time()
-    issue = repo.get_issue(issue_number)
+    issue = gitctx.repo.get_issue(issue_number)
     issue.add_to_labels(label_name)
     print(
         f"[{label_name} label added to issue {issue_number}: {time.time() - start:.3f} seconds]"
@@ -292,12 +342,12 @@ async def add_label_to_issue(
 
 @api_router.delete("/issues/{issue_number}/labels/{label_name}")
 async def remove_label_from_issue(
-    repo: Annotated[Repository, Depends(connection)],
+    gitctx: Annotated[GitHubCtx, Depends(connection)],
     issue_number: Annotated[int, Path(title="Issue")],
     label_name: Annotated[str, Path(title="Label")],
 ):
     start = time.time()
-    issue = repo.get_issue(issue_number)
+    issue = gitctx.repo.get_issue(issue_number)
     issue.remove_from_labels(label_name)
     print(
         f"[{label_name} label removed from issue {issue_number}: {time.time() - start:.3f} seconds]"

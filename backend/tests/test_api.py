@@ -26,6 +26,7 @@ from github_pm.api import (
     get_labels,
     get_milestones,
     get_project,
+    GitHubCtx,
     remove_label_from_issue,
     remove_milestone_from_issue,
 )
@@ -53,10 +54,12 @@ class TestConnection:
 
             # Act
             async_gen = connection()
-            repo = await async_gen.__anext__()
+            gitctx = await async_gen.__anext__()
 
             # Assert
-            assert repo == mock_repo
+            assert isinstance(gitctx, GitHubCtx)
+            assert gitctx.repo == mock_repo
+            assert gitctx.github == mock_github
             mock_github.get_repo.assert_called_once_with("test/repo")
 
             # Clean up - trigger the finally block
@@ -121,8 +124,9 @@ class TestConnection:
 
             # Act
             async_gen = connection()
-            repo = await async_gen.__anext__()
-            assert repo == mock_repo
+            gitctx = await async_gen.__anext__()
+            assert isinstance(gitctx, GitHubCtx)
+            assert gitctx.repo == mock_repo
 
             # Trigger cleanup by consuming the generator
             try:
@@ -169,10 +173,12 @@ class TestGetIssues:
         mock_label2 = Mock()
         mock_label2.name = "feature"
         mock_issue1 = Mock()
-        mock_issue1.raw_data = {"id": 1, "title": "Issue 1"}
+        mock_issue1.raw_data = {"id": 1, "title": "Issue 1", "pull_request": {}}
+        mock_issue1.number = 1
         mock_issue1.labels = [mock_label1]
         mock_issue2 = Mock()
         mock_issue2.raw_data = {"id": 2, "title": "Issue 2"}
+        mock_issue2.number = 2
         mock_issue2.labels = [mock_label2]
 
         # Create an iterable mock with totalCount
@@ -190,17 +196,120 @@ class TestGetIssues:
         mock_repo.get_milestone.return_value = mock_milestone
         mock_repo.get_issues.return_value = mock_issues_obj
 
-        # Act
-        result = await get_issues(mock_repo, milestone_number=1)
-
-        # Assert
-        assert len(result) == 2
-        assert result[0]["id"] == 1
-        assert result[1]["id"] == 2
-        mock_repo.get_milestone.assert_called_once_with(1)
-        mock_repo.get_issues.assert_called_once_with(
-            milestone=mock_milestone, state="open"
+        mock_requester = Mock()
+        mock_requester.graphql_query.return_value = (
+            None,
+            {
+                "data": {
+                    "repository": {
+                        "issue": {"closedByPullRequestsReferences": {"nodes": []}}
+                    }
+                }
+            },
         )
+
+        mock_github = Mock()
+        mock_github.requester = mock_requester
+
+        mock_gitctx = GitHubCtx(github=mock_github, repo=mock_repo)
+
+        with patch("github_pm.api.context") as mock_context:
+            mock_context.github_repo = "test/repo"
+
+            # Act
+            result = await get_issues(mock_gitctx, milestone_number=1)
+
+            # Assert
+            assert len(result) == 2
+            assert result[0]["id"] == 1
+            assert result[1]["id"] == 2
+            mock_repo.get_milestone.assert_called_once_with(1)
+            mock_repo.get_issues.assert_called_once_with(
+                milestone=mock_milestone, state="open"
+            )
+            # Issue 1 has pull_request, so no GraphQL call
+            # Issue 2 doesn't have pull_request, so GraphQL should be called
+            assert mock_requester.graphql_query.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_get_issues_with_linked_prs(self):
+        """Test getting issues with linked PRs from GraphQL."""
+        # Arrange
+        mock_milestone = Mock()
+        mock_milestone.title = "Test Milestone"
+        mock_label = Mock()
+        mock_label.name = "bug"
+        mock_issue = Mock()
+        mock_issue.raw_data = {"id": 1, "title": "Issue 1"}
+        mock_issue.number = 1
+        mock_issue.labels = [mock_label]
+
+        # Create an iterable mock with totalCount
+        class IterableIssues:
+            def __init__(self, issues):
+                self.issues = issues
+                self.totalCount = len(issues)
+
+            def __iter__(self):
+                return iter(self.issues)
+
+        mock_issues_obj = IterableIssues([mock_issue])
+
+        mock_repo = Mock()
+        mock_repo.get_milestone.return_value = mock_milestone
+        mock_repo.get_issues.return_value = mock_issues_obj
+
+        mock_requester = Mock()
+        mock_requester.graphql_query.return_value = (
+            None,
+            {
+                "data": {
+                    "repository": {
+                        "issue": {
+                            "closedByPullRequestsReferences": {
+                                "nodes": [
+                                    {
+                                        "number": 123,
+                                        "title": "Fix Issue 1",
+                                        "url": "https://github.com/test/repo/pull/123",
+                                    },
+                                    {
+                                        "number": 456,
+                                        "title": "Another fix",
+                                        "url": "https://github.com/test/repo/pull/456",
+                                    },
+                                ]
+                            }
+                        }
+                    }
+                }
+            },
+        )
+
+        mock_github = Mock()
+        mock_github.requester = mock_requester
+
+        mock_gitctx = GitHubCtx(github=mock_github, repo=mock_repo)
+
+        with patch("github_pm.api.context") as mock_context:
+            mock_context.github_repo = "test/repo"
+
+            # Act
+            result = await get_issues(mock_gitctx, milestone_number=1)
+
+            # Assert
+            assert len(result) == 1
+            assert result[0]["id"] == 1
+            assert "closed_by" in result[0]
+            assert len(result[0]["closed_by"]) == 2
+            assert result[0]["closed_by"][0]["number"] == 123
+            assert result[0]["closed_by"][0]["title"] == "Fix Issue 1"
+            assert (
+                result[0]["closed_by"][0]["url"]
+                == "https://github.com/test/repo/pull/123"
+            )
+            assert result[0]["closed_by"][1]["number"] == 456
+            mock_requester.graphql_query.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_get_issues_with_no_milestone(self):
@@ -208,6 +317,7 @@ class TestGetIssues:
         # Arrange
         mock_issue1 = Mock()
         mock_issue1.raw_data = {"id": 1, "title": "Issue 1"}
+        mock_issue1.number = 1
         mock_issue1.labels = []
 
         # Create an iterable mock with totalCount
@@ -224,14 +334,36 @@ class TestGetIssues:
         mock_repo = Mock()
         mock_repo.get_issues.return_value = mock_issues_obj
 
-        # Act
-        result = await get_issues(mock_repo, milestone_number=0)
+        mock_requester = Mock()
+        mock_requester.graphql_query.return_value = (
+            None,
+            {
+                "data": {
+                    "repository": {
+                        "issue": {"closedByPullRequestsReferences": {"nodes": []}}
+                    }
+                }
+            },
+        )
 
-        # Assert
-        assert len(result) == 1
-        assert result[0]["id"] == 1
-        mock_repo.get_issues.assert_called_once_with(milestone="none", state="open")
-        mock_repo.get_milestone.assert_not_called()
+        mock_github = Mock()
+        mock_github.requester = mock_requester
+
+        mock_gitctx = GitHubCtx(github=mock_github, repo=mock_repo)
+
+        with patch("github_pm.api.context") as mock_context:
+            mock_context.github_repo = "test/repo"
+
+            # Act
+            result = await get_issues(mock_gitctx, milestone_number=0)
+
+            # Assert
+            assert len(result) == 1
+            assert result[0]["id"] == 1
+            mock_repo.get_issues.assert_called_once_with(milestone="none", state="open")
+            mock_repo.get_milestone.assert_not_called()
+            # GraphQL should be called for issue without pull_request
+            assert mock_requester.graphql_query.call_count == 1
 
 
 class TestGetComments:
@@ -254,8 +386,11 @@ class TestGetComments:
         mock_repo = Mock()
         mock_repo.get_issue.return_value = mock_issue
 
+        mock_github = Mock()
+        mock_gitctx = GitHubCtx(github=mock_github, repo=mock_repo)
+
         # Act
-        result = await get_comments(mock_repo, issue_number=123)
+        result = await get_comments(mock_gitctx, issue_number=123)
 
         # Assert
         assert len(result) == 2
@@ -292,8 +427,11 @@ class TestGetMilestones:
         mock_repo = Mock()
         mock_repo.get_milestones.return_value = mock_milestones
 
+        mock_github = Mock()
+        mock_gitctx = GitHubCtx(github=mock_github, repo=mock_repo)
+
         # Act
-        result = await get_milestones(mock_repo)
+        result = await get_milestones(mock_gitctx)
 
         # Assert
         assert len(result) == 3  # 2 milestones + 1 "none" milestone
@@ -325,8 +463,11 @@ class TestCreateMilestone:
             due_on=date(2024, 12, 31),
         )
 
+        mock_github = Mock()
+        mock_gitctx = GitHubCtx(github=mock_github, repo=mock_repo)
+
         # Act
-        result = await create_milestone(mock_repo, milestone_data)
+        result = await create_milestone(mock_gitctx, milestone_data)
 
         # Assert
         assert result == mock_milestone.raw_data
@@ -351,8 +492,11 @@ class TestCreateMilestone:
 
         milestone_data = CreateMilestone(title="New Milestone")
 
+        mock_github = Mock()
+        mock_gitctx = GitHubCtx(github=mock_github, repo=mock_repo)
+
         # Act
-        result = await create_milestone(mock_repo, milestone_data)
+        result = await create_milestone(mock_gitctx, milestone_data)
 
         # Assert
         assert result == mock_milestone.raw_data
@@ -374,8 +518,11 @@ class TestDeleteMilestone:
         mock_repo = Mock()
         mock_repo.get_milestone.return_value = mock_milestone
 
+        mock_github = Mock()
+        mock_gitctx = GitHubCtx(github=mock_github, repo=mock_repo)
+
         # Act
-        result = await delete_milestone(mock_repo, milestone_number=1)
+        result = await delete_milestone(mock_gitctx, milestone_number=1)
 
         # Assert
         assert result == {"message": "1 milestone deleted"}
@@ -389,9 +536,12 @@ class TestDeleteMilestone:
         mock_repo = Mock()
         mock_repo.get_milestone.side_effect = Exception("Milestone not found")
 
+        mock_github = Mock()
+        mock_gitctx = GitHubCtx(github=mock_github, repo=mock_repo)
+
         # Act & Assert
         with pytest.raises(Exception):
-            await delete_milestone(mock_repo, milestone_number=999)
+            await delete_milestone(mock_gitctx, milestone_number=999)
 
 
 class TestAddMilestoneToIssue:
@@ -410,9 +560,12 @@ class TestAddMilestoneToIssue:
         mock_repo.get_issue.return_value = mock_issue
         mock_repo.get_milestone.return_value = mock_milestone
 
+        mock_github = Mock()
+        mock_gitctx = GitHubCtx(github=mock_github, repo=mock_repo)
+
         # Act
         result = await add_milestone_to_issue(
-            mock_repo, issue_number=123, milestone_number=1
+            mock_gitctx, issue_number=123, milestone_number=1
         )
 
         # Assert
@@ -435,9 +588,12 @@ class TestRemoveMilestoneFromIssue:
         mock_repo = Mock()
         mock_repo.get_issue.return_value = mock_issue
 
+        mock_github = Mock()
+        mock_gitctx = GitHubCtx(github=mock_github, repo=mock_repo)
+
         # Act
         result = await remove_milestone_from_issue(
-            mock_repo, issue_number=123, milestone_number=1
+            mock_gitctx, issue_number=123, milestone_number=1
         )
 
         # Assert
@@ -464,8 +620,11 @@ class TestGetLabels:
         mock_repo = Mock()
         mock_repo.get_labels.return_value = mock_labels
 
+        mock_github = Mock()
+        mock_gitctx = GitHubCtx(github=mock_github, repo=mock_repo)
+
         # Act
-        result = await get_labels(mock_repo)
+        result = await get_labels(mock_gitctx)
 
         # Assert
         assert len(result) == 2
@@ -492,8 +651,11 @@ class TestCreateLabel:
             name="new-label", color="green", description="Test label"
         )
 
+        mock_github = Mock()
+        mock_gitctx = GitHubCtx(github=mock_github, repo=mock_repo)
+
         # Act
-        result = await create_label(mock_repo, label_data)
+        result = await create_label(mock_gitctx, label_data)
 
         # Assert
         assert result == mock_label.raw_data
@@ -516,8 +678,11 @@ class TestCreateLabel:
 
         label_data = CreateLabel(name="new-label", color="green")
 
+        mock_github = Mock()
+        mock_gitctx = GitHubCtx(github=mock_github, repo=mock_repo)
+
         # Act
-        result = await create_label(mock_repo, label_data)
+        result = await create_label(mock_gitctx, label_data)
 
         # Assert
         assert result == mock_label.raw_data
@@ -539,8 +704,11 @@ class TestDeleteLabel:
         mock_repo = Mock()
         mock_repo.get_label.return_value = mock_label
 
+        mock_github = Mock()
+        mock_gitctx = GitHubCtx(github=mock_github, repo=mock_repo)
+
         # Act
-        result = await delete_label(mock_repo, label_name="bug")
+        result = await delete_label(mock_gitctx, label_name="bug")
 
         # Assert
         assert result == {"message": "bug label deleted"}
@@ -554,9 +722,12 @@ class TestDeleteLabel:
         mock_repo = Mock()
         mock_repo.get_label.side_effect = Exception("Label not found")
 
+        mock_github = Mock()
+        mock_gitctx = GitHubCtx(github=mock_github, repo=mock_repo)
+
         # Act & Assert
         with pytest.raises(Exception):
-            await delete_label(mock_repo, label_name="nonexistent")
+            await delete_label(mock_gitctx, label_name="nonexistent")
 
 
 class TestAddLabelToIssue:
@@ -572,8 +743,13 @@ class TestAddLabelToIssue:
         mock_repo = Mock()
         mock_repo.get_issue.return_value = mock_issue
 
+        mock_github = Mock()
+        mock_gitctx = GitHubCtx(github=mock_github, repo=mock_repo)
+
         # Act
-        result = await add_label_to_issue(mock_repo, issue_number=123, label_name="bug")
+        result = await add_label_to_issue(
+            mock_gitctx, issue_number=123, label_name="bug"
+        )
 
         # Assert
         assert result == {"message": "bug label added to issue 123"}
@@ -594,9 +770,12 @@ class TestRemoveLabelFromIssue:
         mock_repo = Mock()
         mock_repo.get_issue.return_value = mock_issue
 
+        mock_github = Mock()
+        mock_gitctx = GitHubCtx(github=mock_github, repo=mock_repo)
+
         # Act
         result = await remove_label_from_issue(
-            mock_repo, issue_number=123, label_name="bug"
+            mock_gitctx, issue_number=123, label_name="bug"
         )
 
         # Assert

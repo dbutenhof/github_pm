@@ -465,6 +465,30 @@ const IssueCard = ({ issue, onMilestoneChange }) => {
               />
             </Tooltip>
           )}
+          {issue.closed_by && issue.closed_by.length > 0 && (
+            <span style={{ marginLeft: '0.5rem', color: '#6a6e73' }}>
+              (closed by{' '}
+              {issue.closed_by.map((pr, index) => (
+                <React.Fragment key={pr.number}>
+                  {index > 0 && ', '}
+                  <Tooltip content={pr.title || ''}>
+                    <a
+                      href={pr.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        textDecoration: 'none',
+                        color: '#0066cc',
+                      }}
+                    >
+                      #{pr.number}
+                    </a>
+                  </Tooltip>
+                </React.Fragment>
+              ))}
+              )
+            </span>
+          )}
           {' - '}
           {issue.title}
           {issue.type && (
