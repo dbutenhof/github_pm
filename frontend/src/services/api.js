@@ -1,12 +1,32 @@
 // ai-generated: Cursor
 const API_BASE = '/api/v1';
 
-export const fetchMilestones = async () => {
-  const response = await fetch(`${API_BASE}/milestones`);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch milestones: ${response.statusText}`);
+// Helper function to handle API requests with authentication
+const apiRequest = async (url, options = {}) => {
+  const response = await fetch(url, {
+    ...options,
+    credentials: 'include', // Important for cookies/sessions
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  });
+
+  if (response.status === 401) {
+    // Unauthorized - redirect to login
+    window.location.href = '/api/v1/auth/login';
+    throw new Error('Unauthorized - redirecting to login');
   }
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch: ${response.statusText}`);
+  }
+
   return response.json();
+};
+
+export const fetchMilestones = async () => {
+  return apiRequest(`${API_BASE}/milestones`);
 };
 
 export const fetchIssues = async (milestoneNumber, sortOrder = []) => {
@@ -15,133 +35,73 @@ export const fetchIssues = async (milestoneNumber, sortOrder = []) => {
     const sortParam = sortOrder.join(',');
     url += `?sort=${encodeURIComponent(sortParam)}`;
   }
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch issues: ${response.statusText}`);
-  }
-  return response.json();
+  return apiRequest(url);
 };
 
 export const fetchComments = async (issueNumber) => {
-  const response = await fetch(`${API_BASE}/comments/${issueNumber}`);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch comments: ${response.statusText}`);
-  }
-  return response.json();
+  return apiRequest(`${API_BASE}/comments/${issueNumber}`);
 };
 
 export const fetchProject = async () => {
-  const response = await fetch(`${API_BASE}/project`);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch project: ${response.statusText}`);
-  }
-  return response.json();
+  return apiRequest(`${API_BASE}/project`);
 };
 
 export const fetchLabels = async () => {
-  const response = await fetch(`${API_BASE}/labels`);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch labels: ${response.statusText}`);
-  }
-  return response.json();
+  return apiRequest(`${API_BASE}/labels`);
 };
 
 export const addLabel = async (issueNumber, labelName) => {
-  const response = await fetch(
-    `${API_BASE}/issues/${issueNumber}/labels/${labelName}`,
-    {
-      method: 'POST',
-    }
-  );
-  if (!response.ok) {
-    throw new Error(`Failed to add label: ${response.statusText}`);
-  }
-  return response.json();
+  return apiRequest(`${API_BASE}/issues/${issueNumber}/labels/${labelName}`, {
+    method: 'POST',
+  });
 };
 
 export const removeLabel = async (issueNumber, labelName) => {
-  const response = await fetch(
-    `${API_BASE}/issues/${issueNumber}/labels/${labelName}`,
-    {
-      method: 'DELETE',
-    }
-  );
-  if (!response.ok) {
-    throw new Error(`Failed to remove label: ${response.statusText}`);
-  }
-  return response.json();
+  return apiRequest(`${API_BASE}/issues/${issueNumber}/labels/${labelName}`, {
+    method: 'DELETE',
+  });
 };
 
 export const createMilestone = async (milestoneData) => {
-  const response = await fetch(`${API_BASE}/milestones`, {
+  return apiRequest(`${API_BASE}/milestones`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
     body: JSON.stringify(milestoneData),
   });
-  if (!response.ok) {
-    throw new Error(`Failed to create milestone: ${response.statusText}`);
-  }
-  return response.json();
 };
 
 export const deleteMilestone = async (milestoneNumber) => {
-  const response = await fetch(`${API_BASE}/milestones/${milestoneNumber}`, {
+  return apiRequest(`${API_BASE}/milestones/${milestoneNumber}`, {
     method: 'DELETE',
   });
-  if (!response.ok) {
-    throw new Error(`Failed to delete milestone: ${response.statusText}`);
-  }
-  return response.json();
 };
 
 export const createLabel = async (labelData) => {
-  const response = await fetch(`${API_BASE}/labels`, {
+  return apiRequest(`${API_BASE}/labels`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
     body: JSON.stringify(labelData),
   });
-  if (!response.ok) {
-    throw new Error(`Failed to create label: ${response.statusText}`);
-  }
-  return response.json();
 };
 
 export const deleteLabel = async (labelName) => {
-  const response = await fetch(`${API_BASE}/labels/${labelName}`, {
+  return apiRequest(`${API_BASE}/labels/${labelName}`, {
     method: 'DELETE',
   });
-  if (!response.ok) {
-    throw new Error(`Failed to delete label: ${response.statusText}`);
-  }
-  return response.json();
 };
 
 export const setIssueMilestone = async (issueNumber, milestoneNumber) => {
-  const response = await fetch(
+  return apiRequest(
     `${API_BASE}/issues/${issueNumber}/milestone/${milestoneNumber}`,
     {
       method: 'POST',
     }
   );
-  if (!response.ok) {
-    throw new Error(`Failed to set milestone: ${response.statusText}`);
-  }
-  return response.json();
 };
 
 export const removeIssueMilestone = async (issueNumber, milestoneNumber) => {
-  const response = await fetch(
+  return apiRequest(
     `${API_BASE}/issues/${issueNumber}/milestone/${milestoneNumber}`,
     {
       method: 'DELETE',
     }
   );
-  if (!response.ok) {
-    throw new Error(`Failed to remove milestone: ${response.statusText}`);
-  }
-  return response.json();
 };

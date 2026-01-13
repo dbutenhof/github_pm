@@ -14,10 +14,15 @@ import MilestoneCard from './components/MilestoneCard';
 import ManageMilestones from './components/ManageMilestones';
 import ManageLabels from './components/ManageLabels';
 import ManageSort from './components/ManageSort';
+import LoginButton from './components/LoginButton';
+import UserProfile from './components/UserProfile';
+import { useAuth } from './contexts/AuthContext';
 import milestonesCache from './utils/milestonesCache';
 import labelsCache, { clearLabelsCache } from './utils/labelsCache';
 
 const App = () => {
+  const { user, loading: authLoading } = useAuth();
+  
   // Initialize with cached data if available
   const [milestones, setMilestones] = useState(milestonesCache.data || []);
   const [loading, setLoading] = useState(milestonesCache.data.length === 0);
@@ -30,19 +35,26 @@ const App = () => {
   const [sortOrder, setSortOrder] = useState([]);
 
   useEffect(() => {
-    fetchProject()
-      .then((data) => {
-        setProject(data);
-        setProjectLoading(false);
-      })
-      .catch((err) => {
-        console.error('Failed to fetch project:', err);
-        setProjectLoading(false);
-      });
-  }, []);
+    // Only fetch project if authenticated
+    if (user) {
+      fetchProject()
+        .then((data) => {
+          setProject(data);
+          setProjectLoading(false);
+        })
+        .catch((err) => {
+          console.error('Failed to fetch project:', err);
+          setProjectLoading(false);
+        });
+    }
+  }, [user]);
 
-  // Preload milestones and labels in the background
+  // Preload milestones and labels in the background (only when authenticated)
   useEffect(() => {
+    if (!user) {
+      return;
+    }
+    
     // Preload milestones
     if (
       !milestonesCache.loading &&
@@ -110,7 +122,7 @@ const App = () => {
         });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [user]);
 
   const loadMilestones = () => {
     setLoading(true);
@@ -147,6 +159,48 @@ const App = () => {
     // but we can add a callback if needed in the future
   };
 
+  // Show loading state while checking authentication
+  if (authLoading) {
+    return (
+      <Page>
+        <PageSection>
+          <Bullseye>
+            <Spinner size="xl" />
+          </Bullseye>
+        </PageSection>
+      </Page>
+    );
+  }
+
+  // Show login screen if not authenticated
+  if (!user) {
+    return (
+      <Page>
+        <PageSection>
+          <Bullseye>
+            <div
+              style={{
+                textAlign: 'center',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '1rem',
+                alignItems: 'center',
+              }}
+            >
+              <Title headingLevel="h1" size="2xl">
+                GitHub Project Manager
+              </Title>
+              <p style={{ color: '#6a6e73', marginBottom: '1rem' }}>
+                Please log in with GitHub to continue
+              </p>
+              <LoginButton />
+            </div>
+          </Bullseye>
+        </PageSection>
+      </Page>
+    );
+  }
+
   return (
     <Page>
       <PageSection>
@@ -165,7 +219,8 @@ const App = () => {
                 ? `${project.app_name}: ${project.github_repo}`
                 : 'GitHub Project Manager'}
           </Title>
-          <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            <UserProfile />
             <Button
               variant="secondary"
               onClick={() => setIsManageMilestonesOpen(true)}
