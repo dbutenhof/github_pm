@@ -4,7 +4,7 @@ from datetime import date
 import time
 from typing import Annotated, AsyncGenerator
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, Request
 from github import Auth, Github, Repository
 from github.GithubObject import NotSet
 from pydantic import BaseModel, Field
@@ -20,12 +20,20 @@ class GitHubCtx:
     repo: Repository
 
 
-async def connection() -> AsyncGenerator[GitHubCtx, None]:
-    """FastAPI Dependency to open & close Github connections"""
+async def connection(request: Request) -> AsyncGenerator[GitHubCtx, None]:
+    """FastAPI Dependency to open & close Github connections using user's token."""
+    # Get token from session
+    token = request.session.get("github_token")
+    if not token:
+        raise HTTPException(
+            status_code=401,
+            detail="Not authenticated. Please log in with GitHub.",
+        )
+
     gh = None
     print(f"Opening GitHub connection for repo {context.github_repo}")
     try:
-        gh = Github(auth=Auth.Token(context.github_token))
+        gh = Github(auth=Auth.Token(token))
     except Exception as e:
         print(f"Error opening GitHub service: {e}")
         raise HTTPException(
