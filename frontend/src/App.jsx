@@ -16,6 +16,8 @@ import ManageLabels from './components/ManageLabels';
 import ManageSort from './components/ManageSort';
 import milestonesCache from './utils/milestonesCache';
 import labelsCache, { clearLabelsCache } from './utils/labelsCache';
+import iconImage from './assets/icon.png';
+import './icon.css';
 
 const App = () => {
   // Initialize with cached data if available
@@ -149,22 +151,48 @@ const App = () => {
 
   return (
     <Page>
-      <PageSection>
+      <PageSection
+        style={{ background: 'transparent', backgroundColor: 'transparent' }}
+      >
         <div
           style={{
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
             marginBottom: '1rem',
+            background: 'transparent',
+            backgroundColor: 'transparent',
           }}
         >
-          <Title headingLevel="h1" size="2xl">
-            {projectLoading
-              ? 'Loading...'
-              : project
-                ? `${project.app_name}: ${project.github_repo}`
-                : 'GitHub Project Manager'}
-          </Title>
+          <div
+            className="app-header-icon-container"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '1rem',
+              background: 'transparent',
+            }}
+          >
+            <img
+              src={iconImage}
+              alt="Application icon"
+              className="app-icon"
+              style={{
+                height: '100px',
+                width: 'auto',
+                background: 'transparent',
+                backgroundColor: 'transparent',
+                display: 'block',
+              }}
+            />
+            <Title headingLevel="h1" size="2xl">
+              {projectLoading
+                ? 'Loading...'
+                : project
+                  ? `${project.app_name}: ${project.github_repo}`
+                  : 'GitHub Project Manager'}
+            </Title>
+          </div>
           <div style={{ display: 'flex', gap: '0.5rem' }}>
             <Button
               variant="secondary"
