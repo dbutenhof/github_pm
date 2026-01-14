@@ -1,0 +1,50 @@
+/* Override PatternFly styles to ensure transparent background for icon */
+html,
+body,
+#root,
+.pf-c-page,
+.pf-c-page__main,
+.pf-c-page__main-section:first-child,
+.pf-c-page__main-section:first-child > div,
+.pf-c-page__main-section:first-child > div > div {
+  background: transparent !important;
+  background-color: transparent !important;
+}
+
+/* Ensure icon container and image have transparent background */
+.app-header-icon-container {
+  background: transparent !important;
+  background-color: transparent !important;
+}
+
+.app-icon,
+img.app-icon,
+img[alt='Application icon'],
+div.app-icon {
+  background: transparent !important;
+  background-color: transparent !important;
+  mix-blend-mode: normal !important;
+  /* Ensure image transparency is preserved */
+  image-rendering: -webkit-optimize-contrast;
+  -webkit-background-clip: padding-box;
+  background-clip: padding-box;
+}
+
+/* Ensure background-image preserves transparency */
+div.app-icon {
+  background-color: transparent !important;
+  background: transparent !important;
+}
+
+/* Target any PatternFly wrapper elements */
+.pf-c-page__main-section:first-child * {
+  background: transparent !important;
+  background-color: transparent !important;
+}
+
+/* Specifically override any PatternFly card or panel backgrounds near the icon */
+.app-header-icon-container,
+.app-header-icon-container * {
+  background: transparent !important;
+  background-color: transparent !important;
+}
