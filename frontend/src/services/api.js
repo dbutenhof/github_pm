@@ -145,3 +145,21 @@ export const removeIssueMilestone = async (issueNumber, milestoneNumber) => {
   }
   return response.json();
 };
+
+export const fetchIssueReactions = async (issueNumber) => {
+  const response = await fetch(`${API_BASE}/issues/${issueNumber}/reactions`);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch issue reactions: ${response.statusText}`);
+  }
+  return response.json();
+};
+
+export const fetchCommentReactions = async (commentId) => {
+  const response = await fetch(`${API_BASE}/comments/${commentId}/reactions`);
+  if (!response.ok) {
+    throw new Error(
+      `Failed to fetch comment reactions: ${response.statusText}`
+    );
+  }
+  return response.json();
+};

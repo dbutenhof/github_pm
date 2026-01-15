@@ -29,8 +29,10 @@ import {
   createLabel,
   setIssueMilestone,
   removeIssueMilestone,
+  fetchIssueReactions,
 } from '../services/api';
 import CommentCard from './CommentCard';
+import Reactions from './Reactions';
 import labelsCache, { clearLabelsCache } from '../utils/labelsCache';
 import milestonesCache from '../utils/milestonesCache';
 
@@ -99,6 +101,9 @@ const IssueCard = ({ issue, onMilestoneChange }) => {
   const milestoneToggleRef = useRef(null);
   const menuRef = useRef(null);
   const toggleRef = useRef(null);
+  const [reactions, setReactions] = useState([]);
+  const [reactionsLoading, setReactionsLoading] = useState(false);
+  const [reactionsError, setReactionsError] = useState(null);
 
   useEffect(() => {
     if (
@@ -143,6 +148,40 @@ const IssueCard = ({ issue, onMilestoneChange }) => {
   useEffect(() => {
     setCurrentMilestone(issue.milestone);
   }, [issue.milestone]);
+
+  // Fetch reactions if total_count > 0
+  useEffect(() => {
+    // Reset reactions when issue changes
+    if (issue.number) {
+      setReactions([]);
+      setReactionsError(null);
+    }
+  }, [issue.number]);
+
+  useEffect(() => {
+    if (
+      issue.reactions?.total_count > 0 &&
+      reactions.length === 0 &&
+      !reactionsLoading
+    ) {
+      setReactionsLoading(true);
+      setReactionsError(null);
+      fetchIssueReactions(issue.number)
+        .then((data) => {
+          setReactions(data);
+          setReactionsLoading(false);
+        })
+        .catch((err) => {
+          setReactionsError(err.message);
+          setReactionsLoading(false);
+        });
+    }
+  }, [
+    issue.reactions?.total_count,
+    issue.number,
+    reactions.length,
+    reactionsLoading,
+  ]);
 
   // Preload labels when component mounts (shared cache) - non-blocking
   // useEffect runs after render, so this won't block the initial render
@@ -983,6 +1022,27 @@ const IssueCard = ({ issue, onMilestoneChange }) => {
                     )}
                 </div>
               </ExpandableSection>
+            </div>
+          )}
+          {issue.reactions?.total_count > 0 && (
+            <div style={{ marginTop: '0.75rem' }}>
+              {reactionsLoading && (
+                <div style={{ textAlign: 'center', padding: '0.5rem' }}>
+                  <Spinner size="sm" />
+                </div>
+              )}
+              {reactionsError && (
+                <Alert
+                  variant="danger"
+                  title="Error loading reactions"
+                  isInline
+                >
+                  {reactionsError}
+                </Alert>
+              )}
+              {!reactionsLoading && !reactionsError && reactions.length > 0 && (
+                <Reactions reactions={reactions} />
+              )}
             </div>
           )}
         </div>
