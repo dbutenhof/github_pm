@@ -21,7 +21,9 @@ from github_pm.api import (
     CreateMilestone,
     delete_label,
     delete_milestone,
+    get_comment_reactions,
     get_comments,
+    get_issue_reactions,
     get_issues,
     get_labels,
     get_milestones,
@@ -364,6 +366,413 @@ class TestGetIssues:
             mock_repo.get_milestone.assert_not_called()
             # GraphQL should be called for issue without pull_request
             assert mock_requester.graphql_query.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_get_issues_with_sort_single_label(self):
+        """Test getting issues sorted by a single label."""
+        # Arrange
+        mock_label_bug = Mock()
+        mock_label_bug.name = "bug"
+        mock_label_feature = Mock()
+        mock_label_feature.name = "feature"
+        mock_label_other = Mock()
+        mock_label_other.name = "documentation"
+
+        mock_issue1 = Mock()
+        mock_issue1.raw_data = {"id": 1, "title": "Bug Issue"}
+        mock_issue1.number = 1
+        mock_issue1.labels = [mock_label_bug]
+
+        mock_issue2 = Mock()
+        mock_issue2.raw_data = {"id": 2, "title": "Feature Issue"}
+        mock_issue2.number = 2
+        mock_issue2.labels = [mock_label_feature]
+
+        mock_issue3 = Mock()
+        mock_issue3.raw_data = {"id": 3, "title": "Other Issue"}
+        mock_issue3.number = 3
+        mock_issue3.labels = [mock_label_other]
+
+        # Create an iterable mock with totalCount
+        class IterableIssues:
+            def __init__(self, issues):
+                self.issues = issues
+                self.totalCount = len(issues)
+
+            def __iter__(self):
+                return iter(self.issues)
+
+        mock_issues_obj = IterableIssues([mock_issue1, mock_issue2, mock_issue3])
+
+        mock_repo = Mock()
+        mock_repo.get_issues.return_value = mock_issues_obj
+
+        mock_requester = Mock()
+        mock_requester.graphql_query.return_value = (
+            None,
+            {
+                "data": {
+                    "repository": {
+                        "issue": {"closedByPullRequestsReferences": {"nodes": []}}
+                    }
+                }
+            },
+        )
+
+        mock_github = Mock()
+        mock_github.requester = mock_requester
+
+        mock_gitctx = GitHubCtx(github=mock_github, repo=mock_repo)
+
+        with patch("github_pm.api.context") as mock_context:
+            mock_context.github_repo = "test/repo"
+
+            # Act
+            result = await get_issues(mock_gitctx, milestone_number=0, sort="bug")
+
+            # Assert
+            assert len(result) == 3
+            # First should be bug issue
+            assert result[0]["id"] == 1
+            assert result[0]["title"] == "Bug Issue"
+            # Then other issues
+            assert result[1]["id"] == 2
+            assert result[2]["id"] == 3
+
+    @pytest.mark.asyncio
+    async def test_get_issues_with_sort_multiple_labels(self):
+        """Test getting issues sorted by multiple labels in order."""
+        # Arrange
+        mock_label_bug = Mock()
+        mock_label_bug.name = "bug"
+        mock_label_feature = Mock()
+        mock_label_feature.name = "feature"
+        mock_label_enhancement = Mock()
+        mock_label_enhancement.name = "enhancement"
+
+        mock_issue1 = Mock()
+        mock_issue1.raw_data = {"id": 1, "title": "Bug Issue"}
+        mock_issue1.number = 1
+        mock_issue1.labels = [mock_label_bug]
+
+        mock_issue2 = Mock()
+        mock_issue2.raw_data = {"id": 2, "title": "Feature Issue"}
+        mock_issue2.number = 2
+        mock_issue2.labels = [mock_label_feature]
+
+        mock_issue3 = Mock()
+        mock_issue3.raw_data = {"id": 3, "title": "Enhancement Issue"}
+        mock_issue3.number = 3
+        mock_issue3.labels = [mock_label_enhancement]
+
+        mock_issue4 = Mock()
+        mock_issue4.raw_data = {"id": 4, "title": "Unlabeled Issue"}
+        mock_issue4.number = 4
+        mock_issue4.labels = []
+
+        # Create an iterable mock with totalCount
+        class IterableIssues:
+            def __init__(self, issues):
+                self.issues = issues
+                self.totalCount = len(issues)
+
+            def __iter__(self):
+                return iter(self.issues)
+
+        mock_issues_obj = IterableIssues(
+            [mock_issue1, mock_issue2, mock_issue3, mock_issue4]
+        )
+
+        mock_repo = Mock()
+        mock_repo.get_issues.return_value = mock_issues_obj
+
+        mock_requester = Mock()
+        mock_requester.graphql_query.return_value = (
+            None,
+            {
+                "data": {
+                    "repository": {
+                        "issue": {"closedByPullRequestsReferences": {"nodes": []}}
+                    }
+                }
+            },
+        )
+
+        mock_github = Mock()
+        mock_github.requester = mock_requester
+
+        mock_gitctx = GitHubCtx(github=mock_github, repo=mock_repo)
+
+        with patch("github_pm.api.context") as mock_context:
+            mock_context.github_repo = "test/repo"
+
+            # Act
+            result = await get_issues(
+                mock_gitctx, milestone_number=0, sort="bug,feature,enhancement"
+            )
+
+            # Assert
+            assert len(result) == 4
+            # Order should be: bug, feature, enhancement, other
+            assert result[0]["id"] == 1  # bug
+            assert result[1]["id"] == 2  # feature
+            assert result[2]["id"] == 3  # enhancement
+            assert result[3]["id"] == 4  # other (unlabeled)
+
+    @pytest.mark.asyncio
+    async def test_get_issues_with_sort_case_insensitive(self):
+        """Test that label matching is case-insensitive."""
+        # Arrange
+        mock_label_bug = Mock()
+        mock_label_bug.name = "BUG"  # Uppercase label
+        mock_label_feature = Mock()
+        mock_label_feature.name = "Feature"  # Mixed case label
+
+        mock_issue1 = Mock()
+        mock_issue1.raw_data = {"id": 1, "title": "Bug Issue"}
+        mock_issue1.number = 1
+        mock_issue1.labels = [mock_label_bug]
+
+        mock_issue2 = Mock()
+        mock_issue2.raw_data = {"id": 2, "title": "Feature Issue"}
+        mock_issue2.number = 2
+        mock_issue2.labels = [mock_label_feature]
+
+        # Create an iterable mock with totalCount
+        class IterableIssues:
+            def __init__(self, issues):
+                self.issues = issues
+                self.totalCount = len(issues)
+
+            def __iter__(self):
+                return iter(self.issues)
+
+        mock_issues_obj = IterableIssues([mock_issue1, mock_issue2])
+
+        mock_repo = Mock()
+        mock_repo.get_issues.return_value = mock_issues_obj
+
+        mock_requester = Mock()
+        mock_requester.graphql_query.return_value = (
+            None,
+            {
+                "data": {
+                    "repository": {
+                        "issue": {"closedByPullRequestsReferences": {"nodes": []}}
+                    }
+                }
+            },
+        )
+
+        mock_github = Mock()
+        mock_github.requester = mock_requester
+
+        mock_gitctx = GitHubCtx(github=mock_github, repo=mock_repo)
+
+        with patch("github_pm.api.context") as mock_context:
+            mock_context.github_repo = "test/repo"
+
+            # Act - using lowercase sort labels
+            result = await get_issues(
+                mock_gitctx, milestone_number=0, sort="bug,feature"
+            )
+
+            # Assert
+            assert len(result) == 2
+            # Should match despite case difference
+            assert result[0]["id"] == 1  # bug (matched "BUG")
+            assert result[1]["id"] == 2  # feature (matched "Feature")
+
+    @pytest.mark.asyncio
+    async def test_get_issues_with_sort_whitespace_stripped(self):
+        """Test that whitespace in sort parameter is stripped."""
+        # Arrange
+        mock_label_bug = Mock()
+        mock_label_bug.name = "bug"
+        mock_label_feature = Mock()
+        mock_label_feature.name = "feature"
+
+        mock_issue1 = Mock()
+        mock_issue1.raw_data = {"id": 1, "title": "Bug Issue"}
+        mock_issue1.number = 1
+        mock_issue1.labels = [mock_label_bug]
+
+        mock_issue2 = Mock()
+        mock_issue2.raw_data = {"id": 2, "title": "Feature Issue"}
+        mock_issue2.number = 2
+        mock_issue2.labels = [mock_label_feature]
+
+        # Create an iterable mock with totalCount
+        class IterableIssues:
+            def __init__(self, issues):
+                self.issues = issues
+                self.totalCount = len(issues)
+
+            def __iter__(self):
+                return iter(self.issues)
+
+        mock_issues_obj = IterableIssues([mock_issue1, mock_issue2])
+
+        mock_repo = Mock()
+        mock_repo.get_issues.return_value = mock_issues_obj
+
+        mock_requester = Mock()
+        mock_requester.graphql_query.return_value = (
+            None,
+            {
+                "data": {
+                    "repository": {
+                        "issue": {"closedByPullRequestsReferences": {"nodes": []}}
+                    }
+                }
+            },
+        )
+
+        mock_github = Mock()
+        mock_github.requester = mock_requester
+
+        mock_gitctx = GitHubCtx(github=mock_github, repo=mock_repo)
+
+        with patch("github_pm.api.context") as mock_context:
+            mock_context.github_repo = "test/repo"
+
+            # Act - with whitespace in sort parameter
+            result = await get_issues(
+                mock_gitctx, milestone_number=0, sort=" bug , feature "
+            )
+
+            # Assert
+            assert len(result) == 2
+            # Should match despite whitespace
+            assert result[0]["id"] == 1  # bug
+            assert result[1]["id"] == 2  # feature
+
+    @pytest.mark.asyncio
+    async def test_get_issues_with_sort_first_match_wins(self):
+        """Test that issues matching multiple labels go to the first matching label."""
+        # Arrange
+        mock_label_bug = Mock()
+        mock_label_bug.name = "bug"
+        mock_label_feature = Mock()
+        mock_label_feature.name = "feature"
+
+        # Issue with both labels
+        mock_issue1 = Mock()
+        mock_issue1.raw_data = {"id": 1, "title": "Bug/Feature Issue"}
+        mock_issue1.number = 1
+        mock_issue1.labels = [mock_label_bug, mock_label_feature]
+
+        mock_issue2 = Mock()
+        mock_issue2.raw_data = {"id": 2, "title": "Feature Only Issue"}
+        mock_issue2.number = 2
+        mock_issue2.labels = [mock_label_feature]
+
+        # Create an iterable mock with totalCount
+        class IterableIssues:
+            def __init__(self, issues):
+                self.issues = issues
+                self.totalCount = len(issues)
+
+            def __iter__(self):
+                return iter(self.issues)
+
+        mock_issues_obj = IterableIssues([mock_issue1, mock_issue2])
+
+        mock_repo = Mock()
+        mock_repo.get_issues.return_value = mock_issues_obj
+
+        mock_requester = Mock()
+        mock_requester.graphql_query.return_value = (
+            None,
+            {
+                "data": {
+                    "repository": {
+                        "issue": {"closedByPullRequestsReferences": {"nodes": []}}
+                    }
+                }
+            },
+        )
+
+        mock_github = Mock()
+        mock_github.requester = mock_requester
+
+        mock_gitctx = GitHubCtx(github=mock_github, repo=mock_repo)
+
+        with patch("github_pm.api.context") as mock_context:
+            mock_context.github_repo = "test/repo"
+
+            # Act - bug comes first in sort order
+            result = await get_issues(
+                mock_gitctx, milestone_number=0, sort="bug,feature"
+            )
+
+            # Assert
+            assert len(result) == 2
+            # Issue 1 should be in bug category (first match), not feature
+            assert result[0]["id"] == 1  # bug (first match wins)
+            assert result[1]["id"] == 2  # feature
+
+    @pytest.mark.asyncio
+    async def test_get_issues_with_sort_all_other(self):
+        """Test that issues without sort parameter all go to 'other'."""
+        # Arrange
+        mock_label_bug = Mock()
+        mock_label_bug.name = "bug"
+        mock_label_feature = Mock()
+        mock_label_feature.name = "feature"
+
+        mock_issue1 = Mock()
+        mock_issue1.raw_data = {"id": 1, "title": "Bug Issue"}
+        mock_issue1.number = 1
+        mock_issue1.labels = [mock_label_bug]
+
+        mock_issue2 = Mock()
+        mock_issue2.raw_data = {"id": 2, "title": "Feature Issue"}
+        mock_issue2.number = 2
+        mock_issue2.labels = [mock_label_feature]
+
+        # Create an iterable mock with totalCount
+        class IterableIssues:
+            def __init__(self, issues):
+                self.issues = issues
+                self.totalCount = len(issues)
+
+            def __iter__(self):
+                return iter(self.issues)
+
+        mock_issues_obj = IterableIssues([mock_issue1, mock_issue2])
+
+        mock_repo = Mock()
+        mock_repo.get_issues.return_value = mock_issues_obj
+
+        mock_requester = Mock()
+        mock_requester.graphql_query.return_value = (
+            None,
+            {
+                "data": {
+                    "repository": {
+                        "issue": {"closedByPullRequestsReferences": {"nodes": []}}
+                    }
+                }
+            },
+        )
+
+        mock_github = Mock()
+        mock_github.requester = mock_requester
+
+        mock_gitctx = GitHubCtx(github=mock_github, repo=mock_repo)
+
+        with patch("github_pm.api.context") as mock_context:
+            mock_context.github_repo = "test/repo"
+
+            # Act - no sort parameter
+            result = await get_issues(mock_gitctx, milestone_number=0, sort=None)
+
+            # Assert
+            assert len(result) == 2
+            # Both should be in "other" since no sort labels specified
+            assert result[0]["id"] == 1
+            assert result[1]["id"] == 2
 
 
 class TestGetComments:
@@ -782,6 +1191,141 @@ class TestRemoveLabelFromIssue:
         assert result is None
         mock_repo.get_issue.assert_called_once_with(123)
         mock_issue.remove_from_labels.assert_called_once_with("bug")
+
+
+class TestGetIssueReactions:
+    """Test the get_issue_reactions endpoint."""
+
+    @pytest.mark.asyncio
+    async def test_get_issue_reactions(self):
+        """Test getting reactions for an issue."""
+        # Arrange
+        mock_repo = Mock()
+        mock_repo.url = "https://api.github.com/repos/test/repo"
+
+        mock_requester = Mock()
+        mock_requester.requestJsonAndCheck.return_value = (
+            {"Content-Type": "application/json"},
+            [
+                {"id": 1, "content": "+1", "user": {"login": "user1"}},
+                {"id": 2, "content": "heart", "user": {"login": "user2"}},
+            ],
+        )
+
+        mock_github = Mock()
+        mock_github.requester = mock_requester
+
+        mock_gitctx = GitHubCtx(github=mock_github, repo=mock_repo)
+
+        # Act
+        result = await get_issue_reactions(mock_gitctx, issue_number=123)
+
+        # Assert
+        assert len(result) == 2
+        assert result[0]["id"] == 1
+        assert result[0]["content"] == "+1"
+        assert result[1]["id"] == 2
+        assert result[1]["content"] == "heart"
+        mock_requester.requestJsonAndCheck.assert_called_once_with(
+            "GET", "https://api.github.com/repos/test/repo/issues/123/reactions"
+        )
+
+    @pytest.mark.asyncio
+    async def test_get_issue_reactions_empty(self):
+        """Test getting reactions for an issue with no reactions."""
+        # Arrange
+        mock_repo = Mock()
+        mock_repo.url = "https://api.github.com/repos/test/repo"
+
+        mock_requester = Mock()
+        mock_requester.requestJsonAndCheck.return_value = (
+            {"Content-Type": "application/json"},
+            [],
+        )
+
+        mock_github = Mock()
+        mock_github.requester = mock_requester
+
+        mock_gitctx = GitHubCtx(github=mock_github, repo=mock_repo)
+
+        # Act
+        result = await get_issue_reactions(mock_gitctx, issue_number=456)
+
+        # Assert
+        assert result == []
+        mock_requester.requestJsonAndCheck.assert_called_once_with(
+            "GET", "https://api.github.com/repos/test/repo/issues/456/reactions"
+        )
+
+
+class TestGetCommentReactions:
+    """Test the get_comment_reactions endpoint."""
+
+    @pytest.mark.asyncio
+    async def test_get_comment_reactions(self):
+        """Test getting reactions for a comment."""
+        # Arrange
+        mock_repo = Mock()
+        mock_repo.url = "https://api.github.com/repos/test/repo"
+
+        mock_requester = Mock()
+        mock_requester.requestJsonAndCheck.return_value = (
+            {"Content-Type": "application/json"},
+            [
+                {"id": 1, "content": "laugh", "user": {"login": "user1"}},
+                {"id": 2, "content": "hooray", "user": {"login": "user2"}},
+                {"id": 3, "content": "confused", "user": {"login": "user3"}},
+            ],
+        )
+
+        mock_github = Mock()
+        mock_github.requester = mock_requester
+
+        mock_gitctx = GitHubCtx(github=mock_github, repo=mock_repo)
+
+        # Act
+        result = await get_comment_reactions(mock_gitctx, comment_id=789)
+
+        # Assert
+        assert len(result) == 3
+        assert result[0]["id"] == 1
+        assert result[0]["content"] == "laugh"
+        assert result[1]["id"] == 2
+        assert result[1]["content"] == "hooray"
+        assert result[2]["id"] == 3
+        assert result[2]["content"] == "confused"
+        mock_requester.requestJsonAndCheck.assert_called_once_with(
+            "GET",
+            "https://api.github.com/repos/test/repo/issues/comments/789/reactions",
+        )
+
+    @pytest.mark.asyncio
+    async def test_get_comment_reactions_empty(self):
+        """Test getting reactions for a comment with no reactions."""
+        # Arrange
+        mock_repo = Mock()
+        mock_repo.url = "https://api.github.com/repos/test/repo"
+
+        mock_requester = Mock()
+        mock_requester.requestJsonAndCheck.return_value = (
+            {"Content-Type": "application/json"},
+            [],
+        )
+
+        mock_github = Mock()
+        mock_github.requester = mock_requester
+
+        mock_gitctx = GitHubCtx(github=mock_github, repo=mock_repo)
+
+        # Act
+        result = await get_comment_reactions(mock_gitctx, comment_id=999)
+
+        # Assert
+        assert result == []
+        mock_requester.requestJsonAndCheck.assert_called_once_with(
+            "GET",
+            "https://api.github.com/repos/test/repo/issues/comments/999/reactions",
+        )
 
 
 class TestAPIRouterIntegration:

@@ -36,11 +36,9 @@ async def connection() -> AsyncGenerator[GitHubCtx, None]:
         repo = gh.get_repo(context.github_repo)
         print(f"Repository: {repo.name}")
         yield GitHubCtx(github=gh, repo=repo)
-    except HTTPException:
-        raise
     except Exception as e:
         print(f"Error interacting with GitHub: {type(e).__name__}->{str(e)!r}")
-        raise
+        raise HTTPException(status_code=400, detail=f"Can't get repository: {str(e)!r}")
     finally:
         if gh:
             gh.close()
@@ -230,23 +228,14 @@ async def create_milestone(
 ):
     start = time.time()
     print(f"Creating milestone: {milestone!r}", flush=True)
-    try:
-        m = gitctx.repo.create_milestone(
-            title=milestone.title,
-            state="open",
-            description=milestone.description,
-            due_on=milestone.due_on,
-        )
-        print(
-            f"[{milestone.title} milestone created: {time.time() - start:.3f} seconds]"
-        )
-        return m.raw_data
-    except Exception as e:
-        raise
-        print(f"Error creating milestone: {e!r}", flush=True)
-        raise HTTPException(
-            status_code=400, detail=f"Can't create milestone: {str(e)!r}"
-        )
+    m = gitctx.repo.create_milestone(
+        title=milestone.title,
+        state="open",
+        description=milestone.description,
+        due_on=milestone.due_on,
+    )
+    print(f"[{milestone.title} milestone created: {time.time() - start:.3f} seconds]")
+    return m.raw_data
 
 
 @api_router.delete("/milestones/{milestone_number}")
@@ -263,17 +252,9 @@ async def delete_milestone(
             status_code=400,
             detail=f"Milestone {milestone_number!r} not found: {str(e)!r}",
         )
-    try:
-        milestone.delete()
-        print(
-            f"[{milestone_number} milestone deleted: {time.time() - start:.3f} seconds]"
-        )
-        return {"message": f"{milestone_number} milestone deleted"}
-    except Exception as e:
-        print(f"Error deleting milestone: {e!r}", flush=True)
-        raise HTTPException(
-            status_code=400, detail=f"Can't delete milestone: {str(e)!r}"
-        ) from e
+    milestone.delete()
+    print(f"[{milestone_number} milestone deleted: {time.time() - start:.3f} seconds]")
+    return {"message": f"{milestone_number} milestone deleted"}
 
 
 @api_router.post("/issues/{issue_number}/milestone/{milestone_number}")
@@ -332,16 +313,11 @@ async def create_label(
     label: Annotated[CreateLabel, Body(title="Label")],
 ):
     start = time.time()
-    try:
-        label = gitctx.repo.create_label(
-            name=label.name, color=label.color, description=label.description
-        )
-        print(f"[{label.name} label created: {time.time() - start:.3f} seconds]")
-        return label.raw_data
-    except Exception as e:
-        raise
-        print(f"Error creating label: {e}", flush=True)
-        raise HTTPException(status_code=400, detail=f"Can't create label: {str(e)!r}")
+    label = gitctx.repo.create_label(
+        name=label.name, color=label.color, description=label.description
+    )
+    print(f"[{label.name} label created: {time.time() - start:.3f} seconds]")
+    return label.raw_data
 
 
 @api_router.delete("/labels/{label_name}")
@@ -356,13 +332,9 @@ async def delete_label(
         raise HTTPException(
             status_code=400, detail=f"Label {label_name!r} not found: {str(e)!r}"
         )
-    try:
-        label.delete()
-        print(f"[{label_name} label deleted: {time.time() - start:.3f} seconds]")
-        return {"message": f"{label_name} label deleted"}
-    except Exception as e:
-        print(f"Error deleting label: {e}", flush=True)
-        raise HTTPException(status_code=400, detail=f"Can't delete label: {str(e)!r}")
+    label.delete()
+    print(f"[{label_name} label deleted: {time.time() - start:.3f} seconds]")
+    return {"message": f"{label_name} label deleted"}
 
 
 @api_router.post("/issues/{issue_number}/labels/{label_name}")
