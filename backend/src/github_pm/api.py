@@ -40,9 +40,7 @@ async def connection() -> AsyncGenerator[GitHubCtx, None]:
         raise
     except Exception as e:
         print(f"Error interacting with GitHub: {type(e).__name__}->{str(e)!r}")
-        raise HTTPException(
-            status_code=400, detail=f"Can't interact with GitHub: {str(e)!r}"
-        )
+        raise
     finally:
         if gh:
             gh.close()
@@ -146,8 +144,50 @@ async def get_comments(
     start = time.time()
     comments = gitctx.repo.get_issue(issue_number).get_comments()
     simplified = [i.raw_data for i in comments]
-    print(f"[{len(simplified)} comments: {time.time() - start:.3f} seconds]")
+    print(
+        f"[{len(simplified)} issue {issue_number} comments: {time.time() - start:.3f} seconds]"
+    )
     return simplified
+
+
+@api_router.get("/issues/{issue_number}/reactions")
+async def get_issue_reactions(
+    gitctx: Annotated[GitHubCtx, Depends(connection)],
+    issue_number: Annotated[int, Path(title="Issue")],
+):
+    start = time.time()
+    url = f"{gitctx.repo.url}/issues/{issue_number}/reactions"
+    print(f"URL: {url}")
+    reactions = gitctx.github.requester.requestJsonAndCheck("GET", url)
+    # NOTE: the requestor returns a tuple of headers and response. We
+    # only want the response.
+    response = reactions[1]
+    print(
+        f"[{len(response)} issue {issue_number} reactions: {time.time() - start:.3f} seconds]"
+    )
+    return response
+
+
+@api_router.get("/comments/{comment_id}/reactions")
+async def get_comment_reactions(
+    gitctx: Annotated[GitHubCtx, Depends(connection)],
+    comment_id: Annotated[int, Path(title="Comment")],
+):
+    start = time.time()
+
+    # FIXME: This is a hack to work around what appears to be a bug in PyGithub.
+    # The "/issues" prefix is not being added to the URL. This seems to be the
+    # distinction between "commit comments" and "issue/PR comments".
+    url = f"{gitctx.repo.url}/issues/comments/{comment_id}/reactions"
+    print(f"URL: {url}")
+    reactions = gitctx.github.requester.requestJsonAndCheck("GET", url)
+    # NOTE: the requestor returns a tuple of headers and response. We
+    # only want the response.
+    response = reactions[1]
+    print(
+        f"[{len(response)} comment {comment_id} reactions: {time.time() - start:.3f} seconds]"
+    )
+    return response
 
 
 """Milestone Management"""

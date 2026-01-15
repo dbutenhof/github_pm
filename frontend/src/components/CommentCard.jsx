@@ -1,11 +1,51 @@
 // ai-generated: Cursor
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { Spinner, Alert } from '@patternfly/react-core';
 import { getDaysSince, formatDate } from '../utils/dateUtils';
+import { fetchCommentReactions } from '../services/api';
+import Reactions from './Reactions';
 
 const CommentCard = ({ comment }) => {
   const daysSince = getDaysSince(comment.created_at);
+  const [reactions, setReactions] = useState([]);
+  const [reactionsLoading, setReactionsLoading] = useState(false);
+  const [reactionsError, setReactionsError] = useState(null);
+
+  // Reset reactions when comment changes
+  useEffect(() => {
+    if (comment.id) {
+      setReactions([]);
+      setReactionsError(null);
+    }
+  }, [comment.id]);
+
+  // Fetch reactions if total_count > 0
+  useEffect(() => {
+    if (
+      comment.reactions?.total_count > 0 &&
+      reactions.length === 0 &&
+      !reactionsLoading
+    ) {
+      setReactionsLoading(true);
+      setReactionsError(null);
+      fetchCommentReactions(comment.id)
+        .then((data) => {
+          setReactions(data);
+          setReactionsLoading(false);
+        })
+        .catch((err) => {
+          setReactionsError(err.message);
+          setReactionsLoading(false);
+        });
+    }
+  }, [
+    comment.reactions?.total_count,
+    comment.id,
+    reactions.length,
+    reactionsLoading,
+  ]);
 
   return (
     <div
@@ -49,6 +89,23 @@ const CommentCard = ({ comment }) => {
           {comment.body}
         </ReactMarkdown>
       </div>
+      {comment.reactions?.total_count > 0 && (
+        <div style={{ marginTop: '0.5rem' }}>
+          {reactionsLoading && (
+            <div style={{ textAlign: 'center', padding: '0.5rem' }}>
+              <Spinner size="sm" />
+            </div>
+          )}
+          {reactionsError && (
+            <Alert variant="danger" title="Error loading reactions" isInline>
+              {reactionsError}
+            </Alert>
+          )}
+          {!reactionsLoading && !reactionsError && reactions.length > 0 && (
+            <Reactions reactions={reactions} />
+          )}
+        </div>
+      )}
     </div>
   );
 };
