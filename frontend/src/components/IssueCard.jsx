@@ -478,8 +478,10 @@ const IssueCard = ({ issue, onMilestoneChange }) => {
     <Card
       style={{
         width: '100%',
+        border: '3px solid #0066cc',
         display: 'flex',
         flexDirection: 'column',
+        borderRadius: '0.5rem',
       }}
     >
       <CardHeader>
@@ -571,24 +573,98 @@ const IssueCard = ({ issue, onMilestoneChange }) => {
           }}
         >
           {issue.user?.avatar_url && (
-            <img
-              src={issue.user.avatar_url}
-              alt={issue.user.login}
-              style={{
-                width: '32px',
-                height: '32px',
-                borderRadius: '50%',
-                flexShrink: 0,
-              }}
-            />
+            <a
+              href={issue.user.html_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ textDecoration: 'none' }}
+            >
+              <img
+                src={issue.user.avatar_url}
+                alt={issue.user.login}
+                style={{
+                  width: '32px',
+                  height: '32px',
+                  borderRadius: '50%',
+                  flexShrink: 0,
+                }}
+              />
+            </a>
           )}
           <div style={{ flex: '1', minWidth: 0 }}>
             <div style={{ fontWeight: '500' }}>
-              {issue.user?.login || 'Unknown'}
+              {issue.user?.html_url ? (
+                <a
+                  href={issue.user.html_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ textDecoration: 'none', color: '#0066cc' }}
+                >
+                  {issue.user.login || 'Unknown'}
+                </a>
+              ) : (
+                issue.user?.login || 'Unknown'
+              )}
             </div>
             <div style={{ fontSize: '0.875rem', color: '#6a6e73' }}>
               {formatDate(issue.created_at)} ({daysSince} days ago)
             </div>
+            {issue.assignees && issue.assignees.length > 0 && (
+              <div
+                style={{
+                  fontSize: '0.875rem',
+                  color: '#6a6e73',
+                  marginTop: '0.25rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  flexWrap: 'wrap',
+                }}
+              >
+                <span>Assigned to</span>
+                {issue.assignees.map((assignee, index) => (
+                  <span
+                    key={assignee.id || assignee.login || index}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.25rem',
+                    }}
+                  >
+                    {assignee.avatar_url && (
+                      <a
+                        href={assignee.html_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ textDecoration: 'none' }}
+                      >
+                        <img
+                          src={assignee.avatar_url}
+                          alt={assignee.login}
+                          style={{
+                            width: '20px',
+                            height: '20px',
+                            borderRadius: '50%',
+                            verticalAlign: 'middle',
+                          }}
+                        />
+                      </a>
+                    )}
+                    <a
+                      href={assignee.html_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        textDecoration: 'none',
+                        color: '#0066cc',
+                      }}
+                    >
+                      {assignee.login}
+                    </a>
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
           <div
             style={{
