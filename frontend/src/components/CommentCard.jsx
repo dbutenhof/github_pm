@@ -1,7 +1,5 @@
 // ai-generated: Cursor
 import React, { useState, useEffect } from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
 import { Spinner, Alert } from '@patternfly/react-core';
 import { getDaysSince, formatDate } from '../utils/dateUtils';
 import { fetchCommentReactions } from '../services/api';
@@ -84,11 +82,7 @@ const CommentCard = ({ comment }) => {
           </div>
         </div>
       </div>
-      <div>
-        <ReactMarkdown remarkPlugins={[remarkGfm]}>
-          {comment.body}
-        </ReactMarkdown>
-      </div>
+      <div dangerouslySetInnerHTML={{ __html: comment.body_html || '' }} />
       {comment.reactions?.total_count > 0 && (
         <div style={{ marginTop: '0.5rem' }}>
           {reactionsLoading && (
