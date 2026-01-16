@@ -13,6 +13,8 @@ describe('IssueCard', () => {
     number: 459,
     title: 'Add support for OpenAI Responses API',
     body: '**Is your feature request related to a problem?**\n\nYes, it is.',
+    body_html:
+      '<p><strong>Is your feature request related to a problem?</strong></p><p>Yes, it is.</p>',
     html_url: 'https://github.com/vllm-project/guidellm/issues/459',
     user: {
       login: 'tosokin',
@@ -79,13 +81,14 @@ describe('IssueCard', () => {
     expect(screen.queryByText(/comment/)).not.toBeInTheDocument();
   });
 
-  it('expands and shows markdown body when toggle is clicked', async () => {
+  it('expands and shows HTML body when toggle is clicked', async () => {
     const user = userEvent.setup();
     render(<IssueCard issue={mockIssue} />);
     const toggleButton = screen.getByText('Show Description');
     await user.click(toggleButton);
 
     await waitFor(() => {
+      // The HTML content should be rendered, check for the text content
       expect(
         screen.getByText(/Is your feature request related to a problem/i)
       ).toBeInTheDocument();
@@ -124,7 +127,7 @@ describe('IssueCard', () => {
   });
 
   it('handles missing body gracefully', () => {
-    const issueWithoutBody = { ...mockIssue, body: null };
+    const issueWithoutBody = { ...mockIssue, body: null, body_html: null };
     render(<IssueCard issue={issueWithoutBody} />);
     expect(screen.getByText('#459')).toBeInTheDocument();
   });
@@ -249,6 +252,7 @@ describe('IssueCard', () => {
       {
         id: 1,
         body: 'This is a comment',
+        body_html: '<p>This is a comment</p>',
         user: {
           login: 'testuser',
           avatar_url: 'https://avatar.url',
