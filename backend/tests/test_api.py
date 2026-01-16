@@ -833,7 +833,7 @@ class TestRemoveMilestoneFromIssue:
             # Assert
             assert result == mock_issue_response
             mock_gitctx.patch.assert_called_once_with(
-                "/repos/test/repo/issues/123", data={"milestone": 1}
+                "/repos/test/repo/issues/123", data={"milestone": None}
             )
 
 
