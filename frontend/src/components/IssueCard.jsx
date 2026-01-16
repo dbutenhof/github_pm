@@ -18,8 +18,6 @@ import {
   FormGroup,
 } from '@patternfly/react-core';
 import { CodeBranchIcon } from '@patternfly/react-icons';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
 import { getDaysSince, formatDate } from '../utils/dateUtils';
 import {
   fetchComments,
@@ -1048,21 +1046,20 @@ const IssueCard = ({ issue, onMilestoneChange }) => {
             paddingBottom: '0.75rem',
           }}
         >
-          {issue.body && (
+          {issue.body_html && (
             <ExpandableSection
               toggleText={getToggleText()}
               onToggle={() => setIsDescriptionExpanded(!isDescriptionExpanded)}
               isExpanded={isDescriptionExpanded}
             >
-              <div style={{ paddingTop: '0.5rem' }}>
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                  {issue.body}
-                </ReactMarkdown>
-              </div>
+              <div
+                style={{ paddingTop: '0.5rem' }}
+                dangerouslySetInnerHTML={{ __html: issue.body_html }}
+              />
             </ExpandableSection>
           )}
           {issue.comments > 0 && isDescriptionExpanded && (
-            <div style={{ marginTop: issue.body ? '1rem' : '0rem' }}>
+            <div style={{ marginTop: issue.body_html ? '1rem' : '0rem' }}>
               <ExpandableSection
                 toggleText={getCommentsToggleText()}
                 onToggle={() => setIsCommentsExpanded(!isCommentsExpanded)}
