@@ -321,7 +321,7 @@ async def remove_milestone_from_issue(
 ):
     issue = gitctx.patch(
         f"/repos/{context.github_repo}/issues/{issue_number}",
-        data={"milestone": milestone_number},
+        data={"milestone": None},
     )
     return issue
 
