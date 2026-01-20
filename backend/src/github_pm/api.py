@@ -1,5 +1,6 @@
 from collections import defaultdict
 from datetime import datetime
+import re
 import time
 from typing import Annotated, Any, AsyncGenerator
 
@@ -11,6 +12,10 @@ from github_pm.context import context
 from github_pm.logger import logger
 
 api_router = APIRouter()
+
+
+# We sort "semver" style milestones first, then others alphabetically
+VERSION_MATCH = re.compile(r"^v\d+\.\d+\.\d+$")
 
 
 class Connector:
@@ -254,6 +259,16 @@ async def get_milestones(gitctx: Annotated[Connector, Depends(connection)]):
     milestones = gitctx.get_paged(
         f"/repos/{context.github_repo}/milestones",
         headers={"Accept": "application/vnd.github.html+json"},
+    )
+    versions = []
+    others = []
+    for m in milestones:
+        if VERSION_MATCH.match(m["title"]):
+            versions.append(m)
+        else:
+            others.append(m)
+    milestones = sorted(versions, key=lambda x: x["title"]) + sorted(
+        others, key=lambda x: x["title"]
     )
     milestones.append(
         {
