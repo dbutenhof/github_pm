@@ -31,6 +31,7 @@ import {
 } from '../services/api';
 import CommentCard from './CommentCard';
 import Reactions from './Reactions';
+import UserAvatar from './UserAvatar';
 import labelsCache, { clearLabelsCache } from '../utils/labelsCache';
 import milestonesCache from '../utils/milestonesCache';
 
@@ -566,52 +567,51 @@ const IssueCard = ({ issue, onMilestoneChange }) => {
             marginBottom: '0rem',
             display: 'flex',
             alignItems: 'flex-start',
+            justifyContent: 'space-between',
             gap: '0.5rem',
             padding: '0.75rem',
           }}
         >
-          {issue.user?.avatar_url && (
-            <a
-              href={issue.user.html_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{ textDecoration: 'none' }}
-            >
-              <img
-                src={issue.user.avatar_url}
-                alt={issue.user.login}
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'flex-start',
+            }}
+          >
+            {issue.user?.html_url ? (
+              <a
+                href={issue.user.html_url}
+                target="_blank"
+                rel="noopener noreferrer"
                 style={{
-                  width: '32px',
-                  height: '32px',
-                  borderRadius: '50%',
-                  flexShrink: 0,
+                  textDecoration: 'none',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
                 }}
-              />
-            </a>
-          )}
-          <div style={{ flex: '1', minWidth: 0 }}>
-            <div style={{ fontWeight: '500' }}>
-              {issue.user?.html_url ? (
-                <a
-                  href={issue.user.html_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{ textDecoration: 'none', color: '#0066cc' }}
-                >
+              >
+                <UserAvatar user={issue.user} size={32} />
+                <div style={{ fontWeight: '500', color: '#0066cc' }}>
                   {issue.user.login || 'Unknown'}
-                </a>
-              ) : (
-                issue.user?.login || 'Unknown'
-              )}
-            </div>
-            <div style={{ fontSize: '0.875rem', color: '#6a6e73' }}>
-              {formatDate(issue.created_at)} ({daysSince} days ago)
-            </div>
+                </div>
+              </a>
+            ) : (
+              <div
+                style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+              >
+                <UserAvatar user={issue.user} size={32} />
+                <div style={{ fontWeight: '500' }}>
+                  {issue.user?.login || 'Unknown'}
+                </div>
+              </div>
+            )}
             {issue.assignees && issue.assignees.length > 0 && (
               <div
                 style={{
                   fontSize: '0.875rem',
                   color: '#6a6e73',
+                  marginLeft: '40px',
                   marginTop: '0.25rem',
                   display: 'flex',
                   alignItems: 'center',
@@ -629,25 +629,7 @@ const IssueCard = ({ issue, onMilestoneChange }) => {
                       gap: '0.25rem',
                     }}
                   >
-                    {assignee.avatar_url && (
-                      <a
-                        href={assignee.html_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        style={{ textDecoration: 'none' }}
-                      >
-                        <img
-                          src={assignee.avatar_url}
-                          alt={assignee.login}
-                          style={{
-                            width: '20px',
-                            height: '20px',
-                            borderRadius: '50%',
-                            verticalAlign: 'middle',
-                          }}
-                        />
-                      </a>
-                    )}
+                    <UserAvatar user={assignee} size={20} />
                     <a
                       href={assignee.html_url}
                       target="_blank"
@@ -663,6 +645,16 @@ const IssueCard = ({ issue, onMilestoneChange }) => {
                 ))}
               </div>
             )}
+            <div
+              style={{
+                fontSize: '0.875rem',
+                color: '#6a6e73',
+                marginLeft: '40px',
+                marginTop: '0.25rem',
+              }}
+            >
+              {formatDate(issue.created_at)} ({daysSince} days ago)
+            </div>
           </div>
           <div
             style={{
@@ -670,7 +662,7 @@ const IssueCard = ({ issue, onMilestoneChange }) => {
               flexDirection: 'column',
               alignItems: 'flex-end',
               gap: '0.5rem',
-              maxWidth: '50%',
+              flexShrink: 0,
             }}
           >
             {/* Milestone control */}

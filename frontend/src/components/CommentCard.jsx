@@ -4,6 +4,7 @@ import { Spinner, Alert } from '@patternfly/react-core';
 import { getDaysSince, formatDate } from '../utils/dateUtils';
 import { fetchCommentReactions } from '../services/api';
 import Reactions from './Reactions';
+import UserAvatar from './UserAvatar';
 
 const CommentCard = ({ comment }) => {
   const daysSince = getDaysSince(comment.created_at);
@@ -56,30 +57,40 @@ const CommentCard = ({ comment }) => {
       <div
         style={{
           display: 'flex',
+          flexDirection: 'column',
           alignItems: 'flex-start',
-          gap: '0.5rem',
           marginBottom: '0.75rem',
         }}
       >
-        {comment.user?.avatar_url && (
-          <img
-            src={comment.user.avatar_url}
-            alt={comment.user.login}
+        {comment.user?.html_url ? (
+          <a
+            href={comment.user.html_url}
+            target="_blank"
+            rel="noopener noreferrer"
             style={{
-              width: '32px',
-              height: '32px',
-              borderRadius: '50%',
-              flexShrink: 0,
+              textDecoration: 'none',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
             }}
-          />
+          >
+            <UserAvatar user={comment.user} size={32} />
+            <div style={{ fontWeight: '500', color: '#0066cc' }}>
+              {comment.user.login || 'Unknown'}
+            </div>
+          </a>
+        ) : (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <UserAvatar user={comment.user} size={32} />
+            <div style={{ fontWeight: '500' }}>
+              {comment.user?.login || 'Unknown'}
+            </div>
+          </div>
         )}
-        <div style={{ flex: '1', minWidth: 0 }}>
-          <div style={{ fontWeight: '500' }}>
-            {comment.user?.login || 'Unknown'}
-          </div>
-          <div style={{ fontSize: '0.875rem', color: '#6a6e73' }}>
-            {formatDate(comment.created_at)} ({daysSince} days ago)
-          </div>
+        <div
+          style={{ fontSize: '0.875rem', color: '#6a6e73', marginLeft: '40px' }}
+        >
+          {formatDate(comment.created_at)} ({daysSince} days ago)
         </div>
       </div>
       <div dangerouslySetInnerHTML={{ __html: comment.body_html || '' }} />
