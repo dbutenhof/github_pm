@@ -1,5 +1,5 @@
 // ai-generated: Cursor
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Card,
   CardHeader,
@@ -28,12 +28,16 @@ import {
   setIssueMilestone,
   removeIssueMilestone,
   fetchIssueReactions,
+  fetchAssignees,
+  setIssueAssignees,
+  removeIssueAssignees,
 } from '../services/api';
 import CommentCard from './CommentCard';
 import Reactions from './Reactions';
 import UserAvatar from './UserAvatar';
 import labelsCache, { clearLabelsCache } from '../utils/labelsCache';
 import milestonesCache from '../utils/milestonesCache';
+import assigneesCache from '../utils/assigneesCache';
 
 const getContrastColor = (hexColor) => {
   // Convert hex to RGB
@@ -73,7 +77,7 @@ const getTypeContrastColor = (colorName) => {
   return darkColors.includes(colorName.toLowerCase()) ? '#ffffff' : '#000000';
 };
 
-const IssueCard = ({ issue, onMilestoneChange }) => {
+const IssueCard = ({ issue, onMilestoneChange, onIssueUpdate }) => {
   const daysSince = getDaysSince(issue.created_at);
   const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false);
   const [isCommentsExpanded, setIsCommentsExpanded] = useState(false);
@@ -103,6 +107,16 @@ const IssueCard = ({ issue, onMilestoneChange }) => {
   const [reactions, setReactions] = useState([]);
   const [reactionsLoading, setReactionsLoading] = useState(false);
   const [reactionsError, setReactionsError] = useState(null);
+  const [availableAssignees, setAvailableAssignees] = useState([]);
+  const [isAssigneesMenuOpen, setIsAssigneesMenuOpen] = useState(false);
+  const [assigneesLoading, setAssigneesLoading] = useState(false);
+  const [assigneesError, setAssigneesError] = useState(null);
+  const [currentAssignees, setCurrentAssignees] = useState(
+    issue.assignees || []
+  );
+  const [pendingAssignees, setPendingAssignees] = useState([]); // Temporary selection while dropdown is open
+  const assigneesMenuRef = useRef(null);
+  const assigneesToggleRef = useRef(null);
 
   useEffect(() => {
     if (
@@ -148,6 +162,11 @@ const IssueCard = ({ issue, onMilestoneChange }) => {
     setCurrentMilestone(issue.milestone);
   }, [issue.milestone]);
 
+  // Sync currentAssignees with issue.assignees when issue changes
+  useEffect(() => {
+    setCurrentAssignees(Array.isArray(issue.assignees) ? issue.assignees : []);
+  }, [issue.assignees]);
+
   // Fetch reactions if total_count > 0
   useEffect(() => {
     // Reset reactions when issue changes
@@ -181,6 +200,110 @@ const IssueCard = ({ issue, onMilestoneChange }) => {
     reactions.length,
     reactionsLoading,
   ]);
+
+  // Preload assignees when component mounts (shared cache) - non-blocking
+  useEffect(() => {
+    // If assignees are already cached, use them
+    if (assigneesCache.data.length > 0) {
+      setAvailableAssignees(assigneesCache.data);
+      setAssigneesLoading(false);
+      setAssigneesError(assigneesCache.error);
+      return;
+    }
+
+    // If assignees are currently being fetched, subscribe to the existing promise
+    if (assigneesCache.promise) {
+      setAssigneesLoading(true);
+      assigneesCache.promise
+        .then(() => {
+          setAvailableAssignees(assigneesCache.data);
+          setAssigneesLoading(false);
+          setAssigneesError(assigneesCache.error);
+        })
+        .catch(() => {
+          setAssigneesLoading(false);
+          setAssigneesError(assigneesCache.error);
+        });
+      return;
+    }
+
+    // Start fetching assignees asynchronously (non-blocking)
+    if (!assigneesCache.loading) {
+      assigneesCache.loading = true;
+      assigneesCache.error = null;
+
+      assigneesCache.promise = fetchAssignees()
+        .then((data) => {
+          assigneesCache.data = data;
+          assigneesCache.loading = false;
+          assigneesCache.error = null;
+          assigneesCache.promise = null;
+          setAvailableAssignees(data);
+          setAssigneesLoading(false);
+          setAssigneesError(null);
+        })
+        .catch((err) => {
+          assigneesCache.loading = false;
+          assigneesCache.error = err.message;
+          assigneesCache.promise = null;
+          setAssigneesLoading(false);
+          setAssigneesError(err.message);
+        });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Empty deps - only run once on mount
+
+  // Update loading state when menu opens if assignees are still loading
+  useEffect(() => {
+    if (isAssigneesMenuOpen) {
+      // If assignees are already cached, use them immediately
+      if (assigneesCache.data.length > 0) {
+        setAvailableAssignees(assigneesCache.data);
+        setAssigneesLoading(false);
+        setAssigneesError(assigneesCache.error);
+        return;
+      }
+
+      // If assignees are still loading, show loading state and wait for promise
+      if (assigneesCache.loading && assigneesCache.promise) {
+        setAssigneesLoading(true);
+        setAssigneesError(null);
+        assigneesCache.promise
+          .then(() => {
+            setAvailableAssignees(assigneesCache.data);
+            setAssigneesLoading(false);
+            setAssigneesError(assigneesCache.error);
+          })
+          .catch(() => {
+            setAssigneesLoading(false);
+            setAssigneesError(assigneesCache.error);
+          });
+      } else if (!assigneesCache.loading && assigneesCache.data.length === 0) {
+        // Assignees haven't been fetched yet, start fetching now
+        setAssigneesLoading(true);
+        assigneesCache.loading = true;
+        assigneesCache.error = null;
+
+        assigneesCache.promise = fetchAssignees()
+          .then((data) => {
+            assigneesCache.data = data;
+            assigneesCache.loading = false;
+            assigneesCache.error = null;
+            assigneesCache.promise = null;
+            setAvailableAssignees(data);
+            setAssigneesLoading(false);
+            setAssigneesError(null);
+          })
+          .catch((err) => {
+            assigneesCache.loading = false;
+            assigneesCache.error = err.message;
+            assigneesCache.promise = null;
+            setAssigneesLoading(false);
+            setAssigneesError(err.message);
+          });
+      }
+    }
+  }, [isAssigneesMenuOpen]);
 
   // Preload labels when component mounts (shared cache) - non-blocking
   // useEffect runs after render, so this won't block the initial render
@@ -289,6 +412,72 @@ const IssueCard = ({ issue, onMilestoneChange }) => {
     }
   }, [isLabelMenuOpen]);
 
+  // Define handleApplyAssignees before the useEffect that uses it
+  const handleApplyAssignees = useCallback(async () => {
+    try {
+      setAssigneesError(null);
+      const currentLogins = currentAssignees.map((a) => a.login);
+      const pendingLogins = pendingAssignees.map((a) => a.login);
+
+      // Check if there are any changes
+      const currentSet = new Set(currentLogins);
+      const pendingSet = new Set(pendingLogins);
+      const hasChanges =
+        currentLogins.length !== pendingLogins.length ||
+        currentLogins.some((login) => !pendingSet.has(login)) ||
+        pendingLogins.some((login) => !currentSet.has(login));
+
+      if (!hasChanges) {
+        // No changes, just close the dropdown
+        setIsAssigneesMenuOpen(false);
+        return;
+      }
+
+      // Determine which assignees were removed and which were added
+      const removedLogins = currentLogins.filter(
+        (login) => !pendingSet.has(login)
+      );
+      const addedLogins = pendingLogins.filter(
+        (login) => !currentSet.has(login)
+      );
+
+      let updatedIssue;
+      if (pendingLogins.length === 0) {
+        // All assignees removed - use DELETE with all current assignees
+        if (currentLogins.length > 0) {
+          updatedIssue = await removeIssueAssignees(
+            issue.number,
+            currentLogins
+          );
+          setCurrentAssignees(updatedIssue.assignees || []);
+          if (onIssueUpdate) {
+            onIssueUpdate(updatedIssue);
+          }
+        }
+      } else if (removedLogins.length > 0 && addedLogins.length === 0) {
+        // Only removals, no additions - use DELETE with removed assignees
+        updatedIssue = await removeIssueAssignees(issue.number, removedLogins);
+        setCurrentAssignees(updatedIssue.assignees || []);
+        if (onIssueUpdate) {
+          onIssueUpdate(updatedIssue);
+        }
+      } else {
+        // Additions or mixed changes - use POST to replace entire list
+        updatedIssue = await setIssueAssignees(issue.number, pendingLogins);
+        setCurrentAssignees(updatedIssue.assignees || []);
+        if (onIssueUpdate) {
+          onIssueUpdate(updatedIssue);
+        }
+      }
+      setIsAssigneesMenuOpen(false);
+    } catch (err) {
+      console.error('Failed to update assignees:', err);
+      setAssigneesError(err.message);
+      // On error, reset pending to current
+      setPendingAssignees([...currentAssignees]);
+    }
+  }, [currentAssignees, pendingAssignees, issue.number, onIssueUpdate]);
+
   // Close menu when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -311,15 +500,30 @@ const IssueCard = ({ issue, onMilestoneChange }) => {
       ) {
         setIsMilestoneMenuOpen(false);
       }
+      if (
+        isAssigneesMenuOpen &&
+        assigneesToggleRef.current &&
+        !assigneesToggleRef.current.contains(event.target) &&
+        assigneesMenuRef.current &&
+        !assigneesMenuRef.current.contains(event.target)
+      ) {
+        // Clicking outside - apply changes before closing
+        handleApplyAssignees();
+      }
     };
 
-    if (isLabelMenuOpen || isMilestoneMenuOpen) {
+    if (isLabelMenuOpen || isMilestoneMenuOpen || isAssigneesMenuOpen) {
       document.addEventListener('mousedown', handleClickOutside);
       return () => {
         document.removeEventListener('mousedown', handleClickOutside);
       };
     }
-  }, [isLabelMenuOpen, isMilestoneMenuOpen]);
+  }, [
+    isLabelMenuOpen,
+    isMilestoneMenuOpen,
+    isAssigneesMenuOpen,
+    handleApplyAssignees,
+  ]);
 
   const handleRemoveLabel = async (labelName) => {
     try {
@@ -455,6 +659,50 @@ const IssueCard = ({ issue, onMilestoneChange }) => {
 
   const isLabelSelected = (labelName) => {
     return currentLabels.some((label) => label.name === labelName);
+  };
+
+  const isAssigneeSelected = (assigneeLogin) => {
+    // Use pendingAssignees if dropdown is open, otherwise use currentAssignees
+    const assigneesToCheck = isAssigneesMenuOpen
+      ? pendingAssignees
+      : currentAssignees;
+    if (!assigneesToCheck || !Array.isArray(assigneesToCheck)) {
+      return false;
+    }
+    return assigneesToCheck.some(
+      (assignee) => assignee && assignee.login === assigneeLogin
+    );
+  };
+
+  // Initialize pending assignees when dropdown opens
+  useEffect(() => {
+    if (isAssigneesMenuOpen) {
+      setPendingAssignees([...(currentAssignees || [])]);
+      setAssigneesError(null);
+    }
+  }, [isAssigneesMenuOpen, currentAssignees]);
+
+  const handleToggleAssignee = (assigneeLogin, isChecked) => {
+    // Only update pending selection, don't make API calls yet
+    setPendingAssignees((prev) => {
+      const prevArray = Array.isArray(prev) ? prev : [];
+      if (isChecked) {
+        // Add assignee to pending selection
+        const assigneeToAdd = availableAssignees.find(
+          (a) => a && a.login === assigneeLogin
+        );
+        if (
+          assigneeToAdd &&
+          !prevArray.some((a) => a && a.login === assigneeLogin)
+        ) {
+          return [...prevArray, assigneeToAdd];
+        }
+        return prevArray;
+      } else {
+        // Remove assignee from pending selection
+        return prevArray.filter((a) => a && a.login !== assigneeLogin);
+      }
+    });
   };
 
   const getToggleText = () => {
@@ -606,45 +854,201 @@ const IssueCard = ({ issue, onMilestoneChange }) => {
                 </div>
               </div>
             )}
-            {issue.assignees && issue.assignees.length > 0 && (
-              <div
+            <div
+              ref={assigneesToggleRef}
+              style={{
+                fontSize: '0.875rem',
+                color: '#6a6e73',
+                marginLeft: '40px',
+                marginTop: '0.25rem',
+                position: 'relative',
+                display: 'inline-block',
+              }}
+            >
+              <Button
+                variant={currentAssignees.length > 0 ? 'primary' : 'secondary'}
+                onClick={() => {
+                  if (isAssigneesMenuOpen) {
+                    // Closing dropdown - apply changes
+                    handleApplyAssignees();
+                  } else {
+                    // Opening dropdown - initialize pending selection
+                    setIsAssigneesMenuOpen(true);
+                  }
+                }}
                 style={{
-                  fontSize: '0.875rem',
-                  color: '#6a6e73',
-                  marginLeft: '40px',
-                  marginTop: '0.25rem',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.5rem',
-                  flexWrap: 'wrap',
+                  padding: '0.25rem 0.75rem',
+                  fontSize: '0.75rem',
+                  minWidth: 'auto',
                 }}
               >
-                <span>Assigned to</span>
-                {issue.assignees.map((assignee, index) => (
-                  <span
-                    key={assignee.id || assignee.login || index}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '0.25rem',
-                    }}
-                  >
-                    <UserAvatar user={assignee} size={20} />
-                    <a
-                      href={assignee.html_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={{
-                        textDecoration: 'none',
-                        color: '#0066cc',
-                      }}
-                    >
-                      {assignee.login}
-                    </a>
-                  </span>
-                ))}
-              </div>
-            )}
+                {currentAssignees.length > 0
+                  ? `Assigned to ${currentAssignees.map((a) => a.login).join(', ')}`
+                  : 'Unassigned'}
+              </Button>
+              {isAssigneesMenuOpen && (
+                <div
+                  ref={assigneesMenuRef}
+                  style={{
+                    position: 'absolute',
+                    top: '100%',
+                    left: '0',
+                    marginTop: '0.25rem',
+                    backgroundColor: '#fff',
+                    border: '1px solid #d2d2d2',
+                    borderRadius: '0.25rem',
+                    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.15)',
+                    zIndex: 1000,
+                    minWidth: '200px',
+                    maxHeight: '300px',
+                    overflowY: 'auto',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    cursor: assigneesLoading ? 'wait' : 'default',
+                  }}
+                >
+                  <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
+                    {assigneesLoading && (
+                      <div
+                        style={{
+                          padding: '1rem',
+                          textAlign: 'center',
+                          cursor: 'wait',
+                        }}
+                      >
+                        <Spinner size="sm" />
+                        <div
+                          style={{
+                            marginTop: '0.5rem',
+                            fontSize: '0.875rem',
+                            color: '#6a6e73',
+                          }}
+                        >
+                          Loading assignees...
+                        </div>
+                      </div>
+                    )}
+                    {assigneesError && (
+                      <div style={{ padding: '0.5rem' }}>
+                        <Alert
+                          variant="danger"
+                          title="Error loading assignees"
+                          isInline
+                        >
+                          {assigneesError}
+                        </Alert>
+                      </div>
+                    )}
+                    {!assigneesLoading &&
+                      !assigneesError &&
+                      availableAssignees.map((assignee) => {
+                        const isSelected = isAssigneeSelected(assignee.login);
+                        return (
+                          <div
+                            key={assignee.id || assignee.login}
+                            style={{
+                              padding: '0.5rem',
+                              cursor: 'pointer',
+                              backgroundColor: isSelected
+                                ? '#f0f0f0'
+                                : 'transparent',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '0.5rem',
+                            }}
+                            onClick={(e) => {
+                              // Only toggle if clicking on the row background, not on checkbox, label, or link
+                              const target = e.target;
+                              const isCheckbox =
+                                target.type === 'checkbox' ||
+                                target.closest('input[type="checkbox"]');
+                              const isLabel = target.closest('label');
+                              const isLink = target.closest('a');
+
+                              if (!isCheckbox && !isLabel && !isLink) {
+                                handleToggleAssignee(
+                                  assignee.login,
+                                  !isSelected
+                                );
+                              }
+                            }}
+                            onMouseEnter={(e) => {
+                              if (!isSelected) {
+                                e.currentTarget.style.backgroundColor =
+                                  '#f0f0f0';
+                              }
+                            }}
+                            onMouseLeave={(e) => {
+                              if (!isSelected) {
+                                e.currentTarget.style.backgroundColor =
+                                  'transparent';
+                              }
+                            }}
+                          >
+                            <div
+                              onClick={(e) => {
+                                // Stop propagation for the entire checkbox area
+                                e.stopPropagation();
+                              }}
+                            >
+                              <Checkbox
+                                isChecked={!!isSelected}
+                                onClick={(e) => {
+                                  // Stop propagation to prevent row click handler
+                                  e.stopPropagation();
+                                  // Handle the toggle directly - this ensures it works for both select and deselect
+                                  handleToggleAssignee(
+                                    assignee.login,
+                                    !isSelected
+                                  );
+                                }}
+                                label={
+                                  <span
+                                    style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '0.5rem',
+                                    }}
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <UserAvatar user={assignee} size={20} />
+                                    <a
+                                      href={assignee.html_url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      style={{
+                                        textDecoration: 'none',
+                                        color: '#0066cc',
+                                      }}
+                                      onClick={(e) => e.stopPropagation()}
+                                    >
+                                      {assignee.login}
+                                    </a>
+                                  </span>
+                                }
+                                id={`assignee-${assignee.login}`}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    {!assigneesLoading &&
+                      !assigneesError &&
+                      availableAssignees.length === 0 && (
+                        <div
+                          style={{
+                            padding: '0.5rem',
+                            color: '#6a6e73',
+                            fontStyle: 'italic',
+                          }}
+                        >
+                          No assignees available
+                        </div>
+                      )}
+                  </div>
+                </div>
+              )}
+            </div>
             <div
               style={{
                 fontSize: '0.875rem',

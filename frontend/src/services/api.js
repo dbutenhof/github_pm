@@ -163,3 +163,39 @@ export const fetchCommentReactions = async (commentId) => {
   }
   return response.json();
 };
+
+export const fetchAssignees = async () => {
+  const response = await fetch(`${API_BASE}/assignees`);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch assignees: ${response.statusText}`);
+  }
+  return response.json();
+};
+
+export const setIssueAssignees = async (issueNumber, assignees) => {
+  const response = await fetch(`${API_BASE}/issues/${issueNumber}/assignees`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(assignees),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to set assignees: ${response.statusText}`);
+  }
+  return response.json();
+};
+
+export const removeIssueAssignees = async (issueNumber, assignees) => {
+  const response = await fetch(`${API_BASE}/issues/${issueNumber}/assignees`, {
+    method: 'DELETE',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(assignees),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to remove assignees: ${response.statusText}`);
+  }
+  return response.json();
+};

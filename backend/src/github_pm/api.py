@@ -19,7 +19,6 @@ VERSION_MATCH = re.compile(r"^v\d+\.\d+\.\d+$")
 
 
 class Connector:
-
     def __init__(self, github_token: str):
         """Initialize a GitHub connection.
 
@@ -90,8 +89,15 @@ class Connector:
         self.response = response
         return response.json()
 
-    def delete(self, path: str, headers: dict[str, str] | None = None) -> dict:
-        response = self.github.delete(f"{self.base_url}{path}", headers=headers)
+    def delete(
+        self,
+        path: str,
+        data: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> dict:
+        response = self.github.delete(
+            f"{self.base_url}{path}", json=data, headers=headers
+        )
         response.raise_for_status()
         self.response = response
         return response.json() if response.content else {}
@@ -206,6 +212,61 @@ async def get_issues(
     return all_issues
 
 
+@api_router.get("/issue/{issue_number}")
+async def get_issue(
+    gitctx: Annotated[Connector, Depends(connection)],
+    issue_number: Annotated[int, Path(title="Issue")],
+):
+    issue = gitctx.get(
+        f"/repos/{context.github_repo}/issues/{issue_number}",
+        headers={"Accept": "application/vnd.github.html+json"},
+    )
+    if "pull_request" not in issue:
+        query = """query($owner: String!, $repo: String!, $issue: Int!) {
+            repository(owner: $owner, name: $repo, followRenames: true) {
+                issue(number: $issue) {
+                    closedByPullRequestsReferences(first: 100, includeClosedPrs: true) {
+                        nodes {
+                            number
+                            title
+                            url
+                        }
+                    }
+                }
+            }
+        }
+        """
+        try:
+            response = gitctx.post(
+                "/graphql",
+                data={
+                    "query": query,
+                    "variables": {
+                        "owner": gitctx.owner,
+                        "repo": gitctx.repo,
+                        "issue": issue["number"],
+                    },
+                },
+            )
+            data = response["data"]
+            issue_node = data["repository"]["issue"]
+            closed = issue_node["closedByPullRequestsReferences"]["nodes"]
+            if len(closed) > 0:
+                issue["closed_by"] = [
+                    {
+                        "number": linked["number"],
+                        "title": linked["title"],
+                        "url": linked["url"],
+                    }
+                    for linked in closed
+                ]
+        except Exception as e:
+            logger.exception(
+                f"Error finding linked PRs for issue {issue['number']}: {e!r}"
+            )
+    return issue
+
+
 @api_router.get("/comments/{issue_number}")
 async def get_comments(
     gitctx: Annotated[Connector, Depends(connection)],
@@ -243,7 +304,6 @@ async def get_comment_reactions(
     gitctx: Annotated[Connector, Depends(connection)],
     comment_id: Annotated[int, Path(title="Comment")],
 ):
-
     reactions = gitctx.get_paged(
         f"/repos/{context.github_repo}/issues/comments/{comment_id}/reactions",
         headers={"Accept": "application/vnd.github.html+json"},
@@ -414,4 +474,50 @@ async def remove_label_from_issue(
             f"/repos/{context.github_repo}/issues/{issue_number}",
             data={"labels": list(labels)},
         )
+    return issue
+
+
+# Assignee Management
+
+
+@api_router.get("/assignees")
+async def get_assignees(gitctx: Annotated[Connector, Depends(connection)]):
+    """Get all allowed assignees for the repository"""
+    assignees = gitctx.get_paged(
+        f"/repos/{context.github_repo}/assignees",
+        headers={"Accept": "application/vnd.github.html+json"},
+    )
+    return sorted(assignees, key=lambda x: x["login"])
+
+
+@api_router.post("/issues/{issue_number}/assignees")
+async def add_assignee_to_issue(
+    gitctx: Annotated[Connector, Depends(connection)],
+    issue_number: Annotated[int, Path(title="Issue")],
+    assignees: Annotated[list[str], Body(title="Assignees")],
+):
+    # Use PATCH to replace all assignees (GitHub API best practice)
+    issue = gitctx.patch(
+        f"/repos/{context.github_repo}/issues/{issue_number}",
+        data={"assignees": assignees},
+    )
+    logger.info(
+        f"Added assignees to issue {issue_number}: {[i['login'] for i in issue['assignees']]}"
+    )
+    return issue
+
+
+@api_router.delete("/issues/{issue_number}/assignees")
+async def remove_assignee_from_issue(
+    gitctx: Annotated[Connector, Depends(connection)],
+    issue_number: Annotated[int, Path(title="Issue")],
+    assignees: Annotated[list[str], Body(title="Assignees")],
+):
+    issue = gitctx.delete(
+        f"/repos/{context.github_repo}/issues/{issue_number}/assignees",
+        data={"assignees": assignees},
+    )
+    logger.info(
+        f"Removed assignees from issue {issue_number}: {[i['login'] for i in issue['assignees']]}"
+    )
     return issue
