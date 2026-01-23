@@ -163,10 +163,7 @@ describe('App', () => {
 
   it('loads sort order from localStorage on mount', async () => {
     const savedSortOrder = ['label1', 'label2', 'label3'];
-    localStorageMock.setItem(
-      'issueSortOrder',
-      JSON.stringify(savedSortOrder)
-    );
+    localStorageMock.setItem('issueSortOrder', JSON.stringify(savedSortOrder));
     api.fetchMilestones.mockResolvedValue([]);
 
     await act(async () => {

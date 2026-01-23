@@ -35,7 +35,7 @@ const App = () => {
   const [isManageMilestonesOpen, setIsManageMilestonesOpen] = useState(false);
   const [isManageLabelsOpen, setIsManageLabelsOpen] = useState(false);
   const [isManageSortOpen, setIsManageSortOpen] = useState(false);
-  
+
   // Load sort order from localStorage on mount
   const [sortOrder, setSortOrder] = useState(() => {
     try {
