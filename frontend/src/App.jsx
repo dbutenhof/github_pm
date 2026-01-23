@@ -35,7 +35,17 @@ const App = () => {
   const [isManageMilestonesOpen, setIsManageMilestonesOpen] = useState(false);
   const [isManageLabelsOpen, setIsManageLabelsOpen] = useState(false);
   const [isManageSortOpen, setIsManageSortOpen] = useState(false);
-  const [sortOrder, setSortOrder] = useState([]);
+
+  // Load sort order from localStorage on mount
+  const [sortOrder, setSortOrder] = useState(() => {
+    try {
+      const saved = localStorage.getItem('issueSortOrder');
+      return saved ? JSON.parse(saved) : [];
+    } catch (error) {
+      console.error('Failed to load sort order from localStorage:', error);
+      return [];
+    }
+  });
 
   useEffect(() => {
     fetchProject()
@@ -141,6 +151,15 @@ const App = () => {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Save sort order to localStorage whenever it changes
+  useEffect(() => {
+    try {
+      localStorage.setItem('issueSortOrder', JSON.stringify(sortOrder));
+    } catch (error) {
+      console.error('Failed to save sort order to localStorage:', error);
+    }
+  }, [sortOrder]);
 
   const loadMilestones = () => {
     setLoading(true);
