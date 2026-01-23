@@ -10,8 +10,29 @@ import assigneesCache from './utils/assigneesCache';
 vi.mock('./services/api');
 
 describe('App', () => {
+  // Mock localStorage
+  let store = {};
+  const localStorageMock = {
+    getItem: vi.fn((key) => store[key] || null),
+    setItem: vi.fn((key, value) => {
+      store[key] = value.toString();
+    }),
+    removeItem: vi.fn((key) => {
+      delete store[key];
+    }),
+    clear: vi.fn(() => {
+      store = {};
+    }),
+  };
+
   beforeEach(() => {
     vi.clearAllMocks();
+    // Clear localStorage mock store
+    store = {};
+    Object.defineProperty(window, 'localStorage', {
+      value: localStorageMock,
+      writable: true,
+    });
     clearMilestonesCache();
     clearLabelsCache();
     // Clear assignees cache
@@ -137,6 +158,64 @@ describe('App', () => {
 
     await waitFor(() => {
       expect(screen.getByText(/No milestones found/i)).toBeInTheDocument();
+    });
+  });
+
+  it('loads sort order from localStorage on mount', async () => {
+    const savedSortOrder = ['label1', 'label2', 'label3'];
+    localStorageMock.setItem(
+      'issueSortOrder',
+      JSON.stringify(savedSortOrder)
+    );
+    api.fetchMilestones.mockResolvedValue([]);
+
+    await act(async () => {
+      render(<App />);
+    });
+
+    await waitFor(() => {
+      // Verify localStorage.getItem was called
+      expect(localStorageMock.getItem).toHaveBeenCalledWith('issueSortOrder');
+    });
+  });
+
+  it('saves sort order to localStorage when changed', async () => {
+    api.fetchMilestones.mockResolvedValue([]);
+    api.fetchLabels.mockResolvedValue([
+      { name: 'label1', color: 'ff0000', description: 'Label 1' },
+      { name: 'label2', color: '00ff00', description: 'Label 2' },
+    ]);
+
+    await act(async () => {
+      render(<App />);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Sort')).toBeInTheDocument();
+    });
+
+    // Open the Sort modal
+    const sortButton = screen.getByText('Sort');
+    await act(async () => {
+      sortButton.click();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Sort Issues by Labels/i)).toBeInTheDocument();
+    });
+
+    // Add a label to the sort order
+    const addLabelButton = screen.getByText('+ label1');
+    await act(async () => {
+      addLabelButton.click();
+    });
+
+    // Verify localStorage.setItem was called with the new sort order
+    await waitFor(() => {
+      expect(localStorageMock.setItem).toHaveBeenCalledWith(
+        'issueSortOrder',
+        JSON.stringify(['label1'])
+      );
     });
   });
 });
