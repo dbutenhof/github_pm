@@ -9,13 +9,19 @@ import {
   Bullseye,
   Button,
 } from '@patternfly/react-core';
-import { fetchMilestones, fetchProject, fetchLabels } from './services/api';
+import {
+  fetchMilestones,
+  fetchProject,
+  fetchLabels,
+  fetchAssignees,
+} from './services/api';
 import MilestoneCard from './components/MilestoneCard';
 import ManageMilestones from './components/ManageMilestones';
 import ManageLabels from './components/ManageLabels';
 import ManageSort from './components/ManageSort';
 import milestonesCache from './utils/milestonesCache';
 import labelsCache, { clearLabelsCache } from './utils/labelsCache';
+import assigneesCache from './utils/assigneesCache';
 import iconImage from './assets/icon.png';
 import './icon.css';
 
@@ -109,6 +115,28 @@ const App = () => {
           labelsCache.loading = false;
           labelsCache.error = err.message;
           labelsCache.promise = null;
+        });
+    }
+
+    // Preload assignees
+    if (
+      !assigneesCache.loading &&
+      assigneesCache.data.length === 0 &&
+      !assigneesCache.promise
+    ) {
+      assigneesCache.loading = true;
+      assigneesCache.error = null;
+      assigneesCache.promise = fetchAssignees()
+        .then((data) => {
+          assigneesCache.data = data;
+          assigneesCache.loading = false;
+          assigneesCache.error = null;
+          assigneesCache.promise = null;
+        })
+        .catch((err) => {
+          assigneesCache.loading = false;
+          assigneesCache.error = err.message;
+          assigneesCache.promise = null;
         });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

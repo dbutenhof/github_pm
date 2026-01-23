@@ -157,6 +157,14 @@ const MilestoneCard = ({ milestone, sortOrder = [] }) => {
                         });
                     }
                   }}
+                  onIssueUpdate={(updatedIssue) => {
+                    // Update the issue in the issues array
+                    setIssues((prevIssues) =>
+                      prevIssues.map((i) =>
+                        i.id === updatedIssue.id ? updatedIssue : i
+                      )
+                    );
+                  }}
                 />
               ))}
             </div>

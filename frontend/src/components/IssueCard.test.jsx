@@ -1,9 +1,10 @@
 // ai-generated: Cursor
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import IssueCard from './IssueCard';
 import * as api from '../services/api';
+import assigneesCache from '../utils/assigneesCache';
 
 vi.mock('../services/api');
 
@@ -35,49 +36,88 @@ describe('IssueCard', () => {
     vi.clearAllMocks();
     // Mock fetchLabels to return an empty array by default
     api.fetchLabels.mockResolvedValue([]);
+    // Mock fetchAssignees to return an empty array by default
+    api.fetchAssignees.mockResolvedValue([]);
+    // Clear assignees cache before each test
+    assigneesCache.data = [];
+    assigneesCache.loading = false;
+    assigneesCache.error = null;
+    assigneesCache.promise = null;
   });
 
-  it('renders issue number and title', () => {
-    render(<IssueCard issue={mockIssue} />);
-    expect(screen.getByText('#459')).toBeInTheDocument();
+  afterEach(() => {
+    // Clear assignees cache after each test
+    assigneesCache.data = [];
+    assigneesCache.loading = false;
+    assigneesCache.error = null;
+    assigneesCache.promise = null;
+  });
+
+  it('renders issue number and title', async () => {
+    await act(async () => {
+      render(<IssueCard issue={mockIssue} />);
+    });
+    await waitFor(() => {
+      expect(screen.getByText('#459')).toBeInTheDocument();
+    });
     expect(
       screen.getByText(/Add support for OpenAI Responses API/)
     ).toBeInTheDocument();
   });
 
-  it('renders issue number as a link', () => {
-    render(<IssueCard issue={mockIssue} />);
-    const link = screen.getByRole('link', { name: '#459' });
-    expect(link).toHaveAttribute('href', mockIssue.html_url);
-    expect(link).toHaveAttribute('target', '_blank');
-    expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+  it('renders issue number as a link', async () => {
+    await act(async () => {
+      render(<IssueCard issue={mockIssue} />);
+    });
+    await waitFor(() => {
+      const link = screen.getByRole('link', { name: '#459' });
+      expect(link).toHaveAttribute('href', mockIssue.html_url);
+      expect(link).toHaveAttribute('target', '_blank');
+      expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+    });
   });
 
-  it('shows description toggle when body exists', () => {
-    render(<IssueCard issue={mockIssue} />);
-    expect(screen.getByText('Show Description')).toBeInTheDocument();
+  it('shows description toggle when body exists', async () => {
+    await act(async () => {
+      render(<IssueCard issue={mockIssue} />);
+    });
+    await waitFor(() => {
+      expect(screen.getByText('Show Description')).toBeInTheDocument();
+    });
   });
 
-  it('shows comment count in toggle text when comments exist', () => {
+  it('shows comment count in toggle text when comments exist', async () => {
     const issueWithComments = { ...mockIssue, comments: 5 };
-    render(<IssueCard issue={issueWithComments} />);
-    expect(
-      screen.getByText('Show Description (5 comments)')
-    ).toBeInTheDocument();
+    await act(async () => {
+      render(<IssueCard issue={issueWithComments} />);
+    });
+    await waitFor(() => {
+      expect(
+        screen.getByText('Show Description (5 comments)')
+      ).toBeInTheDocument();
+    });
   });
 
-  it('shows singular comment in toggle text for 1 comment', () => {
+  it('shows singular comment in toggle text for 1 comment', async () => {
     const issueWithOneComment = { ...mockIssue, comments: 1 };
-    render(<IssueCard issue={issueWithOneComment} />);
-    expect(
-      screen.getByText('Show Description (1 comment)')
-    ).toBeInTheDocument();
+    await act(async () => {
+      render(<IssueCard issue={issueWithOneComment} />);
+    });
+    await waitFor(() => {
+      expect(
+        screen.getByText('Show Description (1 comment)')
+      ).toBeInTheDocument();
+    });
   });
 
-  it('does not show comment count when comments is 0', () => {
+  it('does not show comment count when comments is 0', async () => {
     const issueWithNoComments = { ...mockIssue, comments: 0 };
-    render(<IssueCard issue={issueWithNoComments} />);
-    expect(screen.getByText('Show Description')).toBeInTheDocument();
+    await act(async () => {
+      render(<IssueCard issue={issueWithNoComments} />);
+    });
+    await waitFor(() => {
+      expect(screen.getByText('Show Description')).toBeInTheDocument();
+    });
     expect(screen.queryByText(/comment/)).not.toBeInTheDocument();
   });
 
@@ -110,52 +150,84 @@ describe('IssueCard', () => {
     });
   });
 
-  it('renders user information', () => {
-    render(<IssueCard issue={mockIssue} />);
-    expect(screen.getByText('tosokin')).toBeInTheDocument();
+  it('renders user information', async () => {
+    await act(async () => {
+      render(<IssueCard issue={mockIssue} />);
+    });
+    await waitFor(() => {
+      expect(screen.getByText('tosokin')).toBeInTheDocument();
+    });
   });
 
-  it('renders user avatar', () => {
-    render(<IssueCard issue={mockIssue} />);
-    const avatar = screen.getByAltText('tosokin');
-    expect(avatar).toHaveAttribute('src', mockIssue.user.avatar_url);
+  it('renders user avatar', async () => {
+    await act(async () => {
+      render(<IssueCard issue={mockIssue} />);
+    });
+    await waitFor(() => {
+      const avatar = screen.getByAltText('tosokin');
+      expect(avatar).toHaveAttribute('src', mockIssue.user.avatar_url);
+    });
   });
 
-  it('renders created date with days since', () => {
-    render(<IssueCard issue={mockIssue} />);
-    expect(screen.getByText(/\(/)).toBeInTheDocument(); // Should contain days ago
+  it('renders created date with days since', async () => {
+    await act(async () => {
+      render(<IssueCard issue={mockIssue} />);
+    });
+    await waitFor(() => {
+      expect(screen.getByText(/\(/)).toBeInTheDocument(); // Should contain days ago
+    });
   });
 
-  it('handles missing body gracefully', () => {
+  it('handles missing body gracefully', async () => {
     const issueWithoutBody = { ...mockIssue, body: null, body_html: null };
-    render(<IssueCard issue={issueWithoutBody} />);
-    expect(screen.getByText('#459')).toBeInTheDocument();
+    await act(async () => {
+      render(<IssueCard issue={issueWithoutBody} />);
+    });
+    await waitFor(() => {
+      expect(screen.getByText('#459')).toBeInTheDocument();
+    });
   });
 
-  it('handles missing user gracefully', () => {
+  it('handles missing user gracefully', async () => {
     const issueWithoutUser = { ...mockIssue, user: null };
-    render(<IssueCard issue={issueWithoutUser} />);
-    expect(screen.getByText('Unknown')).toBeInTheDocument();
+    await act(async () => {
+      render(<IssueCard issue={issueWithoutUser} />);
+    });
+    await waitFor(() => {
+      expect(screen.getByText('Unknown')).toBeInTheDocument();
+    });
   });
 
-  it('renders labels when present', () => {
-    render(<IssueCard issue={mockIssue} />);
-    expect(screen.getByText('enhancement')).toBeInTheDocument();
+  it('renders labels when present', async () => {
+    await act(async () => {
+      render(<IssueCard issue={mockIssue} />);
+    });
+    await waitFor(() => {
+      expect(screen.getByText('enhancement')).toBeInTheDocument();
+    });
   });
 
-  it('handles missing labels gracefully', () => {
+  it('handles missing labels gracefully', async () => {
     const issueWithoutLabels = { ...mockIssue, labels: null };
-    render(<IssueCard issue={issueWithoutLabels} />);
-    expect(screen.getByText('#459')).toBeInTheDocument();
+    await act(async () => {
+      render(<IssueCard issue={issueWithoutLabels} />);
+    });
+    await waitFor(() => {
+      expect(screen.getByText('#459')).toBeInTheDocument();
+    });
   });
 
-  it('handles empty labels array', () => {
+  it('handles empty labels array', async () => {
     const issueWithEmptyLabels = { ...mockIssue, labels: [] };
-    render(<IssueCard issue={issueWithEmptyLabels} />);
-    expect(screen.getByText('#459')).toBeInTheDocument();
+    await act(async () => {
+      render(<IssueCard issue={issueWithEmptyLabels} />);
+    });
+    await waitFor(() => {
+      expect(screen.getByText('#459')).toBeInTheDocument();
+    });
   });
 
-  it('renders type chiclet when type is present', () => {
+  it('renders type chiclet when type is present', async () => {
     const issueWithType = {
       ...mockIssue,
       type: {
@@ -164,17 +236,25 @@ describe('IssueCard', () => {
         description: 'A request, idea, or new functionality',
       },
     };
-    render(<IssueCard issue={issueWithType} />);
-    expect(screen.getByText('Feature')).toBeInTheDocument();
+    await act(async () => {
+      render(<IssueCard issue={issueWithType} />);
+    });
+    await waitFor(() => {
+      expect(screen.getByText('Feature')).toBeInTheDocument();
+    });
   });
 
-  it('does not render type chiclet when type is null', () => {
+  it('does not render type chiclet when type is null', async () => {
     const issueWithoutType = { ...mockIssue, type: null };
-    render(<IssueCard issue={issueWithoutType} />);
-    expect(screen.queryByText('Feature')).not.toBeInTheDocument();
+    await act(async () => {
+      render(<IssueCard issue={issueWithoutType} />);
+    });
+    await waitFor(() => {
+      expect(screen.queryByText('Feature')).not.toBeInTheDocument();
+    });
   });
 
-  it('renders type chiclet with correct name and styling', () => {
+  it('renders type chiclet with correct name and styling', async () => {
     const issueWithType = {
       ...mockIssue,
       type: {
@@ -183,31 +263,43 @@ describe('IssueCard', () => {
         description: 'A request, idea, or new functionality',
       },
     };
-    render(<IssueCard issue={issueWithType} />);
-    const typeChiclet = screen.getByText('Feature');
-    // Verify the type chiclet is present
-    expect(typeChiclet).toBeInTheDocument();
-    // Verify it's wrapped in a span (the chiclet container)
-    const typeSpan = typeChiclet.closest('span');
-    expect(typeSpan).toBeInTheDocument();
-    // Verify the span has a background color style (exact format may vary)
-    expect(typeSpan).toHaveAttribute('style');
-    expect(typeSpan?.getAttribute('style')).toContain('blue');
+    await act(async () => {
+      render(<IssueCard issue={issueWithType} />);
+    });
+    await waitFor(() => {
+      const typeChiclet = screen.getByText('Feature');
+      // Verify the type chiclet is present
+      expect(typeChiclet).toBeInTheDocument();
+      // Verify it's wrapped in a span (the chiclet container)
+      const typeSpan = typeChiclet.closest('span');
+      expect(typeSpan).toBeInTheDocument();
+      // Verify the span has a background color style (exact format may vary)
+      expect(typeSpan).toHaveAttribute('style');
+      expect(typeSpan?.getAttribute('style')).toContain('blue');
+    });
   });
 
-  it('does not show comments control when description is not expanded', () => {
+  it('does not show comments control when description is not expanded', async () => {
     const issueWithComments = { ...mockIssue, comments: 2 };
-    render(<IssueCard issue={issueWithComments} />);
-    expect(screen.queryByText(/Show Comments/i)).not.toBeInTheDocument();
+    await act(async () => {
+      render(<IssueCard issue={issueWithComments} />);
+    });
+    await waitFor(() => {
+      expect(screen.queryByText(/Show Comments/i)).not.toBeInTheDocument();
+    });
   });
 
   it('shows comments expansion control only when description is expanded', async () => {
     const user = userEvent.setup();
     const issueWithComments = { ...mockIssue, comments: 2 };
-    render(<IssueCard issue={issueWithComments} />);
+    await act(async () => {
+      render(<IssueCard issue={issueWithComments} />);
+    });
 
     // Comments control should not be visible initially
-    expect(screen.queryByText(/Show Comments/i)).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByText(/Show Comments/i)).not.toBeInTheDocument();
+    });
 
     // Expand description
     const descriptionToggle = screen.getByText('Show Description (2 comments)');
@@ -223,7 +315,9 @@ describe('IssueCard', () => {
     const user = userEvent.setup();
     api.fetchComments.mockResolvedValue([]);
     const issueWithComments = { ...mockIssue, comments: 1 };
-    render(<IssueCard issue={issueWithComments} />);
+    await act(async () => {
+      render(<IssueCard issue={issueWithComments} />);
+    });
 
     // Expand description
     const descriptionToggle = screen.getByText('Show Description (1 comment)');
@@ -263,7 +357,9 @@ describe('IssueCard', () => {
     api.fetchComments.mockResolvedValue(mockComments);
 
     const issueWithComments = { ...mockIssue, comments: 1 };
-    render(<IssueCard issue={issueWithComments} />);
+    await act(async () => {
+      render(<IssueCard issue={issueWithComments} />);
+    });
 
     // First expand description
     const descriptionToggle = screen.getByText('Show Description (1 comment)');

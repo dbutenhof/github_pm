@@ -1,10 +1,11 @@
 // ai-generated: Cursor
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, waitFor, act } from '@testing-library/react';
 import App from './App';
 import * as api from './services/api';
 import { clearMilestonesCache } from './utils/milestonesCache';
 import { clearLabelsCache } from './utils/labelsCache';
+import assigneesCache from './utils/assigneesCache';
 
 vi.mock('./services/api');
 
@@ -13,6 +14,11 @@ describe('App', () => {
     vi.clearAllMocks();
     clearMilestonesCache();
     clearLabelsCache();
+    // Clear assignees cache
+    assigneesCache.data = [];
+    assigneesCache.loading = false;
+    assigneesCache.error = null;
+    assigneesCache.promise = null;
     // Default mock for fetchProject
     api.fetchProject.mockResolvedValue({
       app_name: 'Test App',
@@ -20,12 +26,26 @@ describe('App', () => {
     });
     // Default mock for fetchLabels (preloaded in background)
     api.fetchLabels.mockResolvedValue([]);
+    // Default mock for fetchAssignees (preloaded in background)
+    api.fetchAssignees.mockResolvedValue([]);
   });
 
-  it('renders loading state initially', () => {
+  afterEach(() => {
+    // Clear assignees cache after each test
+    assigneesCache.data = [];
+    assigneesCache.loading = false;
+    assigneesCache.error = null;
+    assigneesCache.promise = null;
+  });
+
+  it('renders loading state initially', async () => {
     api.fetchMilestones.mockImplementation(() => new Promise(() => {}));
-    render(<App />);
-    expect(screen.getByRole('progressbar')).toBeInTheDocument();
+    await act(async () => {
+      render(<App />);
+    });
+    await waitFor(() => {
+      expect(screen.getByRole('progressbar')).toBeInTheDocument();
+    });
   });
 
   it('displays project name and repo in title', async () => {
@@ -35,7 +55,9 @@ describe('App', () => {
     });
     api.fetchMilestones.mockResolvedValue([]);
 
-    render(<App />);
+    await act(async () => {
+      render(<App />);
+    });
 
     await waitFor(() => {
       expect(
@@ -44,19 +66,25 @@ describe('App', () => {
     });
   });
 
-  it('displays loading text while fetching project', () => {
+  it('displays loading text while fetching project', async () => {
     api.fetchProject.mockImplementation(() => new Promise(() => {}));
     api.fetchMilestones.mockResolvedValue([]);
 
-    render(<App />);
-    expect(screen.getByText('Loading...')).toBeInTheDocument();
+    await act(async () => {
+      render(<App />);
+    });
+    await waitFor(() => {
+      expect(screen.getByText('Loading...')).toBeInTheDocument();
+    });
   });
 
   it('displays fallback title when project fetch fails', async () => {
     api.fetchProject.mockRejectedValue(new Error('Failed'));
     api.fetchMilestones.mockResolvedValue([]);
 
-    render(<App />);
+    await act(async () => {
+      render(<App />);
+    });
 
     await waitFor(() => {
       expect(screen.getByText('GitHub Project Manager')).toBeInTheDocument();
@@ -75,7 +103,9 @@ describe('App', () => {
     ];
     api.fetchMilestones.mockResolvedValue(mockMilestones);
 
-    render(<App />);
+    await act(async () => {
+      render(<App />);
+    });
 
     await waitFor(() => {
       // Milestones appear in both chiclets and cards, so use getAllByText
@@ -89,7 +119,9 @@ describe('App', () => {
   it('renders error message on fetch failure', async () => {
     api.fetchMilestones.mockRejectedValue(new Error('Network error'));
 
-    render(<App />);
+    await act(async () => {
+      render(<App />);
+    });
 
     await waitFor(() => {
       expect(screen.getByText(/Error loading milestones/i)).toBeInTheDocument();
@@ -99,7 +131,9 @@ describe('App', () => {
   it('renders empty state when no milestones', async () => {
     api.fetchMilestones.mockResolvedValue([]);
 
-    render(<App />);
+    await act(async () => {
+      render(<App />);
+    });
 
     await waitFor(() => {
       expect(screen.getByText(/No milestones found/i)).toBeInTheDocument();

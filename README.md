@@ -16,7 +16,6 @@ This project provides a backend API (FastAPI) and a frontend web UI for seamless
 - Automate common GitHub project management tasks
 - Easy-to-use web interface (frontend)
 - Powerful RESTful API (backend)
-- Robust CLI for scripting and automation
 
 ---
 
@@ -24,7 +23,7 @@ This project provides a backend API (FastAPI) and a frontend web UI for seamless
 
 ### Prerequisites
 
-- Python 3.14+
+- Python 3.12+
 - Node.js 20+ (for the frontend)
 
 ### Installation
@@ -36,6 +35,11 @@ cd backend
 uv sync --dev    # Installs dependencies using uv
 uv run python -m github_pm   # Start the backend API
 ```
+
+Backend configuration is through a `.env` file in the `backend` directory.
+The .env_sample file shows the necessary configuration keywords, including
+a personal access token for GitHub API access and the target GitHub
+repository name.
 
 #### Frontend
 
@@ -75,19 +79,28 @@ and then you can terminate with 'kill-pm'
 - Navigate to the frontend web UI to manage your GitHub projects visually.
 - Access the API docs at `http://localhost:8000/docs` when the backend is running.
 
-The UI shows all the milestones defined for the GitHub project, with the description
-and due date. You can show all issues and PRs associated with a milestone by opening
-the "Show issues" control.
+The UI shows all the milestones defined for the configured GitHub project, with
+the description and due date. You can show all issues and PRs associated with a
+milestone by opening the "Show issues" control.
 
 At the top of the page, the Manage Milestones and Manage Labels controls allow you
 to see all of the available milestones and labels for the project. Here you can
 delete any item by clicking the "x" in the chiclet, or create new items using the
 "+" icon.
 
-Each expanded issue is shown with the current milestone: you can assign that issue
+Each expanded issue is shown with its current milestone: you can assign that issue
 to a new milestone using the pulldown. You can also remove assigned labels by
 clicking the label chiclet's "x" icon, or add new labels to the issue with the "+"
 icon.
+
+If the issue is assigned to one or more team members, the display will display
+their GitHub login names. You can change the list of assignees using the pulldown.
+
+Issues are listed by default in the order they come from GitHub. The tool allows
+you to sort issues under each milestone by a hierarchy of labels, which you can
+select and reorder from the "Sort" pulldown at the top of the page. For example,
+you can show "bugs" first, or "high priority" followed by "medium priority"
+followed by "low priority".
 
 ---
 
