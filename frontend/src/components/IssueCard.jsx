@@ -808,9 +808,10 @@ const IssueCard = ({ issue, onMilestoneChange, onIssueUpdate }) => {
           <div
             style={{
               display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'flex-start',
-              gap: '0.25rem',
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: '0.5rem',
+              flexWrap: 'wrap',
             }}
           >
             {issue.user ? (
@@ -821,33 +822,42 @@ const IssueCard = ({ issue, onMilestoneChange, onIssueUpdate }) => {
                   rel="noopener noreferrer"
                   style={{
                     textDecoration: 'none',
-                    display: 'flex',
+                    display: 'inline-flex',
                     alignItems: 'center',
+                    gap: '0.35rem',
+                    color: '#0066cc',
                   }}
                 >
-                  <UserAvatar user={issue.user} size={32} />
+                  <UserAvatar user={issue.user} size={28} />
+                  <span style={{ fontSize: '0.875rem', fontWeight: '500' }}>
+                    {issue.user.login || 'Unknown'}
+                  </span>
                 </a>
               ) : (
-                <UserAvatar user={issue.user} size={32} />
+                <span
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.35rem',
+                  }}
+                >
+                  <UserAvatar user={issue.user} size={28} />
+                  <span style={{ fontSize: '0.875rem', fontWeight: '500' }}>
+                    {issue.user.login || 'Unknown'}
+                  </span>
+                </span>
               )
             ) : (
               <span style={{ fontSize: '0.875rem', color: '#6a6e73' }}>
                 Unknown
               </span>
             )}
-            <span
-              style={{
-                fontSize: '0.75rem',
-                color: '#6a6e73',
-              }}
-            >
-              {formatDate(issue.created_at)} ({daysSince} days ago)
-            </span>
             <div
               ref={assigneesToggleRef}
               style={{
                 position: 'relative',
-                display: 'inline-block',
+                display: 'inline-flex',
+                alignItems: 'center',
               }}
             >
               <Button
@@ -862,14 +872,27 @@ const IssueCard = ({ issue, onMilestoneChange, onIssueUpdate }) => {
                   }
                 }}
                 style={{
-                  padding: '0.25rem 0.75rem',
+                  padding: '0.125rem 0.5rem',
                   fontSize: '0.75rem',
                   minWidth: 'auto',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.35rem',
                 }}
               >
-                {currentAssignees.length > 0
-                  ? `Assigned to ${currentAssignees.map((a) => a.login).join(', ')}`
-                  : 'Unassigned'}
+                {currentAssignees.length > 0 ? (
+                  <>
+                    {currentAssignees.map((a) => (
+                      <UserAvatar key={a.login} user={a} size={18} />
+                    ))}
+                    <span>
+                      Assigned to{' '}
+                      {currentAssignees.map((a) => a.login).join(', ')}
+                    </span>
+                  </>
+                ) : (
+                  'Unassigned'
+                )}
               </Button>
               {isAssigneesMenuOpen && (
                 <div
@@ -1035,6 +1058,16 @@ const IssueCard = ({ issue, onMilestoneChange, onIssueUpdate }) => {
               )}
             </div>
           </div>
+          <span
+            style={{
+              display: 'block',
+              fontSize: '0.7rem',
+              color: '#6a6e73',
+              marginTop: '0.2rem',
+            }}
+          >
+            {formatDate(issue.created_at)} ({daysSince} days ago)
+          </span>
         </td>
 
         {/* Column 4: PR icon or closed by #pr or blank */}
@@ -1138,83 +1171,37 @@ const IssueCard = ({ issue, onMilestoneChange, onIssueUpdate }) => {
             </div>
         </td>
 
-        {/* Column 6: Label chiclets stacked vertically */}
+        {/* Column 6: Label chiclets - flow side-by-side when they fit */}
         <td style={cellStyle}>
           <div
             style={{
               display: 'flex',
-              flexDirection: 'column',
+              flexDirection: 'row',
+              flexWrap: 'wrap',
               gap: '0.25rem',
-              alignItems: 'flex-start',
+              alignItems: 'center',
             }}
           >
-              {currentLabels.map((label) => (
-                <Tooltip
-                  key={label.id || label.name}
-                  content={label.description || ''}
-                >
-                  <span
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '0.25rem',
-                      padding: '0.125rem 0.25rem 0.125rem 0.5rem',
-                      fontSize: '0.75rem',
-                      fontWeight: '500',
-                      borderRadius: '0.25rem',
-                      backgroundColor: `#${label.color}`,
-                      color: getContrastColor(label.color),
-                      whiteSpace: 'nowrap',
-                      cursor: label.description ? 'help' : 'default',
-                    }}
-                  >
-                    {label.name}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleRemoveLabel(label.name);
-                      }}
-                      style={{
-                        background: 'none',
-                        border: 'none',
-                        color: getContrastColor(label.color),
-                        cursor: 'pointer',
-                        padding: '0',
-                        fontSize: '0.875rem',
-                        lineHeight: '1',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        width: '16px',
-                        height: '16px',
-                      }}
-                      aria-label={`Remove ${label.name} label`}
-                    >
-                      ×
-                    </button>
-                  </span>
-                </Tooltip>
-              ))}
-              <div
-                ref={toggleRef}
-                style={{ position: 'relative', display: 'inline-block' }}
+            <div
+              ref={toggleRef}
+              style={{ position: 'relative', display: 'inline-block' }}
+            >
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setIsLabelMenuOpen(!isLabelMenuOpen);
+                  if (isLabelMenuOpen) {
+                    setLabelSearchFilter('');
+                  }
+                }}
+                style={{
+                  padding: '0.125rem 0.5rem',
+                  fontSize: '0.75rem',
+                  minWidth: 'auto',
+                }}
               >
-                <Button
-                  variant="secondary"
-                  onClick={() => {
-                    setIsLabelMenuOpen(!isLabelMenuOpen);
-                    if (isLabelMenuOpen) {
-                      setLabelSearchFilter('');
-                    }
-                  }}
-                  style={{
-                    padding: '0.125rem 0.5rem',
-                    fontSize: '0.75rem',
-                    minWidth: 'auto',
-                  }}
-                >
-                  +
-                </Button>
+                +
+              </Button>
                 {isLabelMenuOpen && (
                   <div
                     ref={menuRef}
@@ -1402,8 +1389,55 @@ const IssueCard = ({ issue, onMilestoneChange, onIssueUpdate }) => {
                     </div>
                   </div>
                 )}
-              </div>
             </div>
+            {currentLabels.map((label) => (
+              <Tooltip
+                key={label.id || label.name}
+                content={label.description || ''}
+              >
+                <span
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.25rem',
+                    padding: '0.125rem 0.25rem 0.125rem 0.5rem',
+                    fontSize: '0.75rem',
+                    fontWeight: '500',
+                    borderRadius: '0.25rem',
+                    backgroundColor: `#${label.color}`,
+                    color: getContrastColor(label.color),
+                    whiteSpace: 'nowrap',
+                    cursor: label.description ? 'help' : 'default',
+                  }}
+                >
+                  {label.name}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleRemoveLabel(label.name);
+                    }}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: getContrastColor(label.color),
+                      cursor: 'pointer',
+                      padding: '0',
+                      fontSize: '0.875rem',
+                      lineHeight: '1',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: '16px',
+                      height: '16px',
+                    }}
+                    aria-label={`Remove ${label.name} label`}
+                  >
+                    ×
+                  </button>
+                </span>
+              </Tooltip>
+            ))}
+          </div>
         </td>
 
         {/* Column 7: Issue title - wraps to fit page width */}
@@ -1414,13 +1448,12 @@ const IssueCard = ({ issue, onMilestoneChange, onIssueUpdate }) => {
             overflowWrap: 'break-word',
           }}
         >
-            <span style={{ fontWeight: '500' }}>{issue.title}</span>
             {issue.type && (
               <Tooltip content={issue.type.description || ''}>
                 <span
                   style={{
                     display: 'inline-block',
-                    marginLeft: '0.5rem',
+                    marginRight: '0.5rem',
                     padding: '0.125rem 0.5rem',
                     fontSize: '0.75rem',
                     fontWeight: '500',
@@ -1435,6 +1468,7 @@ const IssueCard = ({ issue, onMilestoneChange, onIssueUpdate }) => {
                 </span>
               </Tooltip>
             )}
+            <span style={{ fontWeight: '500' }}>{issue.title}</span>
         </td>
       </tr>
 
