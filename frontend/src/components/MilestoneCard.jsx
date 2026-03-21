@@ -129,45 +129,134 @@ const MilestoneCard = ({ milestone, sortOrder = [] }) => {
           )}
 
           {!loading && !error && issues.length > 0 && (
-            <div
+            <table
               style={{
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '0.75rem',
+                width: '100%',
                 marginTop: '0.75rem',
+                borderCollapse: 'collapse',
+                border: '1px solid #d2d2d2',
               }}
             >
-              {issues.map((issue) => (
-                <IssueCard
-                  key={issue.id}
-                  issue={issue}
-                  onMilestoneChange={() => {
-                    // Refresh issues when milestone changes
-                    if (isExpanded) {
-                      setLoading(true);
-                      setError(null);
-                      fetchIssues(milestone.number, sortOrder)
-                        .then((data) => {
-                          setIssues(data);
-                          setLoading(false);
-                        })
-                        .catch((err) => {
-                          setError(err.message);
-                          setLoading(false);
-                        });
-                    }
-                  }}
-                  onIssueUpdate={(updatedIssue) => {
-                    // Update the issue in the issues array
-                    setIssues((prevIssues) =>
-                      prevIssues.map((i) =>
-                        i.id === updatedIssue.id ? updatedIssue : i
-                      )
-                    );
-                  }}
-                />
-              ))}
-            </div>
+              <thead>
+                <tr style={{ borderBottom: '2px solid #0066cc' }}>
+                  <th
+                    style={{
+                      padding: '0.5rem',
+                      textAlign: 'left',
+                      fontSize: '0.75rem',
+                      fontWeight: '600',
+                      color: '#6a6e73',
+                      textTransform: 'uppercase',
+                      width: '2rem',
+                    }}
+                  />
+                  <th
+                    style={{
+                      padding: '0.5rem',
+                      textAlign: 'left',
+                      fontSize: '0.75rem',
+                      fontWeight: '600',
+                      color: '#6a6e73',
+                      textTransform: 'uppercase',
+                    }}
+                  >
+                    Number
+                  </th>
+                  <th
+                    style={{
+                      padding: '0.5rem',
+                      textAlign: 'left',
+                      fontSize: '0.75rem',
+                      fontWeight: '600',
+                      color: '#6a6e73',
+                      textTransform: 'uppercase',
+                    }}
+                  >
+                    Author
+                  </th>
+                  <th
+                    style={{
+                      padding: '0.5rem',
+                      textAlign: 'left',
+                      fontSize: '0.75rem',
+                      fontWeight: '600',
+                      color: '#6a6e73',
+                      textTransform: 'uppercase',
+                    }}
+                  >
+                    PR
+                  </th>
+                  <th
+                    style={{
+                      padding: '0.5rem',
+                      textAlign: 'left',
+                      fontSize: '0.75rem',
+                      fontWeight: '600',
+                      color: '#6a6e73',
+                      textTransform: 'uppercase',
+                    }}
+                  >
+                    Milestone
+                  </th>
+                  <th
+                    style={{
+                      padding: '0.5rem',
+                      textAlign: 'left',
+                      fontSize: '0.75rem',
+                      fontWeight: '600',
+                      color: '#6a6e73',
+                      textTransform: 'uppercase',
+                    }}
+                  >
+                    Labels
+                  </th>
+                  <th
+                    style={{
+                      padding: '0.5rem',
+                      textAlign: 'left',
+                      fontSize: '0.75rem',
+                      fontWeight: '600',
+                      color: '#6a6e73',
+                      textTransform: 'uppercase',
+                    }}
+                  >
+                    Title
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {issues.map((issue) => (
+                  <IssueCard
+                    key={issue.id}
+                    issue={issue}
+                    onMilestoneChange={() => {
+                      // Refresh issues when milestone changes
+                      if (isExpanded) {
+                        setLoading(true);
+                        setError(null);
+                        fetchIssues(milestone.number, sortOrder)
+                          .then((data) => {
+                            setIssues(data);
+                            setLoading(false);
+                          })
+                          .catch((err) => {
+                            setError(err.message);
+                            setLoading(false);
+                          });
+                      }
+                    }}
+                    onIssueUpdate={(updatedIssue) => {
+                      // Update the issue in the issues array
+                      setIssues((prevIssues) =>
+                        prevIssues.map((i) =>
+                          i.id === updatedIssue.id ? updatedIssue : i
+                        )
+                      );
+                    }}
+                  />
+                ))}
+              </tbody>
+            </table>
           )}
 
           {!loading &&

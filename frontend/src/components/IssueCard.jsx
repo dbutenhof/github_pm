@@ -1,10 +1,6 @@
 // ai-generated: Cursor
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardBody,
   ExpandableSection,
   Spinner,
   Alert,
@@ -17,7 +13,11 @@ import {
   Form,
   FormGroup,
 } from '@patternfly/react-core';
-import { CodeBranchIcon } from '@patternfly/react-icons';
+import {
+  CodeBranchIcon,
+  CaretDownIcon,
+  CaretRightIcon,
+} from '@patternfly/react-icons';
 import { getDaysSince, formatDate } from '../utils/dateUtils';
 import {
   fetchComments,
@@ -705,162 +705,147 @@ const IssueCard = ({ issue, onMilestoneChange, onIssueUpdate }) => {
     });
   };
 
-  const getToggleText = () => {
-    const baseText = isDescriptionExpanded
-      ? 'Hide Description'
-      : 'Show Description';
-    if (issue.comments > 0) {
-      return `${baseText} (${issue.comments} ${issue.comments === 1 ? 'comment' : 'comments'})`;
-    }
-    return baseText;
-  };
-
   const getCommentsToggleText = () => {
     return isCommentsExpanded
       ? `Hide Comments (${issue.comments})`
       : `Show Comments (${issue.comments})`;
   };
 
+  // Column 4: PR icon, "closed by #<pr>", or blank
+  const renderPrColumn = () => {
+    if (issue.pull_request) {
+      return (
+        <Tooltip content="Pull Request">
+          <CodeBranchIcon
+            style={{
+              color: '#0066cc',
+              verticalAlign: 'middle',
+              userSelect: 'none',
+            }}
+          />
+        </Tooltip>
+      );
+    }
+    if (issue.closed_by && issue.closed_by.length > 0) {
+      return (
+        <span style={{ fontSize: '0.875rem', color: '#6a6e73' }}>
+          closed by{' '}
+          {issue.closed_by.map((pr, index) => (
+            <React.Fragment key={pr.number}>
+              {index > 0 && ', '}
+              <Tooltip content={pr.title || ''}>
+                <a
+                  href={pr.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    textDecoration: 'none',
+                    color: '#0066cc',
+                  }}
+                >
+                  #{pr.number}
+                </a>
+              </Tooltip>
+            </React.Fragment>
+          ))}
+        </span>
+      );
+    }
+    return null;
+  };
+
+  const cellStyle = {
+    padding: '0.5rem',
+    verticalAlign: 'top',
+    borderBottom: '1px solid #d2d2d2',
+  };
+
   return (
-    <Card
-      style={{
-        width: '100%',
-        border: '3px solid #0066cc',
-        display: 'flex',
-        flexDirection: 'column',
-        borderRadius: '0.5rem',
-      }}
-    >
-      <CardHeader>
-        <CardTitle>
-          <a
-            href={issue.html_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{ textDecoration: 'none', color: '#0066cc' }}
-          >
-            #{issue.number}
-          </a>
-          {issue.pull_request && (
-            <Tooltip content="Pull Request">
-              <CodeBranchIcon
-                style={{
-                  marginLeft: '0.5rem',
-                  color: '#0066cc',
-                  verticalAlign: 'middle',
-                  userSelect: 'none',
-                }}
-              />
-            </Tooltip>
-          )}
-          {issue.closed_by && issue.closed_by.length > 0 && (
-            <span style={{ marginLeft: '0.5rem', color: '#6a6e73' }}>
-              (closed by{' '}
-              {issue.closed_by.map((pr, index) => (
-                <React.Fragment key={pr.number}>
-                  {index > 0 && ', '}
-                  <Tooltip content={pr.title || ''}>
-                    <a
-                      href={pr.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={{
-                        textDecoration: 'none',
-                        color: '#0066cc',
-                      }}
-                    >
-                      #{pr.number}
-                    </a>
-                  </Tooltip>
-                </React.Fragment>
-              ))}
-              )
-            </span>
-          )}
-          {' - '}
-          {issue.title}
-          {issue.type && (
-            <Tooltip content={issue.type.description || ''}>
-              <span
-                style={{
-                  display: 'inline-block',
-                  marginLeft: '0.5rem',
-                  padding: '0.125rem 0.5rem',
-                  fontSize: '0.75rem',
-                  fontWeight: '500',
-                  borderRadius: '0.25rem',
-                  backgroundColor: issue.type.color,
-                  color: getTypeContrastColor(issue.type.color),
-                  whiteSpace: 'nowrap',
-                  cursor: issue.type.description ? 'help' : 'default',
-                }}
+    <>
+      <tr>
+        {/* Column 1: Expansion icon */}
+        <td style={{ ...cellStyle, width: '2rem' }}>
+            {issue.body_html ? (
+              <Button
+                variant="plain"
+                onClick={() =>
+                  setIsDescriptionExpanded(!isDescriptionExpanded)
+                }
+                style={{ padding: '0.125rem' }}
+                aria-expanded={isDescriptionExpanded}
+                aria-label={
+                  isDescriptionExpanded ? 'Hide description' : 'Show description'
+                }
               >
-                {issue.type.name}
-              </span>
-            </Tooltip>
-          )}
-        </CardTitle>
-      </CardHeader>
-      <CardBody
-        style={{
-          flex: '1',
-          overflow: 'auto',
-          padding: '0rem',
-          display: 'flex',
-          flexDirection: 'column',
-        }}
-      >
-        <div
-          style={{
-            marginBottom: '0rem',
-            display: 'flex',
-            alignItems: 'flex-start',
-            justifyContent: 'space-between',
-            gap: '0.5rem',
-            padding: '0.75rem',
-          }}
-        >
+                {isDescriptionExpanded ? (
+                  <CaretDownIcon style={{ fontSize: '1rem' }} />
+                ) : (
+                  <CaretRightIcon style={{ fontSize: '1rem' }} />
+                )}
+              </Button>
+            ) : null}
+        </td>
+
+        {/* Column 2: Issue number link */}
+        <td style={cellStyle}>
+            <a
+              href={issue.html_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                textDecoration: 'none',
+                color: '#0066cc',
+                fontWeight: '500',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              #{issue.number}
+            </a>
+        </td>
+
+        {/* Column 3: Owner avatar, creation date, assigned chiclet stacked */}
+        <td style={cellStyle}>
           <div
             style={{
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'flex-start',
+              gap: '0.25rem',
             }}
           >
-            {issue.user?.html_url ? (
-              <a
-                href={issue.user.html_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{
-                  textDecoration: 'none',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.5rem',
-                }}
-              >
+            {issue.user ? (
+              issue.user.html_url ? (
+                <a
+                  href={issue.user.html_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    textDecoration: 'none',
+                    display: 'flex',
+                    alignItems: 'center',
+                  }}
+                >
+                  <UserAvatar user={issue.user} size={32} />
+                </a>
+              ) : (
                 <UserAvatar user={issue.user} size={32} />
-                <div style={{ fontWeight: '500', color: '#0066cc' }}>
-                  {issue.user.login || 'Unknown'}
-                </div>
-              </a>
+              )
             ) : (
-              <div
-                style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-              >
-                <UserAvatar user={issue.user} size={32} />
-                <div style={{ fontWeight: '500' }}>
-                  {issue.user?.login || 'Unknown'}
-                </div>
-              </div>
+              <span style={{ fontSize: '0.875rem', color: '#6a6e73' }}>
+                Unknown
+              </span>
             )}
+            <span
+              style={{
+                fontSize: '0.75rem',
+                color: '#6a6e73',
+              }}
+            >
+              {formatDate(issue.created_at)} ({daysSince} days ago)
+            </span>
             <div
               ref={assigneesToggleRef}
               style={{
-                fontSize: '0.875rem',
-                color: '#6a6e73',
-                marginLeft: '40px',
-                marginTop: '0.25rem',
                 position: 'relative',
                 display: 'inline-block',
               }}
@@ -1049,27 +1034,14 @@ const IssueCard = ({ issue, onMilestoneChange, onIssueUpdate }) => {
                 </div>
               )}
             </div>
-            <div
-              style={{
-                fontSize: '0.875rem',
-                color: '#6a6e73',
-                marginLeft: '40px',
-                marginTop: '0.25rem',
-              }}
-            >
-              {formatDate(issue.created_at)} ({daysSince} days ago)
-            </div>
           </div>
-          <div
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'flex-end',
-              gap: '0.5rem',
-              flexShrink: 0,
-            }}
-          >
-            {/* Milestone control */}
+        </td>
+
+        {/* Column 4: PR icon or closed by #pr or blank */}
+        <td style={cellStyle}>{renderPrColumn()}</td>
+
+        {/* Column 5: Milestone control */}
+        <td style={cellStyle}>
             <div
               ref={milestoneToggleRef}
               style={{ position: 'relative', display: 'inline-block' }}
@@ -1164,16 +1136,18 @@ const IssueCard = ({ issue, onMilestoneChange, onIssueUpdate }) => {
                 </div>
               )}
             </div>
-            {/* Labels */}
-            <div
-              style={{
-                display: 'flex',
-                flexWrap: 'wrap',
-                gap: '0.25rem',
-                justifyContent: 'flex-end',
-                alignItems: 'flex-start',
-              }}
-            >
+        </td>
+
+        {/* Column 6: Label chiclets stacked vertically */}
+        <td style={cellStyle}>
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.25rem',
+              alignItems: 'flex-start',
+            }}
+          >
               {currentLabels.map((label) => (
                 <Tooltip
                   key={label.id || label.name}
@@ -1430,31 +1404,56 @@ const IssueCard = ({ issue, onMilestoneChange, onIssueUpdate }) => {
                 )}
               </div>
             </div>
-          </div>
-        </div>
-        <div
+        </td>
+
+        {/* Column 7: Issue title - wraps to fit page width */}
+        <td
           style={{
-            marginTop: 'auto',
-            paddingTop: '0.5rem',
-            borderTop: '1px solid #d2d2d2',
-            paddingLeft: '0.75rem',
-            paddingRight: '0.75rem',
-            paddingBottom: '0.75rem',
+            ...cellStyle,
+            wordWrap: 'break-word',
+            overflowWrap: 'break-word',
           }}
         >
-          {issue.body_html && (
-            <ExpandableSection
-              toggleText={getToggleText()}
-              onToggle={() => setIsDescriptionExpanded(!isDescriptionExpanded)}
-              isExpanded={isDescriptionExpanded}
-            >
-              <div
-                style={{ paddingTop: '0.5rem' }}
-                dangerouslySetInnerHTML={{ __html: issue.body_html }}
-              />
-            </ExpandableSection>
-          )}
-          {issue.comments > 0 && isDescriptionExpanded && (
+            <span style={{ fontWeight: '500' }}>{issue.title}</span>
+            {issue.type && (
+              <Tooltip content={issue.type.description || ''}>
+                <span
+                  style={{
+                    display: 'inline-block',
+                    marginLeft: '0.5rem',
+                    padding: '0.125rem 0.5rem',
+                    fontSize: '0.75rem',
+                    fontWeight: '500',
+                    borderRadius: '0.25rem',
+                    backgroundColor: issue.type.color,
+                    color: getTypeContrastColor(issue.type.color),
+                    whiteSpace: 'nowrap',
+                    cursor: issue.type.description ? 'help' : 'default',
+                  }}
+                >
+                  {issue.type.name}
+                </span>
+              </Tooltip>
+            )}
+        </td>
+      </tr>
+
+      {/* Expanded description and comments - only shown when expanded */}
+      {issue.body_html && isDescriptionExpanded && (
+        <tr>
+          <td
+            colSpan={7}
+            style={{
+              padding: '0.75rem',
+              borderBottom: '1px solid #d2d2d2',
+              backgroundColor: '#fafafa',
+            }}
+          >
+          <div
+            style={{ paddingTop: '0.5rem' }}
+            dangerouslySetInnerHTML={{ __html: issue.body_html }}
+          />
+          {issue.comments > 0 && (
             <div style={{ marginTop: issue.body_html ? '1rem' : '0rem' }}>
               <ExpandableSection
                 toggleText={getCommentsToggleText()}
@@ -1514,8 +1513,9 @@ const IssueCard = ({ issue, onMilestoneChange, onIssueUpdate }) => {
               )}
             </div>
           )}
-        </div>
-      </CardBody>
+          </td>
+        </tr>
+      )}
       <Modal
         title="Create New Label"
         isOpen={isCreateLabelDialogOpen}
@@ -1598,7 +1598,7 @@ const IssueCard = ({ issue, onMilestoneChange, onIssueUpdate }) => {
             )}
         </Form>
       </Modal>
-    </Card>
+    </>
   );
 };
 

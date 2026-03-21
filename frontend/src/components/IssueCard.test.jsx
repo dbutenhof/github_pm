@@ -77,89 +77,48 @@ describe('IssueCard', () => {
     });
   });
 
-  it('shows description toggle when body exists', async () => {
+  it('shows expansion icon when body exists', async () => {
     await act(async () => {
       render(<IssueCard issue={mockIssue} />);
     });
     await waitFor(() => {
-      expect(screen.getByText('Show Description')).toBeInTheDocument();
-    });
-  });
-
-  it('shows comment count in toggle text when comments exist', async () => {
-    const issueWithComments = { ...mockIssue, comments: 5 };
-    await act(async () => {
-      render(<IssueCard issue={issueWithComments} />);
-    });
-    await waitFor(() => {
       expect(
-        screen.getByText('Show Description (5 comments)')
+        screen.getByRole('button', { name: /show description/i })
       ).toBeInTheDocument();
     });
   });
 
-  it('shows singular comment in toggle text for 1 comment', async () => {
-    const issueWithOneComment = { ...mockIssue, comments: 1 };
+  it('does not show expansion icon when body is absent', async () => {
+    const issueWithoutBody = { ...mockIssue, body: null, body_html: null };
     await act(async () => {
-      render(<IssueCard issue={issueWithOneComment} />);
+      render(<IssueCard issue={issueWithoutBody} />);
     });
     await waitFor(() => {
       expect(
-        screen.getByText('Show Description (1 comment)')
-      ).toBeInTheDocument();
+        screen.queryByRole('button', { name: /show description/i })
+      ).not.toBeInTheDocument();
     });
   });
 
-  it('does not show comment count when comments is 0', async () => {
-    const issueWithNoComments = { ...mockIssue, comments: 0 };
-    await act(async () => {
-      render(<IssueCard issue={issueWithNoComments} />);
-    });
-    await waitFor(() => {
-      expect(screen.getByText('Show Description')).toBeInTheDocument();
-    });
-    expect(screen.queryByText(/comment/)).not.toBeInTheDocument();
-  });
-
-  it('expands and shows HTML body when toggle is clicked', async () => {
+  it('expands and shows HTML body when expansion icon is clicked', async () => {
     const user = userEvent.setup();
     render(<IssueCard issue={mockIssue} />);
-    const toggleButton = screen.getByText('Show Description');
-    await user.click(toggleButton);
+    const expandButton = screen.getByRole('button', {
+      name: /show description/i,
+    });
+    await user.click(expandButton);
 
     await waitFor(() => {
-      // The HTML content should be rendered, check for the text content
       expect(
         screen.getByText(/Is your feature request related to a problem/i)
       ).toBeInTheDocument();
-      expect(screen.getByText('Hide Description')).toBeInTheDocument();
-    });
-  });
-
-  it('shows comment count in expanded toggle text when comments exist', async () => {
-    const user = userEvent.setup();
-    const issueWithComments = { ...mockIssue, comments: 3 };
-    render(<IssueCard issue={issueWithComments} />);
-    const toggleButton = screen.getByText('Show Description (3 comments)');
-    await user.click(toggleButton);
-
-    await waitFor(() => {
       expect(
-        screen.getByText('Hide Description (3 comments)')
+        screen.getByRole('button', { name: /hide description/i })
       ).toBeInTheDocument();
     });
   });
 
-  it('renders user information', async () => {
-    await act(async () => {
-      render(<IssueCard issue={mockIssue} />);
-    });
-    await waitFor(() => {
-      expect(screen.getByText('tosokin')).toBeInTheDocument();
-    });
-  });
-
-  it('renders user avatar', async () => {
+  it('renders user avatar with correct src', async () => {
     await act(async () => {
       render(<IssueCard issue={mockIssue} />);
     });
@@ -301,9 +260,11 @@ describe('IssueCard', () => {
       expect(screen.queryByText(/Show Comments/i)).not.toBeInTheDocument();
     });
 
-    // Expand description
-    const descriptionToggle = screen.getByText('Show Description (2 comments)');
-    await user.click(descriptionToggle);
+    // Expand description via expansion icon
+    const expandButton = screen.getByRole('button', {
+      name: /show description/i,
+    });
+    await user.click(expandButton);
 
     // Now comments control should be visible
     await waitFor(() => {
@@ -319,9 +280,11 @@ describe('IssueCard', () => {
       render(<IssueCard issue={issueWithComments} />);
     });
 
-    // Expand description
-    const descriptionToggle = screen.getByText('Show Description (1 comment)');
-    await user.click(descriptionToggle);
+    // Expand description via expansion icon
+    const expandButton = screen.getByRole('button', {
+      name: /show description/i,
+    });
+    await user.click(expandButton);
 
     // Expand comments
     await waitFor(() => {
@@ -330,9 +293,11 @@ describe('IssueCard', () => {
     const commentsToggle = screen.getByText(/Show Comments/i);
     await user.click(commentsToggle);
 
-    // Collapse description - use a more flexible matcher
-    const hideDescriptionToggle = screen.getByText(/Hide Description/i);
-    await user.click(hideDescriptionToggle);
+    // Collapse description via expansion icon
+    const collapseButton = screen.getByRole('button', {
+      name: /hide description/i,
+    });
+    await user.click(collapseButton);
 
     // Comments should be hidden
     await waitFor(() => {
@@ -361,9 +326,11 @@ describe('IssueCard', () => {
       render(<IssueCard issue={issueWithComments} />);
     });
 
-    // First expand description
-    const descriptionToggle = screen.getByText('Show Description (1 comment)');
-    await user.click(descriptionToggle);
+    // First expand description via expansion icon
+    const expandButton = screen.getByRole('button', {
+      name: /show description/i,
+    });
+    await user.click(expandButton);
 
     // Then expand comments
     await waitFor(() => {
