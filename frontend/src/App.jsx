@@ -47,6 +47,11 @@ const App = () => {
     }
   });
 
+  const [issueMilestoneRefresh, setIssueMilestoneRefresh] = useState({
+    key: 0,
+    milestoneNumbers: [],
+  });
+
   useEffect(() => {
     fetchProject()
       .then((data) => {
@@ -191,6 +196,19 @@ const App = () => {
     }
   };
 
+  const handleIssueMilestoneMoved = ({
+    fromMilestoneNumber,
+    toMilestoneNumber,
+  }) => {
+    const nums = [fromMilestoneNumber, toMilestoneNumber].filter(
+      (n) => n != null
+    );
+    setIssueMilestoneRefresh((s) => ({
+      key: s.key + 1,
+      milestoneNumbers: [...new Set(nums)],
+    }));
+  };
+
   const handleLabelChange = () => {
     // Labels are cached in IssueCard, so we don't need to do anything here
     // but we can add a callback if needed in the future
@@ -290,6 +308,8 @@ const App = () => {
                 key={milestone.number}
                 milestone={milestone}
                 sortOrder={sortOrder}
+                issueMilestoneRefresh={issueMilestoneRefresh}
+                onIssueMilestoneMoved={handleIssueMilestoneMoved}
               />
             ))}
           </div>

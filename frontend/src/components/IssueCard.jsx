@@ -627,6 +627,8 @@ const IssueCard = ({ issue, onMilestoneChange, onIssueUpdate }) => {
   };
 
   const handleMilestoneChange = async (milestoneNumber) => {
+    const fromMilestoneNumber =
+      currentMilestone?.number ?? issue.milestone?.number ?? null;
     try {
       if (milestoneNumber === null) {
         // Remove milestone
@@ -634,7 +636,10 @@ const IssueCard = ({ issue, onMilestoneChange, onIssueUpdate }) => {
           await removeIssueMilestone(issue.number, currentMilestone.number);
           setCurrentMilestone(null);
           if (onMilestoneChange) {
-            onMilestoneChange();
+            onMilestoneChange({
+              fromMilestoneNumber,
+              toMilestoneNumber: null,
+            });
           }
         }
       } else {
@@ -647,7 +652,10 @@ const IssueCard = ({ issue, onMilestoneChange, onIssueUpdate }) => {
           setCurrentMilestone(newMilestone);
         }
         if (onMilestoneChange) {
-          onMilestoneChange();
+          onMilestoneChange({
+            fromMilestoneNumber,
+            toMilestoneNumber: milestoneNumber,
+          });
         }
       }
     } catch (err) {

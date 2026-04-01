@@ -205,7 +205,7 @@ async def get_issues(
             sorted_issues["other"].append(i)
     all_issues = []
     for label in sort_by + ["other"]:
-        all_issues.extend(sorted_issues[label])
+        all_issues.extend(sorted(sorted_issues[label], key=lambda x: x["number"]))
     logger.debug(
         f"{len(issues)}({len(all_issues)}) issues: {time.time() - start:.3f} seconds"
     )

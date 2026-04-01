@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event';
 import IssueCard from './IssueCard';
 import * as api from '../services/api';
 import assigneesCache from '../utils/assigneesCache';
+import milestonesCache from '../utils/milestonesCache';
 
 vi.mock('../services/api');
 
@@ -51,6 +52,7 @@ describe('IssueCard', () => {
     assigneesCache.loading = false;
     assigneesCache.error = null;
     assigneesCache.promise = null;
+    milestonesCache.data = [];
   });
 
   it('renders issue number and title', async () => {
@@ -343,6 +345,76 @@ describe('IssueCard', () => {
       expect(api.fetchComments).toHaveBeenCalledWith(459);
       expect(screen.getByText('This is a comment')).toBeInTheDocument();
       expect(screen.getByText('testuser')).toBeInTheDocument();
+    });
+  });
+
+  it('calls onMilestoneChange with from/to when milestone is set', async () => {
+    const user = userEvent.setup();
+    const onMilestoneChange = vi.fn();
+    milestonesCache.data = [{ number: 10, title: 'Next release' }];
+    const issueWithMilestone = {
+      ...mockIssue,
+      milestone: { number: 6, title: 'Current' },
+    };
+    api.setIssueMilestone.mockResolvedValue({});
+
+    await act(async () => {
+      render(
+        <table>
+          <tbody>
+            <IssueCard
+              issue={issueWithMilestone}
+              onMilestoneChange={onMilestoneChange}
+            />
+          </tbody>
+        </table>
+      );
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Current' }));
+    await user.click(screen.getByText('Next release'));
+
+    await waitFor(() => {
+      expect(api.setIssueMilestone).toHaveBeenCalledWith(459, 10);
+      expect(onMilestoneChange).toHaveBeenCalledWith({
+        fromMilestoneNumber: 6,
+        toMilestoneNumber: 10,
+      });
+    });
+  });
+
+  it('calls onMilestoneChange with to null when milestone is removed', async () => {
+    const user = userEvent.setup();
+    const onMilestoneChange = vi.fn();
+    milestonesCache.data = [{ number: 10, title: 'Other' }];
+    const issueWithMilestone = {
+      ...mockIssue,
+      milestone: { number: 6, title: 'Current' },
+    };
+    api.removeIssueMilestone.mockResolvedValue({});
+
+    await act(async () => {
+      render(
+        <table>
+          <tbody>
+            <IssueCard
+              issue={issueWithMilestone}
+              onMilestoneChange={onMilestoneChange}
+            />
+          </tbody>
+        </table>
+      );
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Current' }));
+    await user.click(screen.getByText('No Milestone', { selector: 'span' }));
+
+    await waitFor(() => {
+      expect(api.removeIssueMilestone).toHaveBeenCalledWith(459, 6);
+      expect(onMilestoneChange).toHaveBeenCalledWith({
+        fromMilestoneNumber: 6,
+        toMilestoneNumber: null,
+      });
     });
   });
 });
