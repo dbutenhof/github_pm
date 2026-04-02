@@ -142,4 +142,57 @@ describe('MilestoneCard', () => {
       expect(screen.getByText(/No issues found/i)).toBeInTheDocument();
     });
   });
+
+  it('refetches issues when issueMilestoneRefresh targets this milestone', async () => {
+    const user = userEvent.setup();
+    const mockIssues = [
+      {
+        id: 1,
+        number: 459,
+        title: 'Test Issue',
+        body: 'Issue body',
+        html_url: 'https://github.com/test/issue/459',
+        user: { login: 'testuser', avatar_url: 'https://avatar.url' },
+        created_at: '2025-01-01T00:00:00Z',
+        labels: [],
+        comments: 0,
+      },
+    ];
+    api.fetchIssues.mockResolvedValue(mockIssues);
+
+    const onIssueMilestoneMoved = vi.fn();
+    const initialRefresh = { key: 0, milestoneNumbers: [] };
+
+    const { rerender } = await act(async () =>
+      render(
+        <MilestoneCard
+          milestone={mockMilestone}
+          issueMilestoneRefresh={initialRefresh}
+          onIssueMilestoneMoved={onIssueMilestoneMoved}
+        />
+      )
+    );
+
+    const expandButton = screen.getByRole('button', { name: /show issues/i });
+    await user.click(expandButton);
+
+    await waitFor(() => {
+      expect(api.fetchIssues).toHaveBeenCalledTimes(1);
+    });
+
+    await act(async () => {
+      rerender(
+        <MilestoneCard
+          milestone={mockMilestone}
+          issueMilestoneRefresh={{ key: 1, milestoneNumbers: [6] }}
+          onIssueMilestoneMoved={onIssueMilestoneMoved}
+        />
+      );
+    });
+
+    await waitFor(() => {
+      expect(api.fetchIssues).toHaveBeenCalledTimes(2);
+    });
+    expect(api.fetchIssues).toHaveBeenLastCalledWith(6, []);
+  });
 });

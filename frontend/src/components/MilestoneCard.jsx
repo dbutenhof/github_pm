@@ -1,5 +1,5 @@
 // ai-generated: Cursor
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Card,
   CardHeader,
@@ -12,13 +12,32 @@ import {
 import { fetchIssues } from '../services/api';
 import IssueCard from './IssueCard';
 
-const MilestoneCard = ({ milestone, sortOrder = [] }) => {
+const MilestoneCard = ({
+  milestone,
+  sortOrder = [],
+  issueMilestoneRefresh = { key: 0, milestoneNumbers: [] },
+  onIssueMilestoneMoved,
+}) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [issues, setIssues] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const prevMilestoneNumberRef = useRef(milestone.number);
+
+  const refetchIssues = useCallback(() => {
+    setLoading(true);
+    setError(null);
+    return fetchIssues(milestone.number, sortOrder)
+      .then((data) => {
+        setIssues(data);
+        setLoading(false);
+      })
+      .catch((err) => {
+        setError(err.message);
+        setLoading(false);
+      });
+  }, [milestone.number, sortOrder]);
 
   // Reset loaded state when milestone changes
   useEffect(() => {
@@ -57,22 +76,22 @@ const MilestoneCard = ({ milestone, sortOrder = [] }) => {
       JSON.stringify(prevSortOrderRef.current) !== JSON.stringify(sortOrder);
     if (isExpanded && hasLoadedOnce && !loading && sortOrderChanged) {
       prevSortOrderRef.current = sortOrder;
-      setLoading(true);
-      setError(null);
-      fetchIssues(milestone.number, sortOrder)
-        .then((data) => {
-          setIssues(data);
-          setLoading(false);
-        })
-        .catch((err) => {
-          setError(err.message);
-          setLoading(false);
-        });
+      refetchIssues();
     } else {
       prevSortOrderRef.current = sortOrder;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sortOrder]);
+
+  useEffect(() => {
+    const { key, milestoneNumbers } = issueMilestoneRefresh;
+    if (key === 0) return;
+    if (!milestoneNumbers.includes(milestone.number)) return;
+    if (!isExpanded || !hasLoadedOnce) return;
+    refetchIssues();
+    // Bump `key` and `milestoneNumbers` update together; refetch only when key changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [issueMilestoneRefresh.key]);
 
   const formatDueDate = (dueOn) => {
     if (!dueOn) return 'No due date';
@@ -229,21 +248,8 @@ const MilestoneCard = ({ milestone, sortOrder = [] }) => {
                   <IssueCard
                     key={issue.id}
                     issue={issue}
-                    onMilestoneChange={() => {
-                      // Refresh issues when milestone changes
-                      if (isExpanded) {
-                        setLoading(true);
-                        setError(null);
-                        fetchIssues(milestone.number, sortOrder)
-                          .then((data) => {
-                            setIssues(data);
-                            setLoading(false);
-                          })
-                          .catch((err) => {
-                            setError(err.message);
-                            setLoading(false);
-                          });
-                      }
+                    onMilestoneChange={(detail) => {
+                      onIssueMilestoneMoved?.(detail);
                     }}
                     onIssueUpdate={(updatedIssue) => {
                       // Update the issue in the issues array

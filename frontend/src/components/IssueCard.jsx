@@ -627,6 +627,8 @@ const IssueCard = ({ issue, onMilestoneChange, onIssueUpdate }) => {
   };
 
   const handleMilestoneChange = async (milestoneNumber) => {
+    const fromMilestoneNumber =
+      currentMilestone?.number ?? issue.milestone?.number ?? null;
     try {
       if (milestoneNumber === null) {
         // Remove milestone
@@ -634,7 +636,10 @@ const IssueCard = ({ issue, onMilestoneChange, onIssueUpdate }) => {
           await removeIssueMilestone(issue.number, currentMilestone.number);
           setCurrentMilestone(null);
           if (onMilestoneChange) {
-            onMilestoneChange();
+            onMilestoneChange({
+              fromMilestoneNumber,
+              toMilestoneNumber: null,
+            });
           }
         }
       } else {
@@ -647,7 +652,10 @@ const IssueCard = ({ issue, onMilestoneChange, onIssueUpdate }) => {
           setCurrentMilestone(newMilestone);
         }
         if (onMilestoneChange) {
-          onMilestoneChange();
+          onMilestoneChange({
+            fromMilestoneNumber,
+            toMilestoneNumber: milestoneNumber,
+          });
         }
       }
     } catch (err) {
@@ -765,42 +773,40 @@ const IssueCard = ({ issue, onMilestoneChange, onIssueUpdate }) => {
       <tr>
         {/* Column 1: Expansion icon */}
         <td style={{ ...cellStyle, width: '2rem' }}>
-            {issue.body_html ? (
-              <Button
-                variant="plain"
-                onClick={() =>
-                  setIsDescriptionExpanded(!isDescriptionExpanded)
-                }
-                style={{ padding: '0.125rem' }}
-                aria-expanded={isDescriptionExpanded}
-                aria-label={
-                  isDescriptionExpanded ? 'Hide description' : 'Show description'
-                }
-              >
-                {isDescriptionExpanded ? (
-                  <CaretDownIcon style={{ fontSize: '1rem' }} />
-                ) : (
-                  <CaretRightIcon style={{ fontSize: '1rem' }} />
-                )}
-              </Button>
-            ) : null}
+          {issue.body_html ? (
+            <Button
+              variant="plain"
+              onClick={() => setIsDescriptionExpanded(!isDescriptionExpanded)}
+              style={{ padding: '0.125rem' }}
+              aria-expanded={isDescriptionExpanded}
+              aria-label={
+                isDescriptionExpanded ? 'Hide description' : 'Show description'
+              }
+            >
+              {isDescriptionExpanded ? (
+                <CaretDownIcon style={{ fontSize: '1rem' }} />
+              ) : (
+                <CaretRightIcon style={{ fontSize: '1rem' }} />
+              )}
+            </Button>
+          ) : null}
         </td>
 
         {/* Column 2: Issue number link */}
         <td style={cellStyle}>
-            <a
-              href={issue.html_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{
-                textDecoration: 'none',
-                color: '#0066cc',
-                fontWeight: '500',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              #{issue.number}
-            </a>
+          <a
+            href={issue.html_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              textDecoration: 'none',
+              color: '#0066cc',
+              fontWeight: '500',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            #{issue.number}
+          </a>
         </td>
 
         {/* Column 3: Owner avatar, creation date, assigned chiclet stacked */}
@@ -1075,100 +1081,100 @@ const IssueCard = ({ issue, onMilestoneChange, onIssueUpdate }) => {
 
         {/* Column 5: Milestone control */}
         <td style={cellStyle}>
-            <div
-              ref={milestoneToggleRef}
-              style={{ position: 'relative', display: 'inline-block' }}
+          <div
+            ref={milestoneToggleRef}
+            style={{ position: 'relative', display: 'inline-block' }}
+          >
+            <Button
+              variant={currentMilestone ? 'primary' : 'secondary'}
+              onClick={() => setIsMilestoneMenuOpen(!isMilestoneMenuOpen)}
+              style={{
+                padding: '0.25rem 0.75rem',
+                fontSize: '0.75rem',
+                minWidth: 'auto',
+              }}
             >
-              <Button
-                variant={currentMilestone ? 'primary' : 'secondary'}
-                onClick={() => setIsMilestoneMenuOpen(!isMilestoneMenuOpen)}
+              {currentMilestone ? currentMilestone.title : 'No Milestone'}
+            </Button>
+            {isMilestoneMenuOpen && (
+              <div
+                ref={milestoneMenuRef}
                 style={{
-                  padding: '0.25rem 0.75rem',
-                  fontSize: '0.75rem',
-                  minWidth: 'auto',
+                  position: 'absolute',
+                  top: '100%',
+                  right: '0',
+                  marginTop: '0.25rem',
+                  backgroundColor: '#fff',
+                  border: '1px solid #d2d2d2',
+                  borderRadius: '0.25rem',
+                  boxShadow: '0 2px 8px rgba(0, 0, 0, 0.15)',
+                  zIndex: 1000,
+                  minWidth: '200px',
+                  maxHeight: '300px',
+                  overflowY: 'auto',
                 }}
               >
-                {currentMilestone ? currentMilestone.title : 'No Milestone'}
-              </Button>
-              {isMilestoneMenuOpen && (
                 <div
-                  ref={milestoneMenuRef}
                   style={{
-                    position: 'absolute',
-                    top: '100%',
-                    right: '0',
-                    marginTop: '0.25rem',
-                    backgroundColor: '#fff',
-                    border: '1px solid #d2d2d2',
-                    borderRadius: '0.25rem',
-                    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.15)',
-                    zIndex: 1000,
-                    minWidth: '200px',
-                    maxHeight: '300px',
-                    overflowY: 'auto',
+                    padding: '0.5rem',
+                    cursor: 'pointer',
+                    borderBottom: '1px solid #d2d2d2',
+                    backgroundColor:
+                      currentMilestone === null ? '#f0f0f0' : 'transparent',
+                  }}
+                  onClick={() => {
+                    handleMilestoneChange(null);
+                    setIsMilestoneMenuOpen(false);
+                  }}
+                  onMouseEnter={(e) => {
+                    if (currentMilestone !== null) {
+                      e.currentTarget.style.backgroundColor = '#f0f0f0';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (currentMilestone !== null) {
+                      e.currentTarget.style.backgroundColor = 'transparent';
+                    }
                   }}
                 >
+                  <span style={{ fontSize: '0.875rem', fontStyle: 'italic' }}>
+                    No Milestone
+                  </span>
+                </div>
+                {milestonesCache.data.map((milestone) => (
                   <div
+                    key={milestone.number}
                     style={{
                       padding: '0.5rem',
                       cursor: 'pointer',
-                      borderBottom: '1px solid #d2d2d2',
                       backgroundColor:
-                        currentMilestone === null ? '#f0f0f0' : 'transparent',
+                        currentMilestone?.number === milestone.number
+                          ? '#f0f0f0'
+                          : 'transparent',
                     }}
                     onClick={() => {
-                      handleMilestoneChange(null);
+                      handleMilestoneChange(milestone.number);
                       setIsMilestoneMenuOpen(false);
                     }}
                     onMouseEnter={(e) => {
-                      if (currentMilestone !== null) {
+                      if (currentMilestone?.number !== milestone.number) {
                         e.currentTarget.style.backgroundColor = '#f0f0f0';
                       }
                     }}
                     onMouseLeave={(e) => {
-                      if (currentMilestone !== null) {
+                      if (currentMilestone?.number !== milestone.number) {
                         e.currentTarget.style.backgroundColor = 'transparent';
                       }
                     }}
                   >
-                    <span style={{ fontSize: '0.875rem', fontStyle: 'italic' }}>
-                      No Milestone
+                    <span style={{ fontSize: '0.875rem' }}>
+                      {milestone.title}
                     </span>
                   </div>
-                  {milestonesCache.data.map((milestone) => (
-                    <div
-                      key={milestone.number}
-                      style={{
-                        padding: '0.5rem',
-                        cursor: 'pointer',
-                        backgroundColor:
-                          currentMilestone?.number === milestone.number
-                            ? '#f0f0f0'
-                            : 'transparent',
-                      }}
-                      onClick={() => {
-                        handleMilestoneChange(milestone.number);
-                        setIsMilestoneMenuOpen(false);
-                      }}
-                      onMouseEnter={(e) => {
-                        if (currentMilestone?.number !== milestone.number) {
-                          e.currentTarget.style.backgroundColor = '#f0f0f0';
-                        }
-                      }}
-                      onMouseLeave={(e) => {
-                        if (currentMilestone?.number !== milestone.number) {
-                          e.currentTarget.style.backgroundColor = 'transparent';
-                        }
-                      }}
-                    >
-                      <span style={{ fontSize: '0.875rem' }}>
-                        {milestone.title}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+                ))}
+              </div>
+            )}
+          </div>
         </td>
 
         {/* Column 6: Label chiclets - flow side-by-side when they fit */}
@@ -1202,193 +1208,193 @@ const IssueCard = ({ issue, onMilestoneChange, onIssueUpdate }) => {
               >
                 +
               </Button>
-                {isLabelMenuOpen && (
+              {isLabelMenuOpen && (
+                <div
+                  ref={menuRef}
+                  style={{
+                    position: 'absolute',
+                    top: '100%',
+                    right: '0',
+                    marginTop: '0.25rem',
+                    backgroundColor: '#fff',
+                    border: '1px solid #d2d2d2',
+                    borderRadius: '0.25rem',
+                    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.15)',
+                    zIndex: 1000,
+                    maxHeight: '300px',
+                    minWidth: '250px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    cursor: labelsLoading ? 'wait' : 'default',
+                  }}
+                >
+                  {/* Header with search and create button */}
                   <div
-                    ref={menuRef}
                     style={{
-                      position: 'absolute',
-                      top: '100%',
-                      right: '0',
-                      marginTop: '0.25rem',
-                      backgroundColor: '#fff',
-                      border: '1px solid #d2d2d2',
-                      borderRadius: '0.25rem',
-                      boxShadow: '0 2px 8px rgba(0, 0, 0, 0.15)',
-                      zIndex: 1000,
-                      maxHeight: '300px',
-                      minWidth: '250px',
+                      padding: '0.5rem',
+                      borderBottom: '1px solid #d2d2d2',
                       display: 'flex',
-                      flexDirection: 'column',
-                      cursor: labelsLoading ? 'wait' : 'default',
+                      gap: '0.5rem',
+                      alignItems: 'center',
                     }}
                   >
-                    {/* Header with search and create button */}
-                    <div
+                    <TextInput
+                      value={labelSearchFilter}
+                      onChange={(value) => {
+                        const stringValue =
+                          typeof value === 'string'
+                            ? value
+                            : value?.target?.value || '';
+                        setLabelSearchFilter(stringValue);
+                      }}
+                      placeholder="Search labels..."
+                      style={{ flex: 1 }}
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                    <Button
+                      variant="secondary"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setIsCreateLabelDialogOpen(true);
+                      }}
                       style={{
-                        padding: '0.5rem',
-                        borderBottom: '1px solid #d2d2d2',
-                        display: 'flex',
-                        gap: '0.5rem',
-                        alignItems: 'center',
+                        padding: '0.25rem 0.5rem',
+                        fontSize: '0.75rem',
+                        minWidth: 'auto',
                       }}
                     >
-                      <TextInput
-                        value={labelSearchFilter}
-                        onChange={(value) => {
-                          const stringValue =
-                            typeof value === 'string'
-                              ? value
-                              : value?.target?.value || '';
-                          setLabelSearchFilter(stringValue);
-                        }}
-                        placeholder="Search labels..."
-                        style={{ flex: 1 }}
-                        onClick={(e) => e.stopPropagation()}
-                      />
-                      <Button
-                        variant="secondary"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setIsCreateLabelDialogOpen(true);
-                        }}
+                      +
+                    </Button>
+                  </div>
+                  {/* Labels list */}
+                  <div style={{ maxHeight: '250px', overflowY: 'auto' }}>
+                    {labelsLoading && (
+                      <div
                         style={{
-                          padding: '0.25rem 0.5rem',
-                          fontSize: '0.75rem',
-                          minWidth: 'auto',
+                          padding: '1rem',
+                          textAlign: 'center',
+                          cursor: 'wait',
                         }}
                       >
-                        +
-                      </Button>
-                    </div>
-                    {/* Labels list */}
-                    <div style={{ maxHeight: '250px', overflowY: 'auto' }}>
-                      {labelsLoading && (
+                        <Spinner size="sm" />
                         <div
                           style={{
-                            padding: '1rem',
-                            textAlign: 'center',
-                            cursor: 'wait',
+                            marginTop: '0.5rem',
+                            fontSize: '0.875rem',
+                            color: '#6a6e73',
                           }}
                         >
-                          <Spinner size="sm" />
-                          <div
-                            style={{
-                              marginTop: '0.5rem',
-                              fontSize: '0.875rem',
-                              color: '#6a6e73',
-                            }}
-                          >
-                            Loading labels...
-                          </div>
+                          Loading labels...
                         </div>
-                      )}
-                      {labelsError && (
-                        <div style={{ padding: '0.5rem' }}>
-                          <Alert
-                            variant="danger"
-                            title="Error loading labels"
-                            isInline
-                          >
-                            {labelsError}
-                          </Alert>
-                        </div>
-                      )}
-                      {!labelsLoading &&
-                        !labelsError &&
-                        availableLabels
-                          .filter((label) => {
-                            if (!labelSearchFilter) return true;
-                            return label.name
-                              .toLowerCase()
-                              .includes(labelSearchFilter.toLowerCase());
-                          })
-                          .map((label) => {
-                            const isSelected = isLabelSelected(label.name);
-                            return (
-                              <Tooltip
-                                key={label.id || label.name}
-                                content={label.description || ''}
-                                position="right"
-                              >
-                                <div
-                                  style={{
-                                    padding: '0.5rem',
-                                    cursor: isSelected
-                                      ? 'not-allowed'
-                                      : 'pointer',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '0.5rem',
-                                    opacity: isSelected ? 0.6 : 1,
-                                  }}
-                                  onMouseEnter={(e) => {
-                                    if (!isSelected) {
-                                      e.currentTarget.style.backgroundColor =
-                                        '#f0f0f0';
-                                    }
-                                  }}
-                                  onMouseLeave={(e) => {
-                                    e.currentTarget.style.backgroundColor =
-                                      'transparent';
-                                  }}
-                                >
-                                  <Checkbox
-                                    isChecked={isSelected}
-                                    onChange={(checked) => {
-                                      if (!isSelected) {
-                                        handleToggleLabel(label.name, checked);
-                                      }
-                                    }}
-                                    isDisabled={isSelected}
-                                    label={
-                                      <span
-                                        style={{
-                                          display: 'inline-flex',
-                                          alignItems: 'center',
-                                          gap: '0.5rem',
-                                        }}
-                                      >
-                                        <span
-                                          style={{
-                                            display: 'inline-block',
-                                            width: '12px',
-                                            height: '12px',
-                                            borderRadius: '2px',
-                                            backgroundColor: `#${label.color}`,
-                                            flexShrink: 0,
-                                          }}
-                                        />
-                                        {label.name}
-                                      </span>
-                                    }
-                                    id={`label-${label.name}`}
-                                    onClick={(e) => e.stopPropagation()}
-                                  />
-                                </div>
-                              </Tooltip>
-                            );
-                          })}
-                      {!labelsLoading &&
-                        !labelsError &&
-                        availableLabels.filter((label) => {
+                      </div>
+                    )}
+                    {labelsError && (
+                      <div style={{ padding: '0.5rem' }}>
+                        <Alert
+                          variant="danger"
+                          title="Error loading labels"
+                          isInline
+                        >
+                          {labelsError}
+                        </Alert>
+                      </div>
+                    )}
+                    {!labelsLoading &&
+                      !labelsError &&
+                      availableLabels
+                        .filter((label) => {
                           if (!labelSearchFilter) return true;
                           return label.name
                             .toLowerCase()
                             .includes(labelSearchFilter.toLowerCase());
-                        }).length === 0 && (
-                          <div
-                            style={{
-                              padding: '0.5rem',
-                              color: '#6a6e73',
-                              fontStyle: 'italic',
-                            }}
-                          >
-                            No labels found
-                          </div>
-                        )}
-                    </div>
+                        })
+                        .map((label) => {
+                          const isSelected = isLabelSelected(label.name);
+                          return (
+                            <Tooltip
+                              key={label.id || label.name}
+                              content={label.description || ''}
+                              position="right"
+                            >
+                              <div
+                                style={{
+                                  padding: '0.5rem',
+                                  cursor: isSelected
+                                    ? 'not-allowed'
+                                    : 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '0.5rem',
+                                  opacity: isSelected ? 0.6 : 1,
+                                }}
+                                onMouseEnter={(e) => {
+                                  if (!isSelected) {
+                                    e.currentTarget.style.backgroundColor =
+                                      '#f0f0f0';
+                                  }
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.currentTarget.style.backgroundColor =
+                                    'transparent';
+                                }}
+                              >
+                                <Checkbox
+                                  isChecked={isSelected}
+                                  onChange={(checked) => {
+                                    if (!isSelected) {
+                                      handleToggleLabel(label.name, checked);
+                                    }
+                                  }}
+                                  isDisabled={isSelected}
+                                  label={
+                                    <span
+                                      style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '0.5rem',
+                                      }}
+                                    >
+                                      <span
+                                        style={{
+                                          display: 'inline-block',
+                                          width: '12px',
+                                          height: '12px',
+                                          borderRadius: '2px',
+                                          backgroundColor: `#${label.color}`,
+                                          flexShrink: 0,
+                                        }}
+                                      />
+                                      {label.name}
+                                    </span>
+                                  }
+                                  id={`label-${label.name}`}
+                                  onClick={(e) => e.stopPropagation()}
+                                />
+                              </div>
+                            </Tooltip>
+                          );
+                        })}
+                    {!labelsLoading &&
+                      !labelsError &&
+                      availableLabels.filter((label) => {
+                        if (!labelSearchFilter) return true;
+                        return label.name
+                          .toLowerCase()
+                          .includes(labelSearchFilter.toLowerCase());
+                      }).length === 0 && (
+                        <div
+                          style={{
+                            padding: '0.5rem',
+                            color: '#6a6e73',
+                            fontStyle: 'italic',
+                          }}
+                        >
+                          No labels found
+                        </div>
+                      )}
                   </div>
-                )}
+                </div>
+              )}
             </div>
             {currentLabels.map((label) => (
               <Tooltip
@@ -1448,27 +1454,27 @@ const IssueCard = ({ issue, onMilestoneChange, onIssueUpdate }) => {
             overflowWrap: 'break-word',
           }}
         >
-            {issue.type && (
-              <Tooltip content={issue.type.description || ''}>
-                <span
-                  style={{
-                    display: 'inline-block',
-                    marginRight: '0.5rem',
-                    padding: '0.125rem 0.5rem',
-                    fontSize: '0.75rem',
-                    fontWeight: '500',
-                    borderRadius: '0.25rem',
-                    backgroundColor: issue.type.color,
-                    color: getTypeContrastColor(issue.type.color),
-                    whiteSpace: 'nowrap',
-                    cursor: issue.type.description ? 'help' : 'default',
-                  }}
-                >
-                  {issue.type.name}
-                </span>
-              </Tooltip>
-            )}
-            <span style={{ fontWeight: '500' }}>{issue.title}</span>
+          {issue.type && (
+            <Tooltip content={issue.type.description || ''}>
+              <span
+                style={{
+                  display: 'inline-block',
+                  marginRight: '0.5rem',
+                  padding: '0.125rem 0.5rem',
+                  fontSize: '0.75rem',
+                  fontWeight: '500',
+                  borderRadius: '0.25rem',
+                  backgroundColor: issue.type.color,
+                  color: getTypeContrastColor(issue.type.color),
+                  whiteSpace: 'nowrap',
+                  cursor: issue.type.description ? 'help' : 'default',
+                }}
+              >
+                {issue.type.name}
+              </span>
+            </Tooltip>
+          )}
+          <span style={{ fontWeight: '500' }}>{issue.title}</span>
         </td>
       </tr>
 
@@ -1483,70 +1489,70 @@ const IssueCard = ({ issue, onMilestoneChange, onIssueUpdate }) => {
               backgroundColor: '#fafafa',
             }}
           >
-          <div
-            style={{ paddingTop: '0.5rem' }}
-            dangerouslySetInnerHTML={{ __html: issue.body_html }}
-          />
-          {issue.comments > 0 && (
-            <div style={{ marginTop: issue.body_html ? '1rem' : '0rem' }}>
-              <ExpandableSection
-                toggleText={getCommentsToggleText()}
-                onToggle={() => setIsCommentsExpanded(!isCommentsExpanded)}
-                isExpanded={isCommentsExpanded}
-              >
-                <div style={{ paddingTop: '0.5rem' }}>
-                  {commentsLoading && (
-                    <div style={{ textAlign: 'center', padding: '1rem' }}>
-                      <Spinner size="md" />
-                    </div>
-                  )}
-                  {commentsError && (
-                    <Alert variant="danger" title="Error loading comments">
-                      {commentsError}
-                    </Alert>
-                  )}
-                  {!commentsLoading &&
-                    !commentsError &&
-                    comments.length > 0 && (
-                      <div>
-                        {comments.map((comment) => (
-                          <CommentCard key={comment.id} comment={comment} />
-                        ))}
+            <div
+              style={{ paddingTop: '0.5rem' }}
+              dangerouslySetInnerHTML={{ __html: issue.body_html }}
+            />
+            {issue.comments > 0 && (
+              <div style={{ marginTop: issue.body_html ? '1rem' : '0rem' }}>
+                <ExpandableSection
+                  toggleText={getCommentsToggleText()}
+                  onToggle={() => setIsCommentsExpanded(!isCommentsExpanded)}
+                  isExpanded={isCommentsExpanded}
+                >
+                  <div style={{ paddingTop: '0.5rem' }}>
+                    {commentsLoading && (
+                      <div style={{ textAlign: 'center', padding: '1rem' }}>
+                        <Spinner size="md" />
                       </div>
                     )}
-                  {!commentsLoading &&
-                    !commentsError &&
-                    comments.length === 0 &&
-                    isCommentsExpanded && (
-                      <p style={{ color: '#6a6e73', fontStyle: 'italic' }}>
-                        No comments found.
-                      </p>
+                    {commentsError && (
+                      <Alert variant="danger" title="Error loading comments">
+                        {commentsError}
+                      </Alert>
                     )}
-                </div>
-              </ExpandableSection>
-            </div>
-          )}
-          {issue.reactions?.total_count > 0 && (
-            <div style={{ marginTop: '0.75rem' }}>
-              {reactionsLoading && (
-                <div style={{ textAlign: 'center', padding: '0.5rem' }}>
-                  <Spinner size="sm" />
-                </div>
-              )}
-              {reactionsError && (
-                <Alert
-                  variant="danger"
-                  title="Error loading reactions"
-                  isInline
-                >
-                  {reactionsError}
-                </Alert>
-              )}
-              {!reactionsLoading && !reactionsError && reactions.length > 0 && (
-                <Reactions reactions={reactions} />
-              )}
-            </div>
-          )}
+                    {!commentsLoading &&
+                      !commentsError &&
+                      comments.length > 0 && (
+                        <div>
+                          {comments.map((comment) => (
+                            <CommentCard key={comment.id} comment={comment} />
+                          ))}
+                        </div>
+                      )}
+                    {!commentsLoading &&
+                      !commentsError &&
+                      comments.length === 0 &&
+                      isCommentsExpanded && (
+                        <p style={{ color: '#6a6e73', fontStyle: 'italic' }}>
+                          No comments found.
+                        </p>
+                      )}
+                  </div>
+                </ExpandableSection>
+              </div>
+            )}
+            {issue.reactions?.total_count > 0 && (
+              <div style={{ marginTop: '0.75rem' }}>
+                {reactionsLoading && (
+                  <div style={{ textAlign: 'center', padding: '0.5rem' }}>
+                    <Spinner size="sm" />
+                  </div>
+                )}
+                {reactionsError && (
+                  <Alert
+                    variant="danger"
+                    title="Error loading reactions"
+                    isInline
+                  >
+                    {reactionsError}
+                  </Alert>
+                )}
+                {!reactionsLoading &&
+                  !reactionsError &&
+                  reactions.length > 0 && <Reactions reactions={reactions} />}
+              </div>
+            )}
           </td>
         </tr>
       )}
