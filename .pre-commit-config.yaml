@@ -1,0 +1,41 @@
+repos:
+- repo: https://github.com/pre-commit/pre-commit-hooks
+  rev: v6.0.0
+  hooks:
+  - id: trailing-whitespace
+    exclude: ^tests/?.*/assets/.+
+  - id: end-of-file-fixer
+    exclude: ^tests/?.*/assets/.+
+- repo: https://github.com/hukkin/mdformat
+  rev: 1.0.0
+  hooks:
+  - id: mdformat
+    name: run markdown formatter
+    exclude: ^\.github/.+
+    additional_dependencies:
+    - "mdformat-footnote~=0.1.3"
+    - "mdformat-frontmatter~=2.0.10"
+    - "mdformat-gfm~=1.0.0"
+- repo: https://github.com/astral-sh/uv-pre-commit
+  rev: 0.9.15
+  hooks:
+  - id: uv-lock
+    name: check uv.lock file matches pyproject
+    args: [--project, backend]
+- repo: https://github.com/psf/black
+  rev: 26.3.1  # Use the latest stable version
+  hooks:
+  - id: black
+    name: black (python)
+    # Optional: Specify target python version
+    language_version: python3.12
+- repo: https://github.com/pycqa/isort
+  rev: 8.0.1  # Use the latest version from isort's GitHub
+  hooks:
+  - id: isort
+    name: isort (python)
+- repo: https://github.com/PyCQA/flake8
+  rev: 7.3.0
+  hooks:
+  - id: flake8
+    name: flake8 (python)

@@ -35,7 +35,7 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync -vvv --no-root --no-interaction --no-ansi
 
 # Ensure generated cache and config files are group-writable
-# for both OpenShift (random UID in GID=0) and Podman (root) 
+# for both OpenShift (random UID in GID=0) and Podman (root)
 # environments
 RUN chmod -R g+rwX ${HOME}/.venv
 
