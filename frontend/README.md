@@ -15,11 +15,13 @@ A React application built with Patternfly for managing GitHub project milestones
 ## Setup
 
 1. Install dependencies:
+
 ```bash
 npm install
 ```
 
 2. Start the development server:
+
 ```bash
 npm run dev
 ```
@@ -29,6 +31,7 @@ The application will be available at `http://localhost:3000`.
 ## Build
 
 To build for production:
+
 ```bash
 npm run build
 ```
@@ -36,16 +39,19 @@ npm run build
 ## Testing
 
 Run tests:
+
 ```bash
 npm test
 ```
 
 Run tests with UI:
+
 ```bash
 npm run test:ui
 ```
 
 Run tests with coverage:
+
 ```bash
 npm run test:coverage
 ```
@@ -53,11 +59,13 @@ npm run test:coverage
 ## Code Formatting
 
 Format all code with Prettier:
+
 ```bash
 npm run format
 ```
 
 Check if code is formatted correctly:
+
 ```bash
 npm run format:check
 ```
@@ -105,4 +113,3 @@ frontend/
 - React Testing Library
 - React Markdown for rendering issue descriptions
 - Prettier for code formatting
-

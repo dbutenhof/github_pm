@@ -1,4 +1,5 @@
 # github_pm
+
 A tool to help with project management using GitHub issues, PRs, milestones, labels
 
 ## Overview
@@ -7,7 +8,7 @@ A tool to help with project management using GitHub issues, PRs, milestones, lab
 
 This project provides a backend API (FastAPI) and a frontend web UI for seamless and organized project management, all with modern best practices.
 
----
+______________________________________________________________________
 
 ## Features
 
@@ -17,7 +18,7 @@ This project provides a backend API (FastAPI) and a frontend web UI for seamless
 - Easy-to-use web interface (frontend)
 - Powerful RESTful API (backend)
 
----
+______________________________________________________________________
 
 ## Getting Started
 
@@ -72,7 +73,7 @@ and then you can terminate with 'kill-pm'
   alias kill-pm="kill -- - 49613"
 ```
 
----
+______________________________________________________________________
 
 ## Usage
 
@@ -102,25 +103,25 @@ select and reorder from the "Sort" pulldown at the top of the page. For example,
 you can show "bugs" first, or "high priority" followed by "medium priority"
 followed by "low priority".
 
----
+______________________________________________________________________
 
 ## Development
 
 ### Linting & Formatting
 
-- **Backend:**  
+- **Backend:**
   - Lint: `uv run flake8 src tests`
   - Format: `uv run black --check src tests`
   - Import Sort: `uv run isort --check src tests`
-- **Frontend:**  
+- **Frontend:**
   - Format: `npm run format:check`
   - Lint: (add your preferred lint command)
 
 ### Testing
 
-- **Backend:**  
+- **Backend:**
   - Run tests (add your test framework/command here)
-- **Frontend:**  
+- **Frontend:**
   - Run tests: `npm test -- --run`
 
 ### Continuous Integration
@@ -130,31 +131,30 @@ GitHub Actions are set up for linting, formatting, and testing on pull requests 
 - Backend: Python linting, formatting, dependency install via [uv](https://github.com/astral-sh/uv)
 - Frontend: Node linting, formatting, and tests
 
----
+______________________________________________________________________
 
 ## Configuration
 
 - Edit your backend configuration and package dependencies in `backend/pyproject.toml`
 - Customize Flake8 with `.flake8` in the backend directory
 
----
+______________________________________________________________________
 
 ## Contributing
 
-Issues and pull requests are welcome!  
+Issues and pull requests are welcome!
 See [CONTRIBUTING.md](CONTRIBUTING.md) (if available) or open an issue for any questions or suggestions.
 
----
+______________________________________________________________________
 
 ## License
 
 [Apache License 2.0](LICENSE)
 
----
+______________________________________________________________________
 
 ## Links
 
 - **Homepage & Docs:** [https://github.com/dbutenhof/github-pm](https://github.com/dbutenhof/github-pm)
 - **Repository:** [https://github.com/dbutenhof/github-pm](https://github.com/dbutenhof/github-pm)
 - **Report Issues:** [https://github.com/dbutenhof/github-pm/issues](https://github.com/dbutenhof/github-pm/issues)
-

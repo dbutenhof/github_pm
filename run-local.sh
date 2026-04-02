@@ -56,7 +56,7 @@ fi
 echo "Starting backend..."
 (
     cd ${BACKEND}
-    uv run github_pm 
+    uv run github_pm
 ) &
 backend_pid=$!
 
