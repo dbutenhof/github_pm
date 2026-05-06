@@ -30,10 +30,18 @@ class FirstReviewPayload(BaseModel):
 
 class DeliveryResponse(BaseModel):
     window_days: int
+    window_start: datetime
+    window_end: datetime
     as_of: datetime
     merged_pr_throughput: ThroughputBreakdown
     median_pr_cycle_time: CycleTimePayload
     median_time_to_first_review: FirstReviewPayload
+
+
+class DeliverySeriesResponse(BaseModel):
+    weeks: int
+    week_days: int
+    slices: list[DeliveryResponse]
 
 
 class EscapedDefectRow(BaseModel):
@@ -60,13 +68,31 @@ class EscapedDefectRow(BaseModel):
 
 
 class EscapedDefectResponse(BaseModel):
+    """Per-slice escaped defect stats (incremental in ``(window_start, window_end]``)."""
+
+    window_start: datetime | None = None
+    window_end: datetime | None = None
     as_of: datetime
     releases: list[EscapedDefectRow]
 
 
+class EscapedDefectSeriesResponse(BaseModel):
+    weeks: int
+    week_days: int
+    slices: list[EscapedDefectResponse]
+
+
 class BugBacklogResponse(BaseModel):
     window_days: int
+    window_start: datetime
+    window_end: datetime
     as_of: datetime
     bugs_opened: int
     bugs_closed: int
     net: int
+
+
+class BugBacklogSeriesResponse(BaseModel):
+    weeks: int
+    week_days: int
+    slices: list[BugBacklogResponse]

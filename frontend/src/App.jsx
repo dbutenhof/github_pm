@@ -8,6 +8,9 @@ import {
   Alert,
   Bullseye,
   Button,
+  Tabs,
+  Tab,
+  TabTitleText,
 } from '@patternfly/react-core';
 import {
   fetchMilestones,
@@ -26,6 +29,9 @@ import assigneesCache from './utils/assigneesCache';
 import iconImage from './assets/icon.png';
 import './icon.css';
 
+const MAIN_VIEW_TAB_STORAGE_KEY = 'pmStatsMainViewTab';
+const VALID_MAIN_VIEW_TABS = new Set(['planning', 'sdlc']);
+
 const App = () => {
   // Initialize with cached data if available
   const [milestones, setMilestones] = useState(milestonesCache.data || []);
@@ -36,6 +42,17 @@ const App = () => {
   const [isManageMilestonesOpen, setIsManageMilestonesOpen] = useState(false);
   const [isManageLabelsOpen, setIsManageLabelsOpen] = useState(false);
   const [isManageSortOpen, setIsManageSortOpen] = useState(false);
+  const [activeViewTab, setActiveViewTab] = useState(() => {
+    try {
+      const saved = localStorage.getItem(MAIN_VIEW_TAB_STORAGE_KEY);
+      if (saved && VALID_MAIN_VIEW_TABS.has(saved)) {
+        return saved;
+      }
+    } catch (error) {
+      console.error('Failed to load main view tab from localStorage:', error);
+    }
+    return 'planning';
+  });
 
   // Load sort order from localStorage on mount
   const [sortOrder, setSortOrder] = useState(() => {
@@ -167,6 +184,14 @@ const App = () => {
     }
   }, [sortOrder]);
 
+  useEffect(() => {
+    try {
+      localStorage.setItem(MAIN_VIEW_TAB_STORAGE_KEY, activeViewTab);
+    } catch (error) {
+      console.error('Failed to save main view tab to localStorage:', error);
+    }
+  }, [activeViewTab]);
+
   const loadMilestones = () => {
     setLoading(true);
     setError(null);
@@ -280,42 +305,55 @@ const App = () => {
             </Button>
           </div>
         </div>
-      </PageSection>
-      <PageSection>
-        {loading && (
-          <Bullseye>
-            <Spinner size="xl" />
-          </Bullseye>
-        )}
-
-        {error && (
-          <Alert variant="danger" title="Error loading milestones">
-            {error}
-          </Alert>
-        )}
-
-        {!loading && !error && (
-          <div
-            style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}
+        <Tabs
+          activeKey={activeViewTab}
+          onSelect={(_event, key) => setActiveViewTab(key)}
+          aria-label="Main views"
+          mountOnEnter
+          style={{ marginTop: '1rem' }}
+        >
+          <Tab
+            eventKey="planning"
+            title={<TabTitleText>Planning</TabTitleText>}
           >
-            <SdlcKpisPanel />
-            {milestones.length === 0 && (
-              <Alert variant="info" title="No milestones found">
-                There are no milestones available.
+            {loading && (
+              <Bullseye>
+                <Spinner size="xl" />
+              </Bullseye>
+            )}
+
+            {error && (
+              <Alert variant="danger" title="Error loading milestones">
+                {error}
               </Alert>
             )}
-            {milestones.length > 0 &&
-              milestones.map((milestone) => (
-                <MilestoneCard
-                  key={milestone.number}
-                  milestone={milestone}
-                  sortOrder={sortOrder}
-                  issueMilestoneRefresh={issueMilestoneRefresh}
-                  onIssueMilestoneMoved={handleIssueMilestoneMoved}
-                />
-              ))}
-          </div>
-        )}
+
+            {!loading && !error && (
+              <div
+                style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}
+              >
+                {milestones.length === 0 && (
+                  <Alert variant="info" title="No milestones found">
+                    There are no milestones available.
+                  </Alert>
+                )}
+                {milestones.length > 0 &&
+                  milestones.map((milestone) => (
+                    <MilestoneCard
+                      key={milestone.number}
+                      milestone={milestone}
+                      sortOrder={sortOrder}
+                      issueMilestoneRefresh={issueMilestoneRefresh}
+                      onIssueMilestoneMoved={handleIssueMilestoneMoved}
+                    />
+                  ))}
+              </div>
+            )}
+          </Tab>
+          <Tab eventKey="sdlc" title={<TabTitleText>SDLC</TabTitleText>}>
+            <SdlcKpisPanel />
+          </Tab>
+        </Tabs>
       </PageSection>
       <ManageMilestones
         isOpen={isManageMilestonesOpen}

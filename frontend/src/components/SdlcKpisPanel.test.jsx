@@ -38,12 +38,13 @@ describe('formatDaysAndHours', () => {
 describe('SdlcKpisPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.removeItem('pmStatsSdlcWeeks');
   });
 
-  it('renders title and loads metrics when expanded', async () => {
-    const user = userEvent.setup();
-    fetchSdlcDelivery.mockResolvedValue({
+  const deliverySlice = {
       window_days: 7,
+    window_start: '2025-04-03T12:00:00Z',
+    window_end: '2025-04-10T12:00:00Z',
       as_of: '2025-04-10T12:00:00Z',
       merged_pr_throughput: {
         total: 2,
@@ -63,8 +64,18 @@ describe('SdlcKpisPanel', () => {
         included_pr_count: 1,
         eligible_pr_count: 1,
       },
+  };
+
+  const makeSeriesMocks = (sliceCount) => {
+    const slices = Array.from({ length: sliceCount }, () => ({ ...deliverySlice }));
+    fetchSdlcDelivery.mockResolvedValue({
+      weeks: sliceCount,
+      week_days: 7,
+      slices,
     });
-    fetchEscapedDefectRate.mockResolvedValue({
+    const escapeSlice = {
+      window_start: '2025-04-03T12:00:00Z',
+      window_end: '2025-04-10T12:00:00Z',
       as_of: '2025-04-10T12:00:00Z',
       releases: [
         {
@@ -77,31 +88,76 @@ describe('SdlcKpisPanel', () => {
           is_next_open: true,
         },
       ],
-    });
-    fetchBugBacklogDelta.mockResolvedValue({
+    };
+    const backlogSlice = {
       window_days: 7,
+      window_start: '2025-04-03T12:00:00Z',
+      window_end: '2025-04-10T12:00:00Z',
       as_of: '2025-04-10T12:00:00Z',
       bugs_opened: 1,
       bugs_closed: 0,
       net: 1,
+    };
+    fetchEscapedDefectRate.mockResolvedValue({
+      weeks: sliceCount,
+      week_days: 7,
+      slices: Array.from({ length: sliceCount }, () => ({ ...escapeSlice })),
     });
+    fetchBugBacklogDelta.mockResolvedValue({
+      weeks: sliceCount,
+      week_days: 7,
+      slices: Array.from({ length: sliceCount }, () => ({ ...backlogSlice })),
+    });
+  };
+
+  it('renders title and loads metrics on mount', async () => {
+    makeSeriesMocks(1);
 
     render(<SdlcKpisPanel />);
     expect(screen.getByText('SDLC KPIs')).toBeInTheDocument();
 
-    const toggle = screen.getByRole('button', {
-      name: /show sdlc metrics/i,
-    });
-    await user.click(toggle);
-
     await waitFor(() => {
-      expect(fetchSdlcDelivery).toHaveBeenCalled();
-      expect(fetchEscapedDefectRate).toHaveBeenCalled();
-      expect(fetchBugBacklogDelta).toHaveBeenCalled();
+      expect(fetchSdlcDelivery).toHaveBeenCalledWith(4, 7);
+      expect(fetchEscapedDefectRate).toHaveBeenCalledWith(4, 7);
+      expect(fetchBugBacklogDelta).toHaveBeenCalledWith(4, 7);
     });
 
     await waitFor(() => {
       expect(screen.getByText(/Merged PR throughput/i)).toBeInTheDocument();
     });
+  });
+
+  it('loads week count from localStorage', async () => {
+    localStorage.setItem('pmStatsSdlcWeeks', '8');
+    makeSeriesMocks(8);
+
+    render(<SdlcKpisPanel />);
+
+    await waitFor(() => {
+      expect(fetchSdlcDelivery).toHaveBeenCalledWith(8, 7);
+      expect(fetchEscapedDefectRate).toHaveBeenCalledWith(8, 7);
+      expect(fetchBugBacklogDelta).toHaveBeenCalledWith(8, 7);
+    });
+  });
+
+  it('persists week count to localStorage when applied', async () => {
+    const user = userEvent.setup();
+    makeSeriesMocks(4);
+
+    render(<SdlcKpisPanel />);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/weeks/i)).toBeInTheDocument();
+    });
+
+    const input = screen.getByLabelText(/weeks/i);
+    await user.clear(input);
+    await user.type(input, '6');
+    await user.tab();
+
+    await waitFor(() => {
+      expect(localStorage.getItem('pmStatsSdlcWeeks')).toBe('6');
+    });
+    expect(fetchSdlcDelivery).toHaveBeenLastCalledWith(6, 7);
   });
 });

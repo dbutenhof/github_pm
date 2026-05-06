@@ -119,30 +119,32 @@ describe('api', () => {
   });
 
   describe('fetchSdlcDelivery', () => {
-    it('requests delivery metrics with default days', async () => {
+    it('requests delivery metrics with default weeks', async () => {
       global.fetch.mockResolvedValue({
         ok: true,
-        json: async () => ({ window_days: 7 }),
+        json: async () => ({ weeks: 4, week_days: 7, slices: [] }),
       });
       const result = await fetchSdlcDelivery();
-      expect(result.window_days).toBe(7);
-      expect(global.fetch).toHaveBeenCalledWith('/api/v1/sdlc/delivery?days=7');
+      expect(result.weeks).toBe(4);
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/v1/sdlc/delivery?weeks=4&week_days=7'
+      );
     });
 
     it('throws on failure', async () => {
       global.fetch.mockResolvedValue({ ok: false, statusText: 'Bad Gateway' });
-      await expect(fetchSdlcDelivery(14)).rejects.toThrow(
+      await expect(fetchSdlcDelivery(8)).rejects.toThrow(
         'Failed to fetch SDLC delivery metrics'
       );
       expect(global.fetch).toHaveBeenCalledWith(
-        '/api/v1/sdlc/delivery?days=14'
+        '/api/v1/sdlc/delivery?weeks=8&week_days=7'
       );
     });
   });
 
   describe('fetchEscapedDefectRate', () => {
     it('fetches escaped defect rate', async () => {
-      const body = { releases: [] };
+      const body = { weeks: 4, week_days: 7, slices: [] };
       global.fetch.mockResolvedValue({
         ok: true,
         json: async () => body,
@@ -150,7 +152,7 @@ describe('api', () => {
       const result = await fetchEscapedDefectRate();
       expect(result).toEqual(body);
       expect(global.fetch).toHaveBeenCalledWith(
-        '/api/v1/sdlc/escaped-defect-rate'
+        '/api/v1/sdlc/escaped-defect-rate?weeks=4&week_days=7'
       );
     });
   });
@@ -159,11 +161,11 @@ describe('api', () => {
     it('requests bug backlog delta', async () => {
       global.fetch.mockResolvedValue({
         ok: true,
-        json: async () => ({ net: 0 }),
+        json: async () => ({ weeks: 4, slices: [] }),
       });
-      await fetchBugBacklogDelta(7);
+      await fetchBugBacklogDelta();
       expect(global.fetch).toHaveBeenCalledWith(
-        '/api/v1/sdlc/bug-backlog-delta?days=7'
+        '/api/v1/sdlc/bug-backlog-delta?weeks=4&week_days=7'
       );
     });
   });

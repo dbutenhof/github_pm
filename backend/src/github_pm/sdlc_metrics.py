@@ -439,6 +439,33 @@ def bug_issues_closed_query(github_repo: str, bug_labels_csv: str, since: dateti
     )
 
 
+def bug_issues_created_query_between(
+    github_repo: str, bug_labels_csv: str, lo: datetime, hi: datetime
+) -> str:
+    """Bug issues created with ``created`` in ``[date(lo), date(hi)]`` (UTC dates, inclusive)."""
+    label_clause = _label_or_clause(_parse_sdlc_label_csv(bug_labels_csv))
+    a, b = date_str(lo), date_str(hi)
+    if a > b:
+        a, b = b, a
+    return (
+        f"{repo_search_fragment(github_repo)} is:issue {label_clause} created:{a}..{b}"
+    )
+
+
+def bug_issues_closed_query_between(
+    github_repo: str, bug_labels_csv: str, lo: datetime, hi: datetime
+) -> str:
+    """Closed bug issues with ``closed`` in ``[date(lo), date(hi)]`` (UTC dates, inclusive)."""
+    label_clause = _label_or_clause(_parse_sdlc_label_csv(bug_labels_csv))
+    a, b = date_str(lo), date_str(hi)
+    if a > b:
+        a, b = b, a
+    return (
+        f"{repo_search_fragment(github_repo)} is:issue is:closed {label_clause} "
+        f"closed:{a}..{b}"
+    )
+
+
 def _label_or_clause(labels: frozenset[str]) -> str:
     if not labels:
         return ""

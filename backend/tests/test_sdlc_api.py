@@ -99,26 +99,31 @@ class TestSdlcDelivery:
             ctx.sdlc_docs_labels = "documentation"
             app.dependency_overrides[connection] = override_conn
             try:
-                r = client.get("/api/v1/sdlc/delivery?days=7")
+                r = client.get("/api/v1/sdlc/delivery?weeks=1&week_days=7")
             finally:
                 app.dependency_overrides.clear()
 
         assert r.status_code == 200
         data = r.json()
-        assert data["window_days"] == 7
-        assert data["merged_pr_throughput"]["total"] == 1
-        assert data["median_pr_cycle_time"]["pr_count"] == 1
-        assert data["median_time_to_first_review"]["eligible_pr_count"] == 1
-        assert data["median_time_to_first_review"]["included_pr_count"] == 1
+        assert data["weeks"] == 1
+        assert data["week_days"] == 7
+        assert len(data["slices"]) == 1
+        s0 = data["slices"][0]
+        assert s0["window_days"] == 7
+        assert s0["merged_pr_throughput"]["total"] == 1
+        assert s0["median_pr_cycle_time"]["pr_count"] == 1
+        assert s0["median_time_to_first_review"]["eligible_pr_count"] == 1
+        assert s0["median_time_to_first_review"]["included_pr_count"] == 1
 
 
 class TestEscapedDefect:
     def test_escaped_defect_rate(self, client, mock_connector):
+        fixed = datetime(2025, 4, 10, 12, 0, 0, tzinfo=UTC)
         _human = {"__typename": "User", "login": "contributor"}
         feat = {
             "number": 1,
-            "createdAt": "2025-01-01T10:00:00Z",
-            "mergedAt": "2025-01-02T10:00:00Z",
+            "createdAt": "2025-04-01T10:00:00Z",
+            "mergedAt": "2025-04-08T10:00:00Z",
             "additions": 1,
             "deletions": 1,
             "labels": {"nodes": [{"name": "enhancement"}]},
@@ -127,8 +132,8 @@ class TestEscapedDefect:
         }
         bug = {
             "number": 2,
-            "createdAt": "2025-01-01T10:00:00Z",
-            "mergedAt": "2025-01-03T10:00:00Z",
+            "createdAt": "2025-04-01T10:00:00Z",
+            "mergedAt": "2025-04-08T11:00:00Z",
             "additions": 1,
             "deletions": 1,
             "labels": {"nodes": [{"name": "bug"}]},
@@ -137,8 +142,8 @@ class TestEscapedDefect:
         }
         doc_pr = {
             "number": 3,
-            "createdAt": "2025-01-01T10:00:00Z",
-            "mergedAt": "2025-01-04T10:00:00Z",
+            "createdAt": "2025-04-01T10:00:00Z",
+            "mergedAt": "2025-04-08T12:00:00Z",
             "additions": 1,
             "deletions": 1,
             "labels": {"nodes": [{"name": "documentation"}]},
@@ -163,7 +168,12 @@ class TestEscapedDefect:
             if "/search/issues" in path:
                 # Escape issue on v0.6.0 counts toward previous milestone v0.5.1
                 return {
-                    "items": [{"milestone": {"title": "v0.6.0"}}],
+                    "items": [
+                        {
+                            "milestone": {"title": "v0.6.0"},
+                            "created_at": "2025-04-06T10:00:00Z",
+                        }
+                    ],
                     "total_count": 1,
                 }
             raise AssertionError(path)
@@ -173,7 +183,10 @@ class TestEscapedDefect:
         async def override_conn():
             yield mock_connector
 
-        with patch("github_pm.sdlc_api.context") as ctx:
+        with (
+            patch("github_pm.sdlc_metrics.utc_now", return_value=fixed),
+            patch("github_pm.sdlc_api.context") as ctx,
+        ):
             ctx.github_repo = "test/repo"
             ctx.sdlc_feature_labels = "enhancement"
             ctx.sdlc_bug_labels = "bug"
@@ -181,15 +194,17 @@ class TestEscapedDefect:
             ctx.sdlc_escape_label = "escape"
             app.dependency_overrides[connection] = override_conn
             try:
-                r = client.get("/api/v1/sdlc/escaped-defect-rate")
+                r = client.get("/api/v1/sdlc/escaped-defect-rate?weeks=1&week_days=7")
             finally:
                 app.dependency_overrides.clear()
 
         assert r.status_code == 200
         data = r.json()
-        assert "as_of" in data
-        assert "recent_closed_days" not in data
-        body = data["releases"]
+        assert data["weeks"] == 1
+        assert len(data["slices"]) == 1
+        slice0 = data["slices"][0]
+        assert "as_of" in slice0
+        body = slice0["releases"]
         assert len(body) == 3
         assert [r["release"] for r in body] == ["v0.5.1", "v0.6.0", "v0.7.0"]
         assert [r["is_next_open"] for r in body] == [False, False, True]
@@ -208,11 +223,18 @@ class TestEscapedDefect:
 
 class TestBugBacklog:
     def test_bug_backlog_delta(self, client, mock_connector):
-        counts = iter([4, 1])
+        opened_items = [
+            {"created_at": "2025-04-05T10:00:00Z", "closed_at": None} for _ in range(4)
+        ]
+        closed_items = [
+            {"created_at": "2025-03-01T00:00:00Z", "closed_at": "2025-04-06T10:00:00Z"}
+        ]
 
         def get_side(path: str, headers=None):
             if "/search/issues" in path:
-                return {"total_count": next(counts)}
+                if "is:closed" in path:
+                    return {"items": closed_items, "total_count": len(closed_items)}
+                return {"items": opened_items, "total_count": len(opened_items)}
             raise AssertionError(path)
 
         mock_connector.get.side_effect = get_side
@@ -229,12 +251,15 @@ class TestBugBacklog:
             ctx.sdlc_bug_labels = "bug"
             app.dependency_overrides[connection] = override_conn
             try:
-                r = client.get("/api/v1/sdlc/bug-backlog-delta?days=7")
+                r = client.get("/api/v1/sdlc/bug-backlog-delta?weeks=1&week_days=7")
             finally:
                 app.dependency_overrides.clear()
 
         assert r.status_code == 200
         d = r.json()
-        assert d["bugs_opened"] == 4
-        assert d["bugs_closed"] == 1
-        assert d["net"] == 3
+        assert d["weeks"] == 1
+        assert len(d["slices"]) == 1
+        s0 = d["slices"][0]
+        assert s0["bugs_opened"] == 4
+        assert s0["bugs_closed"] == 1
+        assert s0["net"] == 3
