@@ -10,10 +10,10 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import Any
 
-from github_pm.api import VERSION_MATCH, Connector
+from github_pm import sdlc_metrics as sm
+from github_pm.api import Connector, VERSION_MATCH
 from github_pm.context import Settings
 from github_pm.logger import logger
-from github_pm import sdlc_metrics as sm
 from github_pm.sdlc_models import (
     BugBacklogResponse,
     BugBacklogSeriesResponse,
@@ -109,7 +109,9 @@ def compute_sdlc_delivery(
             logger.warning("Failed to fetch reviews for PR %s: %s", num, e)
             continue
         if not isinstance(raw, list):
-            logger.warning("Reviews for PR %s: expected JSON array, got %s", num, type(raw))
+            logger.warning(
+                "Reviews for PR %s: expected JSON array, got %s", num, type(raw)
+            )
             continue
         rev_list: list[dict[str, Any]] = raw
         first_at = sm.first_human_review_submitted_at(rev_list)

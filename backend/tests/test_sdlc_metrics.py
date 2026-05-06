@@ -1,14 +1,14 @@
 """Unit tests for sdlc_metrics helpers."""
 
+from datetime import datetime, UTC
 import re
-from datetime import UTC, datetime
 
 import pytest
 
-_SEMVER = re.compile(r"^v\d+\.\d+\.\d+$")
-
-from github_pm.context import Settings
 from github_pm import sdlc_metrics as sm
+from github_pm.context import Settings
+
+_SEMVER = re.compile(r"^v\d+\.\d+\.\d+$")
 
 
 @pytest.fixture
@@ -153,9 +153,7 @@ def test_select_escaped_defect_milestones_skips_missing_closed_line():
 
 
 def test_select_escaped_defect_milestones_empty_when_no_open_semver():
-    assert (
-        sm.select_escaped_defect_milestones([], [], version_match=_SEMVER) == []
-    )
+    assert sm.select_escaped_defect_milestones([], [], version_match=_SEMVER) == []
 
 
 def test_build_semver_milestone_previous_map():
@@ -184,7 +182,5 @@ def test_count_escape_issues_by_prior_milestone():
         {"milestone": None},
         {"milestone": {"title": "backlog"}},
     ]
-    c = sm.count_escape_issues_by_prior_milestone(
-        items, prev, version_match=_SEMVER
-    )
+    c = sm.count_escape_issues_by_prior_milestone(items, prev, version_match=_SEMVER)
     assert c == {"v1.0.0": 2, "v2.0.0": 1}

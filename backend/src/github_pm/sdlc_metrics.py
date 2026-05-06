@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import re
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, UTC
+import re
 from typing import Any, Literal
 from urllib.parse import quote_plus
 
-from github_pm.context import Settings, _parse_sdlc_label_csv
+from github_pm.context import _parse_sdlc_label_csv, Settings
 from github_pm.logger import logger
 
 PRType = Literal["feature", "bug_fix", "docs", "unclassified"]
@@ -134,7 +134,9 @@ def filter_out_bot_pr_nodes(nodes: list[dict[str, Any]]) -> list[dict[str, Any]]
     return out
 
 
-def first_human_review_submitted_at(reviews: Sequence[Mapping[str, Any]]) -> datetime | None:
+def first_human_review_submitted_at(
+    reviews: Sequence[Mapping[str, Any]],
+) -> datetime | None:
     """First review by submission time among non-bot authors."""
     candidates: list[datetime] = []
     for r in reviews:
@@ -229,9 +231,7 @@ def select_escaped_defect_milestones(
     closed milestone are omitted (except the open line, which requires an open milestone).
     """
     open_semver_titles = [
-        m["title"]
-        for m in open_milestones
-        if version_match.match(m.get("title") or "")
+        m["title"] for m in open_milestones if version_match.match(m.get("title") or "")
     ]
     if not open_semver_titles:
         return []
@@ -287,10 +287,8 @@ def escape_labeled_issues_query(github_repo: str, escape_label: str) -> str:
     lab = escape_label.strip().lower()
     if not lab:
         lab = "escape"
-    label_tok = (
-        f'label:"{lab}"' if any(c in lab for c in " /") else f"label:{lab}"
-    )
-    return f"{repo_search_fragment(github_repo)} {label_tok}"
+    label_tok = f'label:"{lab}"' if any(c in lab for c in " /") else f"label:{lab}"
+    return f"{repo_search_fragment(github_repo)} is:issue {label_tok}"
 
 
 def rest_search_issue_items_paginated(
@@ -417,12 +415,12 @@ def opened_prs_query(github_repo: str, created_since: datetime) -> str:
 def milestone_merged_prs_query(github_repo: str, milestone_title: str) -> str:
     # Quote milestone title for spaces/special chars
     safe = milestone_title.replace('"', "\\")
-    return (
-        f'{repo_search_fragment(github_repo)} is:pr is:merged milestone:"{safe}"'
-    )
+    return f'{repo_search_fragment(github_repo)} is:pr is:merged milestone:"{safe}"'
 
 
-def bug_issues_created_query(github_repo: str, bug_labels_csv: str, since: datetime) -> str:
+def bug_issues_created_query(
+    github_repo: str, bug_labels_csv: str, since: datetime
+) -> str:
     """Issues with bug label(s) created on or after `since` (any state)."""
     label_clause = _label_or_clause(_parse_sdlc_label_csv(bug_labels_csv))
     return (
@@ -431,7 +429,9 @@ def bug_issues_created_query(github_repo: str, bug_labels_csv: str, since: datet
     )
 
 
-def bug_issues_closed_query(github_repo: str, bug_labels_csv: str, since: datetime) -> str:
+def bug_issues_closed_query(
+    github_repo: str, bug_labels_csv: str, since: datetime
+) -> str:
     label_clause = _label_or_clause(_parse_sdlc_label_csv(bug_labels_csv))
     return (
         f"{repo_search_fragment(github_repo)} is:issue is:closed {label_clause} "
@@ -469,7 +469,10 @@ def bug_issues_closed_query_between(
 def _label_or_clause(labels: frozenset[str]) -> str:
     if not labels:
         return ""
-    parts = [f'label:"{lab}"' if any(c in lab for c in " /") else f"label:{lab}" for lab in sorted(labels)]
+    parts = [
+        f'label:"{lab}"' if any(c in lab for c in " /") else f"label:{lab}"
+        for lab in sorted(labels)
+    ]
     if len(parts) == 1:
         return parts[0]
     return "(" + " OR ".join(parts) + ")"

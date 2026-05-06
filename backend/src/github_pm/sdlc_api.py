@@ -6,6 +6,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
 
+from github_pm import sdlc_service
 from github_pm.api import connection, Connector
 from github_pm.context import context
 from github_pm.sdlc_models import (
@@ -13,7 +14,6 @@ from github_pm.sdlc_models import (
     DeliverySeriesResponse,
     EscapedDefectSeriesResponse,
 )
-from github_pm import sdlc_service
 
 sdlc_router = APIRouter(prefix="/sdlc", tags=["sdlc"])
 

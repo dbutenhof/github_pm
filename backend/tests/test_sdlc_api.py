@@ -1,13 +1,13 @@
 """Tests for SDLC KPI API routes (mocked GitHub)."""
 
-from datetime import UTC, datetime
+from datetime import datetime, UTC
 from unittest.mock import MagicMock, patch
 
 from fastapi.testclient import TestClient
 import pytest
 
-from github_pm.app import app
 from github_pm.api import connection
+from github_pm.app import app
 
 
 def _graphql_page(nodes: list, has_next: bool = False, cursor: str | None = "c1"):
@@ -232,7 +232,8 @@ class TestBugBacklog:
 
         def get_side(path: str, headers=None):
             if "/search/issues" in path:
-                if "is:closed" in path:
+                # q= is URL-encoded (e.g. is:closed -> is%3Aclosed)
+                if "is%3Aclosed" in path or "is:closed" in path:
                     return {"items": closed_items, "total_count": len(closed_items)}
                 return {"items": opened_items, "total_count": len(opened_items)}
             raise AssertionError(path)
