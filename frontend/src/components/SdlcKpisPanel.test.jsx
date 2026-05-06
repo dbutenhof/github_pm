@@ -42,32 +42,34 @@ describe('SdlcKpisPanel', () => {
   });
 
   const deliverySlice = {
-      window_days: 7,
+    window_days: 7,
     window_start: '2025-04-03T12:00:00Z',
     window_end: '2025-04-10T12:00:00Z',
-      as_of: '2025-04-10T12:00:00Z',
-      merged_pr_throughput: {
-        total: 2,
-        by_pr_type: { feature: 2, bug_fix: 0, docs: 0, unclassified: 0 },
-        by_pr_size: { tiny: 2, small: 0, medium: 0, large: 0, unknown: 0 },
-      },
-      median_pr_cycle_time: {
-        median_seconds: 3600,
-        by_pr_type: { feature: 3600 },
-        by_pr_size: { tiny: 3600 },
-        pr_count: 2,
-      },
-      median_time_to_first_review: {
-        median_seconds: 600,
-        by_pr_type: { feature: 600 },
-        by_pr_size: { tiny: 600 },
-        included_pr_count: 1,
-        eligible_pr_count: 1,
-      },
+    as_of: '2025-04-10T12:00:00Z',
+    merged_pr_throughput: {
+      total: 2,
+      by_pr_type: { feature: 2, bug_fix: 0, docs: 0, unclassified: 0 },
+      by_pr_size: { tiny: 2, small: 0, medium: 0, large: 0, unknown: 0 },
+    },
+    median_pr_cycle_time: {
+      median_seconds: 3600,
+      by_pr_type: { feature: 3600 },
+      by_pr_size: { tiny: 3600 },
+      pr_count: 2,
+    },
+    median_time_to_first_review: {
+      median_seconds: 600,
+      by_pr_type: { feature: 600 },
+      by_pr_size: { tiny: 600 },
+      included_pr_count: 1,
+      eligible_pr_count: 1,
+    },
   };
 
   const makeSeriesMocks = (sliceCount) => {
-    const slices = Array.from({ length: sliceCount }, () => ({ ...deliverySlice }));
+    const slices = Array.from({ length: sliceCount }, () => ({
+      ...deliverySlice,
+    }));
     fetchSdlcDelivery.mockResolvedValue({
       weeks: sliceCount,
       week_days: 7,

@@ -101,21 +101,19 @@ const WeekBarChart = ({
         marginTop: '0.35rem',
         ...(compact
           ? {
-            width: 'fit-content',
-            maxWidth: '100%',
-            flexWrap: 'nowrap',
-          }
+              width: 'fit-content',
+              maxWidth: '100%',
+              flexWrap: 'nowrap',
+            }
           : {
-            width: '100%',
-          }),
+              width: '100%',
+            }),
       }}
     >
       {bars.map((b, i) => {
         const v = vals[i];
         const h =
-          v == null
-            ? 0
-            : Math.max(4, (Math.abs(v) / maxV) * chartHeightPx);
+          v == null ? 0 : Math.max(4, (Math.abs(v) / maxV) * chartHeightPx);
         const hoverMain =
           formatHoverValue != null
             ? formatHoverValue(v, b.slice)
@@ -214,7 +212,13 @@ const BreakdownWeekCharts = ({
     >
       {byKey.map((key) => (
         <div key={key} style={breakdownBoxStyle}>
-          <strong style={{ fontSize: '0.875rem', display: 'block', marginBottom: '0.35rem' }}>
+          <strong
+            style={{
+              fontSize: '0.875rem',
+              display: 'block',
+              marginBottom: '0.35rem',
+            }}
+          >
             {key}
           </strong>
           <WeekBarChart
@@ -305,18 +309,10 @@ const SdlcKpisPanel = () => {
   const backlogSlices = backlog?.slices ?? [];
 
   const throughputKeys = deliverySlices[0]
-    ? [
-      ...Object.keys(
-        deliverySlices[0].merged_pr_throughput?.by_pr_type || {}
-      ),
-    ]
+    ? [...Object.keys(deliverySlices[0].merged_pr_throughput?.by_pr_type || {})]
     : [];
   const sizeKeys = deliverySlices[0]
-    ? [
-      ...Object.keys(
-        deliverySlices[0].merged_pr_throughput?.by_pr_size || {}
-      ),
-    ]
+    ? [...Object.keys(deliverySlices[0].merged_pr_throughput?.by_pr_size || {})]
     : [];
 
   return (
@@ -385,130 +381,144 @@ const SdlcKpisPanel = () => {
             >
               <section>
                 <Title headingLevel="h4" size="lg">
-                Delivery (per {delivery.week_days || 7}-day window)
+                  Delivery (per {delivery.week_days || 7}-day window)
                 </Title>
                 <p style={{ color: '#6a6e73', fontSize: '0.875rem' }}>
-                {deliverySlices.length} week
-                {deliverySlices.length === 1 ? '' : 's'} (oldest left → newest
-                right). As of{' '}
-                {new Date(deliverySlices[deliverySlices.length - 1]?.as_of).toLocaleString()}
+                  {deliverySlices.length} week
+                  {deliverySlices.length === 1 ? '' : 's'} (oldest left → newest
+                  right). As of{' '}
+                  {new Date(
+                    deliverySlices[deliverySlices.length - 1]?.as_of
+                  ).toLocaleString()}
                 </p>
 
-                <Title headingLevel="h5" size="md" style={{ marginTop: '0.75rem' }}>
-                1. Merged PR throughput (total)
+                <Title
+                  headingLevel="h5"
+                  size="md"
+                  style={{ marginTop: '0.75rem' }}
+                >
+                  1. Merged PR throughput (total)
                 </Title>
-              <WeekBarChart
-                bars={deliverySlices.map((slice) => ({
-                  slice,
-                  value: slice.merged_pr_throughput?.total ?? 0,
-                }))}
-                formatValue={(v) => String(v ?? 0)}
-              />
-
-              <BreakdownWeekCharts
-                title="Throughput by PR type"
-                slices={deliverySlices}
-                byKey={throughputKeys}
-                chartKey={(slice, key) =>
-                  slice.merged_pr_throughput?.by_pr_type?.[key] ?? 0
-                }
-              />
-              <BreakdownWeekCharts
-                title="Throughput by PR size"
-                slices={deliverySlices}
-                byKey={sizeKeys}
-                chartKey={(slice, key) =>
-                  slice.merged_pr_throughput?.by_pr_size?.[key] ?? 0
-                }
+                <WeekBarChart
+                  bars={deliverySlices.map((slice) => ({
+                    slice,
+                    value: slice.merged_pr_throughput?.total ?? 0,
+                  }))}
+                  formatValue={(v) => String(v ?? 0)}
                 />
 
-                <Title headingLevel="h5" size="md" style={{ marginTop: '1rem' }}>
+                <BreakdownWeekCharts
+                  title="Throughput by PR type"
+                  slices={deliverySlices}
+                  byKey={throughputKeys}
+                  chartKey={(slice, key) =>
+                    slice.merged_pr_throughput?.by_pr_type?.[key] ?? 0
+                  }
+                />
+                <BreakdownWeekCharts
+                  title="Throughput by PR size"
+                  slices={deliverySlices}
+                  byKey={sizeKeys}
+                  chartKey={(slice, key) =>
+                    slice.merged_pr_throughput?.by_pr_size?.[key] ?? 0
+                  }
+                />
+
+                <Title
+                  headingLevel="h5"
+                  size="md"
+                  style={{ marginTop: '1rem' }}
+                >
                   2. Median PR cycle time (open → merge)
                 </Title>
-              <WeekBarChart
-                bars={deliverySlices.map((slice) => ({
-                  slice,
-                  value: slice.median_pr_cycle_time?.median_seconds,
-                }))}
-                formatValue={(v) => formatDaysAndHours(v)}
-                formatHoverValue={(v, slice) =>
-                  v == null
-                    ? '—'
-                    : `${formatDaysAndHours(v)} (${slice.median_pr_cycle_time?.pr_count ?? 0} PRs)`
-                }
-              />
-              <BreakdownWeekCharts
-                title="Median cycle time by PR type"
-                slices={deliverySlices}
-                byKey={[
-                  ...Object.keys(
-                    deliverySlices[0].median_pr_cycle_time?.by_pr_type || {}
-                  ),
-                ]}
-                chartKey={(slice, key) =>
-                  slice.median_pr_cycle_time?.by_pr_type?.[key] ?? null
-                }
-                formatBarValue={(v) => formatDaysAndHours(v)}
-              />
-              <BreakdownWeekCharts
-                title="Median cycle time by PR size"
-                slices={deliverySlices}
-                byKey={[
-                  ...Object.keys(
-                    deliverySlices[0].median_pr_cycle_time?.by_pr_size || {}
-                  ),
-                ]}
-                chartKey={(slice, key) =>
-                  slice.median_pr_cycle_time?.by_pr_size?.[key] ?? null
-                }
-                formatBarValue={(v) => formatDaysAndHours(v)}
+                <WeekBarChart
+                  bars={deliverySlices.map((slice) => ({
+                    slice,
+                    value: slice.median_pr_cycle_time?.median_seconds,
+                  }))}
+                  formatValue={(v) => formatDaysAndHours(v)}
+                  formatHoverValue={(v, slice) =>
+                    v == null
+                      ? '—'
+                      : `${formatDaysAndHours(v)} (${slice.median_pr_cycle_time?.pr_count ?? 0} PRs)`
+                  }
+                />
+                <BreakdownWeekCharts
+                  title="Median cycle time by PR type"
+                  slices={deliverySlices}
+                  byKey={[
+                    ...Object.keys(
+                      deliverySlices[0].median_pr_cycle_time?.by_pr_type || {}
+                    ),
+                  ]}
+                  chartKey={(slice, key) =>
+                    slice.median_pr_cycle_time?.by_pr_type?.[key] ?? null
+                  }
+                  formatBarValue={(v) => formatDaysAndHours(v)}
+                />
+                <BreakdownWeekCharts
+                  title="Median cycle time by PR size"
+                  slices={deliverySlices}
+                  byKey={[
+                    ...Object.keys(
+                      deliverySlices[0].median_pr_cycle_time?.by_pr_size || {}
+                    ),
+                  ]}
+                  chartKey={(slice, key) =>
+                    slice.median_pr_cycle_time?.by_pr_size?.[key] ?? null
+                  }
+                  formatBarValue={(v) => formatDaysAndHours(v)}
                 />
 
-                <Title headingLevel="h5" size="md" style={{ marginTop: '1rem' }}>
+                <Title
+                  headingLevel="h5"
+                  size="md"
+                  style={{ marginTop: '1rem' }}
+                >
                   3. Median time to first human review
                 </Title>
                 <p style={{ fontSize: '0.875rem', color: '#6a6e73' }}>
-                Eligible / included PR counts vary by week (see tooltips).
+                  Eligible / included PR counts vary by week (see tooltips).
                 </p>
-              <WeekBarChart
-                bars={deliverySlices.map((slice) => ({
-                  slice,
-                  value: slice.median_time_to_first_review?.median_seconds,
-                }))}
-                formatValue={(v) => formatDaysAndHours(v)}
-                formatHoverValue={(v, slice) =>
-                  v == null
-                    ? '—'
-                    : `${formatDaysAndHours(v)} (eligible ${slice.median_time_to_first_review?.eligible_pr_count ?? 0}, with review ${slice.median_time_to_first_review?.included_pr_count ?? 0})`
-                }
-              />
-              <BreakdownWeekCharts
-                title="Median time to first review by PR type"
-                slices={deliverySlices}
-                byKey={[
-                  ...Object.keys(
-                    deliverySlices[0].median_time_to_first_review?.by_pr_type ||
-                    {}
-                  ),
-                ]}
-                chartKey={(slice, key) =>
-                  slice.median_time_to_first_review?.by_pr_type?.[key] ?? null
-                }
-                formatBarValue={(v) => formatDaysAndHours(v)}
-              />
-              <BreakdownWeekCharts
-                title="Median time to first review by PR size"
-                slices={deliverySlices}
-                byKey={[
-                  ...Object.keys(
-                    deliverySlices[0].median_time_to_first_review?.by_pr_size ||
-                    {}
-                  ),
-                ]}
-                chartKey={(slice, key) =>
-                  slice.median_time_to_first_review?.by_pr_size?.[key] ?? null
-                }
-                formatBarValue={(v) => formatDaysAndHours(v)}
+                <WeekBarChart
+                  bars={deliverySlices.map((slice) => ({
+                    slice,
+                    value: slice.median_time_to_first_review?.median_seconds,
+                  }))}
+                  formatValue={(v) => formatDaysAndHours(v)}
+                  formatHoverValue={(v, slice) =>
+                    v == null
+                      ? '—'
+                      : `${formatDaysAndHours(v)} (eligible ${slice.median_time_to_first_review?.eligible_pr_count ?? 0}, with review ${slice.median_time_to_first_review?.included_pr_count ?? 0})`
+                  }
+                />
+                <BreakdownWeekCharts
+                  title="Median time to first review by PR type"
+                  slices={deliverySlices}
+                  byKey={[
+                    ...Object.keys(
+                      deliverySlices[0].median_time_to_first_review
+                        ?.by_pr_type || {}
+                    ),
+                  ]}
+                  chartKey={(slice, key) =>
+                    slice.median_time_to_first_review?.by_pr_type?.[key] ?? null
+                  }
+                  formatBarValue={(v) => formatDaysAndHours(v)}
+                />
+                <BreakdownWeekCharts
+                  title="Median time to first review by PR size"
+                  slices={deliverySlices}
+                  byKey={[
+                    ...Object.keys(
+                      deliverySlices[0].median_time_to_first_review
+                        ?.by_pr_size || {}
+                    ),
+                  ]}
+                  chartKey={(slice, key) =>
+                    slice.median_time_to_first_review?.by_pr_size?.[key] ?? null
+                  }
+                  formatBarValue={(v) => formatDaysAndHours(v)}
                 />
               </section>
 
@@ -517,89 +527,116 @@ const SdlcKpisPanel = () => {
                   Quality
                 </Title>
 
-                <Title headingLevel="h5" size="md" style={{ marginTop: '0.5rem' }}>
-                4. Escaped defect rate (per release milestone, incremental per week)
+                <Title
+                  headingLevel="h5"
+                  size="md"
+                  style={{ marginTop: '0.5rem' }}
+                >
+                  4. Escaped defect rate (per release milestone, incremental per
+                  week)
                 </Title>
                 <p style={{ fontSize: '0.875rem', color: '#6a6e73' }}>
-                Milestone rows follow current repo semver selection. Each bar counts
-                escapes <strong>created</strong> and PRs <strong>merged</strong> into
-                the milestone within that week. As of{' '}
-                {new Date(escapedSlices[escapedSlices.length - 1]?.as_of).toLocaleString()}.
+                  Milestone rows follow current repo semver selection. Each bar
+                  counts escapes <strong>created</strong> and PRs{' '}
+                  <strong>merged</strong> into the milestone within that week.
+                  As of{' '}
+                  {new Date(
+                    escapedSlices[escapedSlices.length - 1]?.as_of
+                  ).toLocaleString()}
+                  .
                 </p>
-              {(escapedSlices[0]?.releases || []).map((row, idx) => (
-                <div
-                  key={`${row.release}-${row.is_next_open ? 'next' : 'closed'}`}
-                  style={{ marginTop: '0.75rem' }}
-                >
-                  <Title headingLevel="h6" size="md">
-                    {row.release}
+                {(escapedSlices[0]?.releases || []).map((row, idx) => (
+                  <div
+                    key={`${row.release}-${row.is_next_open ? 'next' : 'closed'}`}
+                    style={{ marginTop: '0.75rem' }}
+                  >
+                    <Title headingLevel="h6" size="md">
+                      {row.release}
                       {row.is_next_open ? (
-                      <span style={{ color: '#6a6e73', fontWeight: 400 }}>
+                        <span style={{ color: '#6a6e73', fontWeight: 400 }}>
                           {' '}
                           (next open / pre-release)
                         </span>
                       ) : null}
-                  </Title>
-                  <div style={{ fontSize: '0.8rem', marginBottom: '0.25rem' }}>
-                    Rate (escapes ÷ feature+bug+docs PRs merged in window)
-                  </div>
-                  <WeekBarChart
-                    bars={escapedSlices.map((slice) => {
-                      const r = slice.releases[idx];
-                      return {
-                        slice,
-                        value: r?.rate != null ? r.rate * 100 : null,
-                      };
-                    })}
-                    formatValue={(v) =>
-                      v == null ? '—' : `${Number(v).toFixed(1)}%`
-                    }
-                    formatHoverValue={(v, slice) => {
-                      const r = slice.releases[idx];
-                      if (!r) {
-                        return '—';
+                    </Title>
+                    <div
+                      style={{ fontSize: '0.8rem', marginBottom: '0.25rem' }}
+                    >
+                      Rate (escapes ÷ feature+bug+docs PRs merged in window)
+                    </div>
+                    <WeekBarChart
+                      bars={escapedSlices.map((slice) => {
+                        const r = slice.releases[idx];
+                        return {
+                          slice,
+                          value: r?.rate != null ? r.rate * 100 : null,
+                        };
+                      })}
+                      formatValue={(v) =>
+                        v == null ? '—' : `${Number(v).toFixed(1)}%`
                       }
-                      return `${formatRate(r.rate)} — ${r.escape_issues ?? 0} escape(s); features ${r.feature_prs}, bugs ${r.bug_fix_prs}, docs ${r.docs_prs ?? 0}`;
-                    }}
-                  />
-                </div>
-              ))}
-            </section>
+                      formatHoverValue={(v, slice) => {
+                        const r = slice.releases[idx];
+                        if (!r) {
+                          return '—';
+                        }
+                        return `${formatRate(r.rate)} — ${r.escape_issues ?? 0} escape(s); features ${r.feature_prs}, bugs ${r.bug_fix_prs}, docs ${r.docs_prs ?? 0}`;
+                      }}
+                    />
+                  </div>
+                ))}
+              </section>
 
-            <section>
-                <Title headingLevel="h5" size="md" style={{ marginTop: '1rem' }}>
-                5. Open bug backlog (opened / closed / net per week)
-              </Title>
-              <Title headingLevel="h6" size="sm" style={{ marginTop: '0.5rem' }}>
-                Opened
-              </Title>
-              <WeekBarChart
-                bars={backlogSlices.map((slice) => ({
-                  slice,
-                  value: slice.bugs_opened,
-                }))}
-                formatValue={(v) => String(v ?? 0)}
-              />
-              <Title headingLevel="h6" size="sm" style={{ marginTop: '0.75rem' }}>
-                Closed
-              </Title>
-              <WeekBarChart
-                bars={backlogSlices.map((slice) => ({
-                  slice,
-                  value: slice.bugs_closed,
-                }))}
-                formatValue={(v) => String(v ?? 0)}
-              />
-              <Title headingLevel="h6" size="sm" style={{ marginTop: '0.75rem' }}>
-                Net
+              <section>
+                <Title
+                  headingLevel="h5"
+                  size="md"
+                  style={{ marginTop: '1rem' }}
+                >
+                  5. Open bug backlog (opened / closed / net per week)
                 </Title>
-              <WeekBarChart
-                bars={backlogSlices.map((slice) => ({
-                  slice,
-                  value: slice.net,
-                }))}
-                formatValue={(v) => String(v ?? 0)}
-              />
+                <Title
+                  headingLevel="h6"
+                  size="sm"
+                  style={{ marginTop: '0.5rem' }}
+                >
+                  Opened
+                </Title>
+                <WeekBarChart
+                  bars={backlogSlices.map((slice) => ({
+                    slice,
+                    value: slice.bugs_opened,
+                  }))}
+                  formatValue={(v) => String(v ?? 0)}
+                />
+                <Title
+                  headingLevel="h6"
+                  size="sm"
+                  style={{ marginTop: '0.75rem' }}
+                >
+                  Closed
+                </Title>
+                <WeekBarChart
+                  bars={backlogSlices.map((slice) => ({
+                    slice,
+                    value: slice.bugs_closed,
+                  }))}
+                  formatValue={(v) => String(v ?? 0)}
+                />
+                <Title
+                  headingLevel="h6"
+                  size="sm"
+                  style={{ marginTop: '0.75rem' }}
+                >
+                  Net
+                </Title>
+                <WeekBarChart
+                  bars={backlogSlices.map((slice) => ({
+                    slice,
+                    value: slice.net,
+                  }))}
+                  formatValue={(v) => String(v ?? 0)}
+                />
               </section>
             </div>
           )}

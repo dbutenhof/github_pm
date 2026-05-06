@@ -330,7 +330,11 @@ const App = () => {
 
             {!loading && !error && (
               <div
-                style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '1rem',
+                }}
               >
                 {milestones.length === 0 && (
                   <Alert variant="info" title="No milestones found">
