@@ -3,6 +3,7 @@ from datetime import datetime
 import re
 import time
 from typing import Annotated, Any, AsyncGenerator
+from urllib.parse import quote_plus
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query
 from pydantic import BaseModel, Field
@@ -68,6 +69,30 @@ class Connector:
                     if 'rel="next"' in link:
                         url = link.split(";")[0].strip().strip("<>")
                         logger.debug(f"paging to: {url}")
+                        break
+        return results
+
+    def search_issue_items(
+        self, search_query: str, headers: dict[str, str] | None = None
+    ) -> list[dict]:
+        """Run ``GET /search/issues`` with pagination; returns the ``items`` array union."""
+        q_param = quote_plus(search_query)
+        url: str | None = f"{self.base_url}/search/issues?q={q_param}&per_page=100"
+        results: list[dict] = []
+        while url:
+            response = self.github.get(url, headers=headers)
+            response.raise_for_status()
+            data = response.json()
+            items = data.get("items")
+            if isinstance(items, list):
+                results.extend(items)
+            url = None
+            link_header = response.headers.get("link")
+            if link_header:
+                for link in link_header.split(","):
+                    if 'rel="next"' in link:
+                        url = link.split(";")[0].strip().strip("<>")
+                        logger.debug("search/issues paging to: %s", url)
                         break
         return results
 

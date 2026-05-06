@@ -8,6 +8,7 @@ import {
   fetchSdlcDelivery,
   fetchEscapedDefectRate,
   fetchBugBacklogDelta,
+  fetchProjectStatusReport,
 } from './api';
 
 describe('api', () => {
@@ -166,6 +167,46 @@ describe('api', () => {
       await fetchBugBacklogDelta();
       expect(global.fetch).toHaveBeenCalledWith(
         '/api/v1/sdlc/bug-backlog-delta?weeks=4&week_days=7'
+      );
+    });
+  });
+
+  describe('fetchProjectStatusReport', () => {
+    it('requests report with end_date', async () => {
+      const body = {
+        start_date: '2025-04-04',
+        end_date: '2025-04-10',
+        merged_pull_requests: [],
+        opened_pull_requests: [],
+        opened_issues: [],
+      };
+      global.fetch.mockResolvedValue({ ok: true, json: async () => body });
+      const result = await fetchProjectStatusReport('2025-04-10');
+      expect(result).toEqual(body);
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/v1/project-status?end_date=2025-04-10'
+      );
+    });
+
+    it('requests report without query when end date omitted', async () => {
+      global.fetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          start_date: '2025-01-01',
+          end_date: '2025-01-07',
+          merged_pull_requests: [],
+          opened_pull_requests: [],
+          opened_issues: [],
+        }),
+      });
+      await fetchProjectStatusReport('');
+      expect(global.fetch).toHaveBeenCalledWith('/api/v1/project-status');
+    });
+
+    it('throws on failure', async () => {
+      global.fetch.mockResolvedValue({ ok: false, statusText: 'Bad Gateway' });
+      await expect(fetchProjectStatusReport('2025-04-10')).rejects.toThrow(
+        'Failed to fetch project status report'
       );
     });
   });

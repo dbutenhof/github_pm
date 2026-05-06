@@ -1206,3 +1206,53 @@ class TestAPIRouterIntegration:
         data = response.json()
         assert "app_name" in data
         assert "github_repo" in data
+
+
+class TestSearchIssueItems:
+    """Tests for ``Connector.search_issue_items`` (GitHub search pagination)."""
+
+    def test_single_page(self):
+        mock_session = Mock()
+        resp = Mock()
+        resp.raise_for_status = Mock()
+        resp.json.return_value = {"items": [{"number": 7}], "total_count": 1}
+        resp.headers.get.return_value = None
+        mock_session.get.return_value = resp
+
+        with (
+            patch("github_pm.api.requests.session", return_value=mock_session),
+            patch("github_pm.api.context") as mock_context,
+        ):
+            mock_context.github_repo = "o/r"
+            mock_context.github_token = "tok"
+            conn = Connector("tok", github_repo="o/r")
+            items = conn.search_issue_items("repo:o/r+is:issue")
+
+        assert items == [{"number": 7}]
+        mock_session.get.assert_called_once()
+
+    def test_follows_next_link(self):
+        mock_session = Mock()
+        first = Mock()
+        first.raise_for_status = Mock()
+        first.json.return_value = {"items": [{"number": 1}], "total_count": 2}
+        first.headers.get.return_value = (
+            '<https://api.github.com/search/issues?q=x&page=2>; rel="next"'
+        )
+        second = Mock()
+        second.raise_for_status = Mock()
+        second.json.return_value = {"items": [{"number": 2}], "total_count": 2}
+        second.headers.get.return_value = None
+        mock_session.get.side_effect = [first, second]
+
+        with (
+            patch("github_pm.api.requests.session", return_value=mock_session),
+            patch("github_pm.api.context") as mock_context,
+        ):
+            mock_context.github_repo = "o/r"
+            mock_context.github_token = "tok"
+            conn = Connector("tok", github_repo="o/r")
+            items = conn.search_issue_items("repo:o/r+is:issue")
+
+        assert items == [{"number": 1}, {"number": 2}]
+        assert mock_session.get.call_count == 2
