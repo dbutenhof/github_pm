@@ -8,6 +8,7 @@ from unittest.mock import Mock, patch
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 import pytest
+import requests
 
 from github_pm.api import (
     add_label_to_issue,
@@ -1206,6 +1207,59 @@ class TestAPIRouterIntegration:
         data = response.json()
         assert "app_name" in data
         assert "github_repo" in data
+
+
+class TestConnector504Retry:
+    """Tests for ``Connector`` retry behavior on GitHub HTTP 504 responses."""
+
+    def test_get_retries_504_then_succeeds(self):
+        """504 then 200 triggers one backoff sleep and succeeds."""
+        mock_session = Mock()
+        r504 = Mock()
+        r504.status_code = 504
+        r200 = Mock()
+        r200.status_code = 200
+        r200.raise_for_status = Mock()
+        r200.json.return_value = {"ok": True}
+        mock_session.get.side_effect = [r504, r200]
+
+        with (
+            patch("github_pm.api.requests.session", return_value=mock_session),
+            patch("github_pm.api.time.sleep") as mock_sleep,
+            patch("github_pm.api.context") as mock_context,
+        ):
+            mock_context.github_repo = "o/r"
+            mock_context.github_token = "tok"
+            conn = Connector("tok", github_repo="o/r")
+            data = conn.get("/repos/o/r/issues/1")
+
+        assert data == {"ok": True}
+        assert mock_session.get.call_count == 2
+        mock_sleep.assert_called_once()
+        assert mock_sleep.call_args[0][0] == pytest.approx(1.5)
+
+    def test_get_exhausts_retries_on_persistent_504(self):
+        """After max attempts, persistent 504 propagates ``HTTPError``."""
+        mock_session = Mock()
+        r504 = Mock()
+        r504.status_code = 504
+        err = requests.HTTPError()
+        err.response = r504
+        r504.raise_for_status = Mock(side_effect=err)
+        mock_session.get.return_value = r504
+
+        with (
+            patch("github_pm.api.requests.session", return_value=mock_session),
+            patch("github_pm.api.time.sleep"),
+            patch("github_pm.api.context") as mock_context,
+        ):
+            mock_context.github_repo = "o/r"
+            mock_context.github_token = "tok"
+            conn = Connector("tok", github_repo="o/r")
+            with pytest.raises(requests.HTTPError):
+                conn.get("/repos/o/r/issues/1")
+
+        assert mock_session.get.call_count == 5
 
 
 class TestSearchIssueItems:
