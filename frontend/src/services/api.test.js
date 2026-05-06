@@ -5,6 +5,9 @@ import {
   fetchIssues,
   fetchComments,
   fetchProject,
+  fetchSdlcDelivery,
+  fetchEscapedDefectRate,
+  fetchBugBacklogDelta,
 } from './api';
 
 describe('api', () => {
@@ -112,6 +115,58 @@ describe('api', () => {
       });
 
       await expect(fetchProject()).rejects.toThrow('Failed to fetch project');
+    });
+  });
+
+  describe('fetchSdlcDelivery', () => {
+    it('requests delivery metrics with default weeks', async () => {
+      global.fetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({ weeks: 4, week_days: 7, slices: [] }),
+      });
+      const result = await fetchSdlcDelivery();
+      expect(result.weeks).toBe(4);
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/v1/sdlc/delivery?weeks=4&week_days=7'
+      );
+    });
+
+    it('throws on failure', async () => {
+      global.fetch.mockResolvedValue({ ok: false, statusText: 'Bad Gateway' });
+      await expect(fetchSdlcDelivery(8)).rejects.toThrow(
+        'Failed to fetch SDLC delivery metrics'
+      );
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/v1/sdlc/delivery?weeks=8&week_days=7'
+      );
+    });
+  });
+
+  describe('fetchEscapedDefectRate', () => {
+    it('fetches escaped defect rate', async () => {
+      const body = { weeks: 4, week_days: 7, slices: [] };
+      global.fetch.mockResolvedValue({
+        ok: true,
+        json: async () => body,
+      });
+      const result = await fetchEscapedDefectRate();
+      expect(result).toEqual(body);
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/v1/sdlc/escaped-defect-rate?weeks=4&week_days=7'
+      );
+    });
+  });
+
+  describe('fetchBugBacklogDelta', () => {
+    it('requests bug backlog delta', async () => {
+      global.fetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({ weeks: 4, slices: [] }),
+      });
+      await fetchBugBacklogDelta();
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/v1/sdlc/bug-backlog-delta?weeks=4&week_days=7'
+      );
     });
   });
 });

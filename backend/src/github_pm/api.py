@@ -19,15 +19,17 @@ VERSION_MATCH = re.compile(r"^v\d+\.\d+\.\d+$")
 
 
 class Connector:
-    def __init__(self, github_token: str):
+    def __init__(self, github_token: str, *, github_repo: str | None = None):
         """Initialize a GitHub connection.
 
         Args:
             github_token: The GitHub Personal Access Token to use
+            github_repo: ``owner/name``; defaults to ``context.github_repo`` when omitted.
         """
         self.github_token = github_token
         self.base_url = "https://api.github.com"
-        self.owner, self.repo = context.github_repo.split("/", maxsplit=1)
+        repo = github_repo if github_repo is not None else context.github_repo
+        self.owner, self.repo = repo.split("/", maxsplit=1)
         self.github = requests.session()
         self.github.headers.update(
             {
@@ -40,7 +42,7 @@ class Connector:
         logger.info(
             "Initializing GitHub Connector service to %s/%s",
             self.base_url,
-            context.github_repo,
+            repo,
         )
 
     def get(self, path: str, headers: dict[str, str] | None = None) -> dict:

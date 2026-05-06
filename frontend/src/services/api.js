@@ -199,3 +199,47 @@ export const removeIssueAssignees = async (issueNumber, assignees) => {
   }
   return response.json();
 };
+
+export const fetchSdlcDelivery = async (weeks = 4, weekDays = 7) => {
+  const params = new URLSearchParams({
+    weeks: String(weeks),
+    week_days: String(weekDays),
+  });
+  const response = await fetch(`${API_BASE}/sdlc/delivery?${params}`);
+  if (!response.ok) {
+    throw new Error(
+      `Failed to fetch SDLC delivery metrics: ${response.statusText}`
+    );
+  }
+  return response.json();
+};
+
+export const fetchEscapedDefectRate = async (weeks = 4, weekDays = 7) => {
+  const params = new URLSearchParams({
+    weeks: String(weeks),
+    week_days: String(weekDays),
+  });
+  const response = await fetch(
+    `${API_BASE}/sdlc/escaped-defect-rate?${params}`
+  );
+  if (!response.ok) {
+    throw new Error(
+      `Failed to fetch escaped defect rate: ${response.statusText}`
+    );
+  }
+  return response.json();
+};
+
+export const fetchBugBacklogDelta = async (weeks = 4, weekDays = 7) => {
+  const params = new URLSearchParams({
+    weeks: String(weeks),
+    week_days: String(weekDays),
+  });
+  const response = await fetch(`${API_BASE}/sdlc/bug-backlog-delta?${params}`);
+  if (!response.ok) {
+    throw new Error(
+      `Failed to fetch bug backlog delta: ${response.statusText}`
+    );
+  }
+  return response.json();
+};

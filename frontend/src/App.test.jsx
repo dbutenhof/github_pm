@@ -1,6 +1,7 @@
 // ai-generated: Cursor
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, act } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import App from './App';
 import * as api from './services/api';
 import { clearMilestonesCache } from './utils/milestonesCache';
@@ -158,6 +159,106 @@ describe('App', () => {
 
     await waitFor(() => {
       expect(screen.getByText(/No milestones found/i)).toBeInTheDocument();
+    });
+  });
+
+  const mockSdlcSeriesResponses = () => {
+    api.fetchSdlcDelivery.mockResolvedValue({
+      weeks: 1,
+      week_days: 7,
+      slices: [
+        {
+          window_days: 7,
+          window_start: '2025-04-03T12:00:00Z',
+          window_end: '2025-04-10T12:00:00Z',
+          as_of: '2025-04-10T12:00:00Z',
+          merged_pr_throughput: {
+            total: 0,
+            by_pr_type: { feature: 0, bug_fix: 0, docs: 0, unclassified: 0 },
+            by_pr_size: { tiny: 0, small: 0, medium: 0, large: 0, unknown: 0 },
+          },
+          median_pr_cycle_time: {
+            median_seconds: null,
+            by_pr_type: {},
+            by_pr_size: {},
+            pr_count: 0,
+          },
+          median_time_to_first_review: {
+            median_seconds: null,
+            by_pr_type: {},
+            by_pr_size: {},
+            included_pr_count: 0,
+            eligible_pr_count: 0,
+          },
+        },
+      ],
+    });
+    api.fetchEscapedDefectRate.mockResolvedValue({
+      weeks: 1,
+      week_days: 7,
+      slices: [
+        {
+          window_start: '2025-04-03T12:00:00Z',
+          window_end: '2025-04-10T12:00:00Z',
+          as_of: '2025-04-10T12:00:00Z',
+          releases: [],
+        },
+      ],
+    });
+    api.fetchBugBacklogDelta.mockResolvedValue({
+      weeks: 1,
+      week_days: 7,
+      slices: [
+        {
+          window_days: 7,
+          window_start: '2025-04-03T12:00:00Z',
+          window_end: '2025-04-10T12:00:00Z',
+          as_of: '2025-04-10T12:00:00Z',
+          bugs_opened: 0,
+          bugs_closed: 0,
+          net: 0,
+        },
+      ],
+    });
+  };
+
+  it('restores main view tab from localStorage', async () => {
+    store.pmStatsMainViewTab = 'sdlc';
+    api.fetchMilestones.mockResolvedValue([]);
+    mockSdlcSeriesResponses();
+
+    await act(async () => {
+      render(<App />);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole('tab', { name: /^SDLC$/i })).toHaveAttribute(
+        'aria-selected',
+        'true'
+      );
+    });
+  });
+
+  it('persists main view tab to localStorage when SDLC is selected', async () => {
+    const user = userEvent.setup();
+    api.fetchMilestones.mockResolvedValue([]);
+    mockSdlcSeriesResponses();
+
+    await act(async () => {
+      render(<App />);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole('tab', { name: /^SDLC$/i })).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole('tab', { name: /^SDLC$/i }));
+
+    await waitFor(() => {
+      expect(localStorageMock.setItem).toHaveBeenCalledWith(
+        'pmStatsMainViewTab',
+        'sdlc'
+      );
     });
   });
 
