@@ -20,6 +20,7 @@ import {
 } from './services/api';
 import MilestoneCard from './components/MilestoneCard';
 import SdlcKpisPanel from './components/SdlcKpisPanel';
+import ProjectStatusPanel from './components/ProjectStatusPanel';
 import ManageMilestones from './components/ManageMilestones';
 import ManageLabels from './components/ManageLabels';
 import ManageSort from './components/ManageSort';
@@ -30,7 +31,7 @@ import iconImage from './assets/icon.png';
 import './icon.css';
 
 const MAIN_VIEW_TAB_STORAGE_KEY = 'pmStatsMainViewTab';
-const VALID_MAIN_VIEW_TABS = new Set(['planning', 'sdlc']);
+const VALID_MAIN_VIEW_TABS = new Set(['planning', 'sdlc', 'project-status']);
 
 const App = () => {
   // Initialize with cached data if available
@@ -356,6 +357,12 @@ const App = () => {
           </Tab>
           <Tab eventKey="sdlc" title={<TabTitleText>SDLC</TabTitleText>}>
             <SdlcKpisPanel />
+          </Tab>
+          <Tab
+            eventKey="project-status"
+            title={<TabTitleText>Project status</TabTitleText>}
+          >
+            <ProjectStatusPanel />
           </Tab>
         </Tabs>
       </PageSection>

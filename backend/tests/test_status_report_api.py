@@ -1,0 +1,146 @@
+"""Tests for project status report API (mocked GitHub GraphQL)."""
+
+from unittest.mock import MagicMock
+
+from fastapi.testclient import TestClient
+import pytest
+
+from github_pm.api import connection
+from github_pm.app import app
+
+
+@pytest.fixture
+def client():
+    return TestClient(app)
+
+
+@pytest.fixture
+def mock_connector_graphql():
+    gitctx = MagicMock()
+    gitctx.owner = "test"
+    gitctx.repo = "repo"
+
+    merged_nodes = [
+        {
+            "number": 10,
+            "title": "Merged PR",
+            "url": "https://github.com/test/repo/pull/10",
+            "mergedAt": "2025-04-06T10:00:00Z",
+            "createdAt": "2025-04-01T10:00:00Z",
+            "additions": 1,
+            "deletions": 1,
+            "labels": {"nodes": []},
+            "milestone": None,
+            "author": {"__typename": "User", "login": "u"},
+        }
+    ]
+
+    opened_pr_nodes = [
+        {
+            "__typename": "PullRequest",
+            "number": 11,
+            "title": "Opened PR",
+            "url": "https://github.com/test/repo/pull/11",
+            "createdAt": "2025-04-05T12:00:00Z",
+        }
+    ]
+
+    issue_nodes = [
+        {
+            "__typename": "Issue",
+            "number": 12,
+            "title": "New issue",
+            "url": "https://github.com/test/repo/issues/12",
+            "createdAt": "2025-04-04T12:00:00Z",
+        }
+    ]
+
+    def post_side(path: str, data=None, **kwargs):
+        body = data
+        if path != "/graphql" or not isinstance(body, dict):
+            raise AssertionError(f"unexpected post {path=!r} body={body!r}")
+        q = (body.get("variables") or {}).get("q") or ""
+        if "is:merged" in q and "merged:" in q:
+            return {
+                "data": {
+                    "search": {
+                        "pageInfo": {"hasNextPage": False, "endCursor": None},
+                        "nodes": merged_nodes,
+                    }
+                }
+            }
+        if "is:issue" in q and "created:" in q:
+            return {
+                "data": {
+                    "search": {
+                        "pageInfo": {"hasNextPage": False, "endCursor": None},
+                        "nodes": issue_nodes,
+                    }
+                }
+            }
+        if "is:pr" in q and "created:" in q:
+            return {
+                "data": {
+                    "search": {
+                        "pageInfo": {"hasNextPage": False, "endCursor": None},
+                        "nodes": opened_pr_nodes,
+                    }
+                }
+            }
+        raise AssertionError(f"unexpected graphql q={q!r}")
+
+    gitctx.post.side_effect = post_side
+    return gitctx
+
+
+class TestProjectStatusReport:
+    def test_report_ok_with_end_date(self, client, mock_connector_graphql):
+        async def override_conn():
+            yield mock_connector_graphql
+
+        app.dependency_overrides[connection] = override_conn
+        try:
+            r = client.get("/api/v1/project-status", params={"end_date": "2025-04-10"})
+        finally:
+            app.dependency_overrides.clear()
+
+        assert r.status_code == 200
+        body = r.json()
+        assert body["start_date"] == "2025-04-04"
+        assert body["end_date"] == "2025-04-10"
+        assert body["merged_pull_requests"] == [
+            {
+                "number": 10,
+                "title": "Merged PR",
+                "html_url": "https://github.com/test/repo/pull/10",
+            }
+        ]
+        assert body["opened_pull_requests"][0]["number"] == 11
+        assert body["opened_issues"][0]["number"] == 12
+
+    def test_graphql_queries_cover_window(self, client, mock_connector_graphql):
+        async def override_conn():
+            yield mock_connector_graphql
+
+        app.dependency_overrides[connection] = override_conn
+        try:
+            client.get("/api/v1/project-status", params={"end_date": "2025-04-10"})
+        finally:
+            app.dependency_overrides.clear()
+
+        gql_qs = []
+        for c in mock_connector_graphql.post.call_args_list:
+            args = getattr(c, "args", ())
+            body = args[1] if len(args) >= 2 else getattr(c, "kwargs", {}).get("data")
+            if isinstance(body, dict) and body.get("variables"):
+                gql_qs.append(body["variables"].get("q") or "")
+
+        assert any("merged:2025-04-04..2025-04-10" in q for q in gql_qs)
+        assert any("is:merged" in q for q in gql_qs)
+        assert any(
+            "repo:test/repo is:pr created:2025-04-04..2025-04-10" in q for q in gql_qs
+        )
+        assert any(
+            "repo:test/repo is:issue created:2025-04-04..2025-04-10" in q
+            for q in gql_qs
+        )

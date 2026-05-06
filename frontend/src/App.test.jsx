@@ -50,6 +50,13 @@ describe('App', () => {
     api.fetchLabels.mockResolvedValue([]);
     // Default mock for fetchAssignees (preloaded in background)
     api.fetchAssignees.mockResolvedValue([]);
+    api.fetchProjectStatusReport = vi.fn().mockResolvedValue({
+      start_date: '2025-01-01',
+      end_date: '2025-01-07',
+      merged_pull_requests: [],
+      opened_pull_requests: [],
+      opened_issues: [],
+    });
   });
 
   afterEach(() => {
@@ -259,6 +266,22 @@ describe('App', () => {
         'pmStatsMainViewTab',
         'sdlc'
       );
+    });
+  });
+
+  it('restores Project status tab from localStorage', async () => {
+    store.pmStatsMainViewTab = 'project-status';
+    api.fetchMilestones.mockResolvedValue([]);
+    mockSdlcSeriesResponses();
+
+    await act(async () => {
+      render(<App />);
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('tab', { name: /^Project status$/i })
+      ).toHaveAttribute('aria-selected', 'true');
     });
   });
 

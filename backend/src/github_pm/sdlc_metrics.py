@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from datetime import datetime, timedelta, UTC
+from datetime import date, datetime, timedelta, UTC
 import re
 from typing import Any, Literal
 from urllib.parse import quote_plus
@@ -340,6 +340,7 @@ def graphql_search_pull_requests(
     search_query: str,
     *,
     page_size: int = 100,
+    filter_bot_authors: bool = True,
 ) -> list[dict[str, Any]]:
     """Paginate GitHub GraphQL search (PullRequest nodes)."""
     nodes: list[dict[str, Any]] = []
@@ -351,6 +352,8 @@ def graphql_search_pull_requests(
         nodes {
           ... on PullRequest {
             number
+            title
+            url
             createdAt
             mergedAt
             additions
@@ -384,7 +387,71 @@ def graphql_search_pull_requests(
             raise RuntimeError(f"GitHub GraphQL error: {errors!r}")
         search = data.get("data", {}).get("search") or {}
         batch = search.get("nodes") or []
-        nodes.extend(filter_out_bot_pr_nodes(batch))
+        if filter_bot_authors:
+            nodes.extend(filter_out_bot_pr_nodes(batch))
+        else:
+            nodes.extend([n for n in batch if n and n.get("number") is not None])
+        page = search.get("pageInfo") or {}
+        if not page.get("hasNextPage"):
+            break
+        cursor = page.get("endCursor")
+        if not cursor:
+            break
+    return nodes
+
+
+def graphql_search_timeline_nodes(
+    post_graphql: Callable[[dict[str, Any]], dict[str, Any]],
+    search_query: str,
+    *,
+    page_size: int = 100,
+) -> list[dict[str, Any]]:
+    """Paginate GraphQL ``search(type: ISSUE)`` returning Issue and PullRequest nodes.
+
+    Used when REST ``GET /search/issues`` rejects the same query string (422). Request only
+    fields common to both types.
+    """
+    nodes: list[dict[str, Any]] = []
+    cursor: str | None = None
+    gql = """
+    query($q: String!, $first: Int!, $after: String) {
+      search(query: $q, type: ISSUE, first: $first, after: $after) {
+        pageInfo { hasNextPage endCursor }
+        nodes {
+          __typename
+          ... on PullRequest {
+            number
+            title
+            url
+            createdAt
+          }
+          ... on Issue {
+            number
+            title
+            url
+            createdAt
+          }
+        }
+      }
+    }
+    """
+    while True:
+        payload = {
+            "query": gql,
+            "variables": {
+                "q": search_query,
+                "first": page_size,
+                "after": cursor,
+            },
+        }
+        data = post_graphql(payload)
+        errors = data.get("errors")
+        if errors:
+            logger.error("GraphQL errors: %s", errors)
+            raise RuntimeError(f"GitHub GraphQL error: {errors!r}")
+        search = data.get("data", {}).get("search") or {}
+        batch = search.get("nodes") or []
+        nodes.extend([n for n in batch if n and n.get("number") is not None])
         page = search.get("pageInfo") or {}
         if not page.get("hasNextPage"):
             break
@@ -403,6 +470,34 @@ def merged_prs_query(github_repo: str, merged_since: datetime) -> str:
         f"{repo_search_fragment(github_repo)} is:pr is:merged "
         f"merged:>={date_str(merged_since)}"
     )
+
+
+def merged_prs_query_between(github_repo: str, start_d: date, end_d: date) -> str:
+    """GraphQL issue search: merged PRs with merge date in ``[start_d, end_d]`` (UTC calendar days).
+
+    REST ``GET /search/issues`` rejects several merged/closed date combinations (422); GraphQL
+    ``search`` accepts ``merged:`` ranges the same way as the web UI.
+    """
+    a, b = start_d.isoformat(), end_d.isoformat()
+    if a > b:
+        a, b = b, a
+    return f"{repo_search_fragment(github_repo)} is:pr is:merged merged:{a}..{b}"
+
+
+def opened_prs_between_query(github_repo: str, start_d: date, end_d: date) -> str:
+    """PRs with ``created`` in ``[start_d, end_d]`` (UTC calendar days, inclusive)."""
+    a, b = start_d.isoformat(), end_d.isoformat()
+    if a > b:
+        a, b = b, a
+    return f"{repo_search_fragment(github_repo)} is:pr created:{a}..{b}"
+
+
+def opened_issues_between_query(github_repo: str, start_d: date, end_d: date) -> str:
+    """Issues (not PRs) with ``created`` in ``[start_d, end_d]`` (UTC calendar days, inclusive)."""
+    a, b = start_d.isoformat(), end_d.isoformat()
+    if a > b:
+        a, b = b, a
+    return f"{repo_search_fragment(github_repo)} is:issue created:{a}..{b}"
 
 
 def opened_prs_query(github_repo: str, created_since: datetime) -> str:

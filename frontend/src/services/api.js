@@ -243,3 +243,22 @@ export const fetchBugBacklogDelta = async (weeks = 4, weekDays = 7) => {
   }
   return response.json();
 };
+
+/** @param {string} endDateISO ``YYYY-MM-DD`` — last day of the 7-day window (UTC). */
+export const fetchProjectStatusReport = async (endDateISO) => {
+  const params = new URLSearchParams();
+  if (endDateISO) {
+    params.set('end_date', endDateISO);
+  }
+  const qs = params.toString();
+  const url = qs
+    ? `${API_BASE}/project-status?${qs}`
+    : `${API_BASE}/project-status`;
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(
+      `Failed to fetch project status report: ${response.statusText}`
+    );
+  }
+  return response.json();
+};

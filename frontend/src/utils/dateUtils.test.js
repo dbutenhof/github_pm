@@ -1,6 +1,6 @@
 // ai-generated: Cursor
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { getDaysSince, formatDate } from './dateUtils';
+import { getDaysSince, formatDate, getLocalDateISOString } from './dateUtils';
 
 describe('dateUtils', () => {
   beforeEach(() => {
@@ -47,6 +47,12 @@ describe('dateUtils', () => {
     it('returns "No date" for null or undefined', () => {
       expect(formatDate(null)).toBe('No date');
       expect(formatDate(undefined)).toBe('No date');
+    });
+  });
+
+  describe('getLocalDateISOString', () => {
+    it('formats a local calendar date as YYYY-MM-DD', () => {
+      expect(getLocalDateISOString(new Date(2025, 5, 5))).toBe('2025-06-05');
     });
   });
 });
