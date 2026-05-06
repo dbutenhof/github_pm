@@ -1,6 +1,7 @@
 from fastapi import APIRouter, FastAPI
 
 from github_pm.api import api_router
+from github_pm.sdlc_api import sdlc_router
 
 router = APIRouter()
 
@@ -11,6 +12,7 @@ async def health():
 
 
 router.include_router(api_router, prefix="/api/v1")
+router.include_router(sdlc_router, prefix="/api/v1")
 
 app = FastAPI(
     title="GitHub Project Management API",

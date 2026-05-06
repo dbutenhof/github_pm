@@ -199,3 +199,37 @@ export const removeIssueAssignees = async (issueNumber, assignees) => {
   }
   return response.json();
 };
+
+export const fetchSdlcDelivery = async (days = 7) => {
+  const response = await fetch(
+    `${API_BASE}/sdlc/delivery?days=${encodeURIComponent(days)}`
+  );
+  if (!response.ok) {
+    throw new Error(
+      `Failed to fetch SDLC delivery metrics: ${response.statusText}`
+    );
+  }
+  return response.json();
+};
+
+export const fetchEscapedDefectRate = async () => {
+  const response = await fetch(`${API_BASE}/sdlc/escaped-defect-rate`);
+  if (!response.ok) {
+    throw new Error(
+      `Failed to fetch escaped defect rate: ${response.statusText}`
+    );
+  }
+  return response.json();
+};
+
+export const fetchBugBacklogDelta = async (days = 7) => {
+  const response = await fetch(
+    `${API_BASE}/sdlc/bug-backlog-delta?days=${encodeURIComponent(days)}`
+  );
+  if (!response.ok) {
+    throw new Error(
+      `Failed to fetch bug backlog delta: ${response.statusText}`
+    );
+  }
+  return response.json();
+};

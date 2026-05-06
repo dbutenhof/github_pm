@@ -16,6 +16,7 @@ import {
   fetchAssignees,
 } from './services/api';
 import MilestoneCard from './components/MilestoneCard';
+import SdlcKpisPanel from './components/SdlcKpisPanel';
 import ManageMilestones from './components/ManageMilestones';
 import ManageLabels from './components/ManageLabels';
 import ManageSort from './components/ManageSort';
@@ -293,25 +294,26 @@ const App = () => {
           </Alert>
         )}
 
-        {!loading && !error && milestones.length === 0 && (
-          <Alert variant="info" title="No milestones found">
-            There are no milestones available.
-          </Alert>
-        )}
-
-        {!loading && !error && milestones.length > 0 && (
+        {!loading && !error && (
           <div
             style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}
           >
-            {milestones.map((milestone) => (
-              <MilestoneCard
-                key={milestone.number}
-                milestone={milestone}
-                sortOrder={sortOrder}
-                issueMilestoneRefresh={issueMilestoneRefresh}
-                onIssueMilestoneMoved={handleIssueMilestoneMoved}
-              />
-            ))}
+            <SdlcKpisPanel />
+            {milestones.length === 0 && (
+              <Alert variant="info" title="No milestones found">
+                There are no milestones available.
+              </Alert>
+            )}
+            {milestones.length > 0 &&
+              milestones.map((milestone) => (
+                <MilestoneCard
+                  key={milestone.number}
+                  milestone={milestone}
+                  sortOrder={sortOrder}
+                  issueMilestoneRefresh={issueMilestoneRefresh}
+                  onIssueMilestoneMoved={handleIssueMilestoneMoved}
+                />
+              ))}
           </div>
         )}
       </PageSection>

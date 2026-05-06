@@ -5,6 +5,9 @@ import {
   fetchIssues,
   fetchComments,
   fetchProject,
+  fetchSdlcDelivery,
+  fetchEscapedDefectRate,
+  fetchBugBacklogDelta,
 } from './api';
 
 describe('api', () => {
@@ -112,6 +115,56 @@ describe('api', () => {
       });
 
       await expect(fetchProject()).rejects.toThrow('Failed to fetch project');
+    });
+  });
+
+  describe('fetchSdlcDelivery', () => {
+    it('requests delivery metrics with default days', async () => {
+      global.fetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({ window_days: 7 }),
+      });
+      const result = await fetchSdlcDelivery();
+      expect(result.window_days).toBe(7);
+      expect(global.fetch).toHaveBeenCalledWith('/api/v1/sdlc/delivery?days=7');
+    });
+
+    it('throws on failure', async () => {
+      global.fetch.mockResolvedValue({ ok: false, statusText: 'Bad Gateway' });
+      await expect(fetchSdlcDelivery(14)).rejects.toThrow(
+        'Failed to fetch SDLC delivery metrics'
+      );
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/v1/sdlc/delivery?days=14'
+      );
+    });
+  });
+
+  describe('fetchEscapedDefectRate', () => {
+    it('fetches escaped defect rate', async () => {
+      const body = { releases: [] };
+      global.fetch.mockResolvedValue({
+        ok: true,
+        json: async () => body,
+      });
+      const result = await fetchEscapedDefectRate();
+      expect(result).toEqual(body);
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/v1/sdlc/escaped-defect-rate'
+      );
+    });
+  });
+
+  describe('fetchBugBacklogDelta', () => {
+    it('requests bug backlog delta', async () => {
+      global.fetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({ net: 0 }),
+      });
+      await fetchBugBacklogDelta(7);
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/v1/sdlc/bug-backlog-delta?days=7'
+      );
     });
   });
 });
