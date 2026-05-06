@@ -1,18 +1,54 @@
 # Agent instructions for github_pm workspaces
 
+## Read this file when starting or resuming work
+
+- **Open `AGENTS.md` again** when you begin a task on this repo or return after a long gap, so required checks (below) stay in context until **`tox`** and frontend checks are green.
+
 ## Required checks before finishing any task
 
-- **`tox` must complete successfully** for every change that touches the Python backend (and should be run once you believe backend work is done). Run it from the **`backend`** directory:
+### Python backend (`backend/`)
+
+- **`tox` must complete successfully** for every change that touches the Python backend (and must be run once you believe backend work is done):
 
   ```bash
   cd backend && tox
   ```
 
-  This runs the environments defined in `backend/pyproject.toml` (format, import order, lint, tests, coverage). Do **not** consider backend work complete while **`tox`** reports failures.
+  This runs the environments defined in `backend/pyproject.toml`: **Black** (`format`), **isort** (`isort`), **flake8** (`lint`), **pytest** (`test`), and **coverage** (`coverage`). Do **not** consider backend work complete while **`tox`** reports failures.
 
-- **Fix all lint failures and unit test failures** reported by those checks (and any other checks you ran) **before** stopping. A green **`tox`** run is the acceptance bar for backend changes.
+- **While iterating**, you may run a faster subset (still required before hand-off if you only used this shortcut):
 
-- For **frontend** (`frontend/`) changes, run **`npm test`** (and **`npm run format:check`** if you edited formatted sources) from `frontend/` and fix failures there as well when the task involves the UI or client code.
+  ```bash
+  cd backend && tox -e format,isort,lint
+  ```
+
+  When that is green, run the full **`tox`** (including **`test`** / **`coverage`**) before stopping.
+
+- **Auto-fixing style** (use only when you are already touching those files; avoid unrelated reformatting): from `backend/` with dev dependencies installed:
+
+  ```bash
+  uv sync --extra dev
+  uv run black src tests
+  uv run isort src tests
+  ```
+
+  Then re-run **`tox`** (or at least **`tox -e format,isort,lint`**) so checks pass without relying on uncommitted formatter drift.
+
+- **flake8** enforces more than imports: for example **E731** forbids assigning a **`lambda`** where a nested **`def`** is clearer. Fix all **flake8** issues, not only import order.
+
+- **isort** is configured in `pyproject.toml` (`profile = "black"`, `known_first_party = ["github_pm"]`). First-party imports must match that layout (including ordering among `github_pm.*` imports).
+
+- **Fix all failures** those tools report **before** stopping. A green full **`tox`** run is the acceptance bar for backend changes.
+
+### Frontend (`frontend/`)
+
+When the task changes UI or client code under `frontend/src/`:
+
+```bash
+cd frontend && npm run format && npm run format:check && npm test
+```
+
+- **`npm run format`** applies Prettier; **`npm run format:check`** verifies formatting in CI style; **`npm test`** runs the Vitest suite. Do not skip **`format:check`** after editing formatted sources.
 
 ## Notes
 

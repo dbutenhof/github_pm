@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import UTC, date, datetime
+from datetime import date, datetime, UTC
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
 
-from github_pm.api import Connector, connection
+from github_pm.api import connection, Connector
 from github_pm.status_report_models import ProjectStatusReportResponse
 from github_pm.status_report_service import build_project_status_report
 

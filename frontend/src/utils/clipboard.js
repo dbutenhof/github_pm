@@ -47,7 +47,9 @@ export function formatStatusSectionClipboardMarkdown(items) {
 export function formatStatusSectionClipboardHtml(items) {
   return (items || [])
     .map((row) => {
-      const title = escapeHtmlText((row.title != null ? String(row.title) : '').trim());
+      const title = escapeHtmlText(
+        (row.title != null ? String(row.title) : '').trim()
+      );
       const url = (row.html_url != null ? String(row.html_url) : '').trim();
       if (!url) {
         return `#${row.number} ${title}`;

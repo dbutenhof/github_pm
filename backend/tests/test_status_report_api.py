@@ -137,5 +137,10 @@ class TestProjectStatusReport:
 
         assert any("merged:2025-04-04..2025-04-10" in q for q in gql_qs)
         assert any("is:merged" in q for q in gql_qs)
-        assert any("repo:test/repo is:pr created:2025-04-04..2025-04-10" in q for q in gql_qs)
-        assert any("repo:test/repo is:issue created:2025-04-04..2025-04-10" in q for q in gql_qs)
+        assert any(
+            "repo:test/repo is:pr created:2025-04-04..2025-04-10" in q for q in gql_qs
+        )
+        assert any(
+            "repo:test/repo is:issue created:2025-04-04..2025-04-10" in q
+            for q in gql_qs
+        )

@@ -10,8 +10,16 @@ import {
 describe('formatStatusSectionClipboardMarkdown', () => {
   it('uses Markdown links when html_url is present', () => {
     const text = formatStatusSectionClipboardMarkdown([
-      { number: 42, title: 'Hello world', html_url: 'https://github.com/o/r/pull/42' },
-      { number: 7, title: '  spaced  ', html_url: 'https://github.com/o/r/issues/7' },
+      {
+        number: 42,
+        title: 'Hello world',
+        html_url: 'https://github.com/o/r/pull/42',
+      },
+      {
+        number: 7,
+        title: '  spaced  ',
+        html_url: 'https://github.com/o/r/issues/7',
+      },
     ]);
     expect(text).toBe(
       '[#42](https://github.com/o/r/pull/42) Hello world\n[#7](https://github.com/o/r/issues/7) spaced'

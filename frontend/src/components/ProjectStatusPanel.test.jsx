@@ -50,7 +50,10 @@ describe('ProjectStatusPanel', () => {
     expect(screen.getByText('Fix bug')).toBeInTheDocument();
 
     const issueLink = screen.getByRole('link', { name: '#2' });
-    expect(issueLink).toHaveAttribute('href', 'https://github.com/o/r/issues/2');
+    expect(issueLink).toHaveAttribute(
+      'href',
+      'https://github.com/o/r/issues/2'
+    );
     expect(screen.getByText('Track work')).toBeInTheDocument();
   });
 
@@ -60,7 +63,9 @@ describe('ProjectStatusPanel', () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole('button', { name: 'Copy Merged pull requests to clipboard' })
+        screen.getByRole('button', {
+          name: 'Copy Merged pull requests to clipboard',
+        })
       ).toBeInTheDocument();
     });
 

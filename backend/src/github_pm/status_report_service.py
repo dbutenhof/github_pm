@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, datetime, timedelta, UTC
 from typing import Any
 
-from github_pm.api import Connector
 from github_pm import sdlc_metrics as sm
+from github_pm.api import Connector
 from github_pm.status_report_models import (
     ProjectStatusReportResponse,
     StatusReportItem,
@@ -64,7 +64,8 @@ def build_project_status_report(
     start_date = end_date - timedelta(days=6)
     repo = f"{gitctx.owner}/{gitctx.repo}"
 
-    post_gql = lambda payload: gitctx.post("/graphql", payload)
+    def post_gql(payload: dict[str, Any]) -> dict[str, Any]:
+        return gitctx.post("/graphql", payload)
 
     merged_q = sm.merged_prs_query_between(repo, start_date, end_date)
     merged_nodes = sm.graphql_search_pull_requests(
