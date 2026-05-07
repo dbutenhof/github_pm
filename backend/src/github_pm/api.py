@@ -1,4 +1,5 @@
 from collections import defaultdict
+from collections.abc import Callable
 from datetime import datetime
 import re
 import time
@@ -17,6 +18,10 @@ api_router = APIRouter()
 
 # We sort "semver" style milestones first, then others alphabetically
 VERSION_MATCH = re.compile(r"^v\d+\.\d+\.\d+$")
+
+# Bounded retries for transient GitHub gateway timeouts (504).
+_GITHUB_504_MAX_ATTEMPTS = 5
+_GITHUB_504_BACKOFF_SEC = 1.5
 
 
 class Connector:
@@ -46,19 +51,39 @@ class Connector:
             repo,
         )
 
+    def _with_504_retry(
+        self, request: Callable[[], requests.Response]
+    ) -> requests.Response:
+        """Perform one HTTP call, retrying on 504 with a short capped backoff."""
+        for attempt in range(_GITHUB_504_MAX_ATTEMPTS):
+            response = request()
+            if response.status_code == 504 and attempt < _GITHUB_504_MAX_ATTEMPTS - 1:
+                delay = _GITHUB_504_BACKOFF_SEC * (attempt + 1)
+                logger.warning(
+                    "GitHub API 504 Gateway Timeout; waiting %.1fs before retry %d/%d",
+                    delay,
+                    attempt + 2,
+                    _GITHUB_504_MAX_ATTEMPTS,
+                )
+                time.sleep(delay)
+                continue
+            response.raise_for_status()
+            self.response = response
+            return response
+
     def get(self, path: str, headers: dict[str, str] | None = None) -> dict:
-        response = self.github.get(f"{self.base_url}{path}", headers=headers)
-        response.raise_for_status()
-        self.response = response
+        response = self._with_504_retry(
+            lambda: self.github.get(f"{self.base_url}{path}", headers=headers)
+        )
         return response.json()
 
     def get_paged(self, path: str, headers: dict[str, str] | None = None) -> list[dict]:
         url: str | None = f"{self.base_url}{path}"
         results = []
         while url:
-            response = self.github.get(url, headers=headers)
-            response.raise_for_status()
-            self.response = response
+            response = self._with_504_retry(
+                lambda u=url: self.github.get(u, headers=headers)
+            )
             data = response.json()
             logger.debug(f"{url}: {len(data)}")
             results.extend(data)
@@ -80,8 +105,9 @@ class Connector:
         url: str | None = f"{self.base_url}/search/issues?q={q_param}&per_page=100"
         results: list[dict] = []
         while url:
-            response = self.github.get(url, headers=headers)
-            response.raise_for_status()
+            response = self._with_504_retry(
+                lambda u=url: self.github.get(u, headers=headers)
+            )
             data = response.json()
             items = data.get("items")
             if isinstance(items, list):
@@ -99,21 +125,21 @@ class Connector:
     def patch(
         self, path: str, data: dict[str, Any], headers: dict[str, str] | None = None
     ) -> dict:
-        response = self.github.patch(
-            f"{self.base_url}{path}", json=data, headers=headers
+        response = self._with_504_retry(
+            lambda: self.github.patch(
+                f"{self.base_url}{path}", json=data, headers=headers
+            )
         )
-        response.raise_for_status()
-        self.response = response
         return response.json()
 
     def post(
         self, path: str, data: dict[str, Any], headers: dict[str, str] | None = None
     ) -> dict:
-        response = self.github.post(
-            f"{self.base_url}{path}", json=data, headers=headers
+        response = self._with_504_retry(
+            lambda: self.github.post(
+                f"{self.base_url}{path}", json=data, headers=headers
+            )
         )
-        response.raise_for_status()
-        self.response = response
         return response.json()
 
     def delete(
@@ -122,11 +148,11 @@ class Connector:
         data: dict[str, Any] | None = None,
         headers: dict[str, str] | None = None,
     ) -> dict:
-        response = self.github.delete(
-            f"{self.base_url}{path}", json=data, headers=headers
+        response = self._with_504_retry(
+            lambda: self.github.delete(
+                f"{self.base_url}{path}", json=data, headers=headers
+            )
         )
-        response.raise_for_status()
-        self.response = response
         return response.json() if response.content else {}
 
 
