@@ -1,5 +1,5 @@
-// ai-generated: Cursor
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+// Generated-by: Cursor
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import ProjectStatusPanel from './ProjectStatusPanel';
@@ -10,6 +10,9 @@ vi.mock('../services/api');
 vi.mock('../utils/clipboard', () => ({
   copyStatusSectionToClipboard: vi.fn().mockResolvedValue(undefined),
 }));
+
+const STORAGE_START_KEY = 'pmStatsProjectStatusStartDate';
+const STORAGE_END_KEY = 'pmStatsProjectStatusEndDate';
 
 describe('ProjectStatusPanel', () => {
   const merged = [
@@ -29,8 +32,12 @@ describe('ProjectStatusPanel', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.removeItem(STORAGE_START_KEY);
+    localStorage.removeItem(STORAGE_END_KEY);
+    localStorage.setItem(STORAGE_START_KEY, '2025-04-03');
+    localStorage.setItem(STORAGE_END_KEY, '2025-04-10');
     api.fetchProjectStatusReport.mockResolvedValue({
-      start_date: '2025-04-04',
+      start_date: '2025-04-03',
       end_date: '2025-04-10',
       merged_pull_requests: merged,
       opened_pull_requests: [],
@@ -38,11 +45,19 @@ describe('ProjectStatusPanel', () => {
     });
   });
 
+  afterEach(() => {
+    localStorage.removeItem(STORAGE_START_KEY);
+    localStorage.removeItem(STORAGE_END_KEY);
+  });
+
   it('loads report and renders linked rows', async () => {
     render(<ProjectStatusPanel />);
 
     await waitFor(() => {
-      expect(api.fetchProjectStatusReport).toHaveBeenCalled();
+      expect(api.fetchProjectStatusReport).toHaveBeenCalledWith(
+        '2025-04-03',
+        '2025-04-10'
+      );
     });
 
     const prLink = await screen.findByRole('link', { name: '#1' });
@@ -82,5 +97,37 @@ describe('ProjectStatusPanel', () => {
       })
     );
     expect(clipboard.copyStatusSectionToClipboard).toHaveBeenCalledWith(issues);
+  });
+
+  it('persists start and end dates when Apply is used', async () => {
+    const user = userEvent.setup();
+    api.fetchProjectStatusReport.mockResolvedValue({
+      start_date: '2025-04-01',
+      end_date: '2025-04-15',
+      merged_pull_requests: [],
+      opened_pull_requests: [],
+      opened_issues: [],
+    });
+
+    render(<ProjectStatusPanel />);
+
+    await waitFor(() => {
+      expect(api.fetchProjectStatusReport).toHaveBeenCalled();
+    });
+
+    await user.clear(screen.getByLabelText('Starting'));
+    await user.type(screen.getByLabelText('Starting'), '2025-04-01');
+    await user.clear(screen.getByLabelText('Ending'));
+    await user.type(screen.getByLabelText('Ending'), '2025-04-15');
+    await user.click(screen.getByRole('button', { name: 'Apply' }));
+
+    await waitFor(() => {
+      expect(api.fetchProjectStatusReport).toHaveBeenCalledWith(
+        '2025-04-01',
+        '2025-04-15'
+      );
+    });
+    expect(localStorage.getItem(STORAGE_START_KEY)).toBe('2025-04-01');
+    expect(localStorage.getItem(STORAGE_END_KEY)).toBe('2025-04-15');
   });
 });

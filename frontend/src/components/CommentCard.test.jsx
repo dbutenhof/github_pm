@@ -1,4 +1,4 @@
-// ai-generated: Cursor
+// Generated-by: Cursor
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import CommentCard from './CommentCard';

@@ -1,4 +1,7 @@
-"""SDLC KPI REST endpoints (GitHub-backed)."""
+"""SDLC KPI REST endpoints (GitHub-backed).
+
+Generated-by: Cursor
+"""
 
 from __future__ import annotations
 

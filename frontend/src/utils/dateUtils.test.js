@@ -1,6 +1,11 @@
-// ai-generated: Cursor
+// Generated-by: Cursor
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { getDaysSince, formatDate, getLocalDateISOString } from './dateUtils';
+import {
+  addDaysToLocalDateISO,
+  getDaysSince,
+  formatDate,
+  getLocalDateISOString,
+} from './dateUtils';
 
 describe('dateUtils', () => {
   beforeEach(() => {
@@ -53,6 +58,16 @@ describe('dateUtils', () => {
   describe('getLocalDateISOString', () => {
     it('formats a local calendar date as YYYY-MM-DD', () => {
       expect(getLocalDateISOString(new Date(2025, 5, 5))).toBe('2025-06-05');
+    });
+  });
+
+  describe('addDaysToLocalDateISO', () => {
+    it('subtracts calendar days in the local timezone', () => {
+      expect(addDaysToLocalDateISO('2025-04-10', -7)).toBe('2025-04-03');
+    });
+
+    it('adds calendar days', () => {
+      expect(addDaysToLocalDateISO('2025-04-10', 1)).toBe('2025-04-11');
     });
   });
 });

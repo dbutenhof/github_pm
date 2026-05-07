@@ -1,4 +1,4 @@
-// ai-generated: Cursor
+// Generated-by: Cursor
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   fetchMilestones,
@@ -172,7 +172,7 @@ describe('api', () => {
   });
 
   describe('fetchProjectStatusReport', () => {
-    it('requests report with end_date', async () => {
+    it('requests report with start_date and end_date', async () => {
       const body = {
         start_date: '2025-04-04',
         end_date: '2025-04-10',
@@ -181,14 +181,14 @@ describe('api', () => {
         opened_issues: [],
       };
       global.fetch.mockResolvedValue({ ok: true, json: async () => body });
-      const result = await fetchProjectStatusReport('2025-04-10');
+      const result = await fetchProjectStatusReport('2025-04-04', '2025-04-10');
       expect(result).toEqual(body);
       expect(global.fetch).toHaveBeenCalledWith(
-        '/api/v1/project-status?end_date=2025-04-10'
+        '/api/v1/project-status?start_date=2025-04-04&end_date=2025-04-10'
       );
     });
 
-    it('requests report without query when end date omitted', async () => {
+    it('requests report without query when both dates omitted', async () => {
       global.fetch.mockResolvedValue({
         ok: true,
         json: async () => ({
@@ -199,15 +199,15 @@ describe('api', () => {
           opened_issues: [],
         }),
       });
-      await fetchProjectStatusReport('');
+      await fetchProjectStatusReport('', '');
       expect(global.fetch).toHaveBeenCalledWith('/api/v1/project-status');
     });
 
     it('throws on failure', async () => {
       global.fetch.mockResolvedValue({ ok: false, statusText: 'Bad Gateway' });
-      await expect(fetchProjectStatusReport('2025-04-10')).rejects.toThrow(
-        'Failed to fetch project status report'
-      );
+      await expect(
+        fetchProjectStatusReport('2025-04-04', '2025-04-10')
+      ).rejects.toThrow('Failed to fetch project status report');
     });
   });
 });

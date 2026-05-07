@@ -1,4 +1,7 @@
-"""SDLC KPI helpers: PR classification, size buckets, medians, GitHub search."""
+"""SDLC KPI helpers: PR classification, size buckets, medians, GitHub search.
+
+Generated-by: Cursor
+"""
 
 from __future__ import annotations
 

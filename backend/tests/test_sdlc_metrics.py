@@ -1,4 +1,7 @@
-"""Unit tests for sdlc_metrics helpers."""
+"""Unit tests for sdlc_metrics helpers.
+
+Generated-by: Cursor
+"""
 
 from datetime import datetime, UTC
 import re

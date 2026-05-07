@@ -1,4 +1,7 @@
-"""Tests for project status report API (mocked GitHub GraphQL)."""
+"""Tests for project status report API (mocked GitHub GraphQL).
+
+Generated-by: Cursor
+"""
 
 from unittest.mock import MagicMock
 
@@ -94,7 +97,9 @@ def mock_connector_graphql():
 
 
 class TestProjectStatusReport:
-    def test_report_ok_with_end_date(self, client, mock_connector_graphql):
+    def test_report_ok_with_end_date_only_defaults_start(
+        self, client, mock_connector_graphql
+    ):
         async def override_conn():
             yield mock_connector_graphql
 
@@ -106,7 +111,7 @@ class TestProjectStatusReport:
 
         assert r.status_code == 200
         body = r.json()
-        assert body["start_date"] == "2025-04-04"
+        assert body["start_date"] == "2025-04-03"
         assert body["end_date"] == "2025-04-10"
         assert body["merged_pull_requests"] == [
             {
@@ -118,13 +123,82 @@ class TestProjectStatusReport:
         assert body["opened_pull_requests"][0]["number"] == 11
         assert body["opened_issues"][0]["number"] == 12
 
+    def test_report_single_calendar_day(self, client, mock_connector_graphql):
+        async def override_conn():
+            yield mock_connector_graphql
+
+        app.dependency_overrides[connection] = override_conn
+        try:
+            r = client.get(
+                "/api/v1/project-status",
+                params={"start_date": "2025-04-10", "end_date": "2025-04-10"},
+            )
+        finally:
+            app.dependency_overrides.clear()
+
+        assert r.status_code == 200
+        body = r.json()
+        assert body["start_date"] == "2025-04-10"
+        assert body["end_date"] == "2025-04-10"
+
+    def test_report_explicit_range(self, client, mock_connector_graphql):
+        async def override_conn():
+            yield mock_connector_graphql
+
+        app.dependency_overrides[connection] = override_conn
+        try:
+            r = client.get(
+                "/api/v1/project-status",
+                params={"start_date": "2025-03-28", "end_date": "2025-04-10"},
+            )
+        finally:
+            app.dependency_overrides.clear()
+
+        assert r.status_code == 200
+        body = r.json()
+        assert body["start_date"] == "2025-03-28"
+        assert body["end_date"] == "2025-04-10"
+
+    def test_start_after_end(self, client, mock_connector_graphql):
+        async def override_conn():
+            yield mock_connector_graphql
+
+        app.dependency_overrides[connection] = override_conn
+        try:
+            r = client.get(
+                "/api/v1/project-status",
+                params={"start_date": "2025-04-11", "end_date": "2025-04-10"},
+            )
+        finally:
+            app.dependency_overrides.clear()
+
+        assert r.status_code == 422
+
+    def test_range_too_long(self, client, mock_connector_graphql):
+        async def override_conn():
+            yield mock_connector_graphql
+
+        app.dependency_overrides[connection] = override_conn
+        try:
+            r = client.get(
+                "/api/v1/project-status",
+                params={"start_date": "2024-01-01", "end_date": "2025-01-02"},
+            )
+        finally:
+            app.dependency_overrides.clear()
+
+        assert r.status_code == 422
+
     def test_graphql_queries_cover_window(self, client, mock_connector_graphql):
         async def override_conn():
             yield mock_connector_graphql
 
         app.dependency_overrides[connection] = override_conn
         try:
-            client.get("/api/v1/project-status", params={"end_date": "2025-04-10"})
+            client.get(
+                "/api/v1/project-status",
+                params={"start_date": "2025-04-04", "end_date": "2025-04-10"},
+            )
         finally:
             app.dependency_overrides.clear()
 

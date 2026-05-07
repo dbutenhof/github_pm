@@ -1,4 +1,7 @@
-"""Pydantic models for SDLC KPI API responses."""
+"""Pydantic models for SDLC KPI API responses.
+
+Generated-by: Cursor
+"""
 
 from __future__ import annotations
 

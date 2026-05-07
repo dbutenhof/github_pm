@@ -1,6 +1,6 @@
 """Tests for the api module.
 
-ai-generated: Cursor
+Generated-by: Cursor
 """
 
 from unittest.mock import Mock, patch

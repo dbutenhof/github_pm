@@ -1,6 +1,6 @@
 """Tests for the cli module.
 
-ai-generated: Cursor
+Generated-by: Cursor
 """
 
 import sys

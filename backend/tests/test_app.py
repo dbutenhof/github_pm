@@ -1,6 +1,6 @@
 """Tests for the app module.
 
-ai-generated: Cursor
+Generated-by: Cursor
 """
 
 from fastapi.testclient import TestClient
