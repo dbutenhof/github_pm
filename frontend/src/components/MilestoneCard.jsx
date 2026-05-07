@@ -1,4 +1,4 @@
-// ai-generated: Cursor
+// Generated-by: Cursor
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Card,

@@ -3,6 +3,8 @@
 The standalone ``sdlc-report`` script (``scripts/sdlc_report.py``) mirrors this
 logic without importing ``github_pm``; keep behavior aligned when changing
 metrics.
+
+Generated-by: Cursor
 """
 
 from __future__ import annotations

@@ -1,4 +1,4 @@
-// ai-generated: Cursor
+// Generated-by: Cursor
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 

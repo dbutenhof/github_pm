@@ -1,4 +1,4 @@
-// ai-generated: Cursor
+// Generated-by: Cursor
 /**
  * @param {string} s
  * @returns {string}

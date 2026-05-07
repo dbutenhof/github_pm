@@ -4,6 +4,24 @@
 
 - **Open `AGENTS.md` again** when you begin a task on this repo or return after a long gap, so required checks (below) stay in context until **`tox`** and frontend checks are green.
 
+## Attributing AI coding assistance
+
+When using AI coding assistants to generate a module or a new function, annotate that code with a module comment or a function docstring using the `Generated-by: <name of the AI coding assistant>` tag. When substantial code changes (not including minor formatting or typo fixes) are made to a module or function not already annotated with "Generated-by" or "Assisted-by", annotate the changes with the `Assisted-by: <name of the AI coding assistant>` tag.
+
+```markdown
+Assisted-by: <name of the AI coding assistant>
+```
+
+For example:
+
+```markdown
+Assisted-by: Cursor
+Assisted-by: GitHub Copilot
+Assisted-by: Claude
+Assisted-by: gemini-code-assist
+Assisted-by: openai-code-assist
+```
+
 ## Required checks before finishing any task
 
 ### Python backend (`backend/`)

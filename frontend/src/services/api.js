@@ -1,4 +1,4 @@
-// ai-generated: Cursor
+// Generated-by: Cursor
 const API_BASE = '/api/v1';
 
 export const fetchMilestones = async () => {
@@ -244,9 +244,15 @@ export const fetchBugBacklogDelta = async (weeks = 4, weekDays = 7) => {
   return response.json();
 };
 
-/** @param {string} endDateISO ``YYYY-MM-DD`` — last day of the 7-day window (UTC). */
-export const fetchProjectStatusReport = async (endDateISO) => {
+/**
+ * @param {string} [startDateISO] ``YYYY-MM-DD`` — first calendar day of the window (UTC).
+ * @param {string} [endDateISO] ``YYYY-MM-DD`` — last calendar day of the window (UTC).
+ */
+export const fetchProjectStatusReport = async (startDateISO, endDateISO) => {
   const params = new URLSearchParams();
+  if (startDateISO) {
+    params.set('start_date', startDateISO);
+  }
   if (endDateISO) {
     params.set('end_date', endDateISO);
   }

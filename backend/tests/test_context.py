@@ -1,6 +1,6 @@
 """Tests for the context module.
 
-ai-generated: Cursor
+Generated-by: Cursor
 """
 
 import os

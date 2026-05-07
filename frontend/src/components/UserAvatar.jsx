@@ -1,4 +1,4 @@
-// ai-generated: Cursor
+// Generated-by: Cursor
 import React from 'react';
 
 const UserAvatar = ({ user, size = 32, showName = false }) => {

@@ -1,4 +1,4 @@
-// ai-generated: Cursor
+// Generated-by: Cursor
 // Shared assignees cache - loaded once and shared across all components
 let assigneesCache = {
   data: [],

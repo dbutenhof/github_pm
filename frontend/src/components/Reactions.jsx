@@ -1,4 +1,4 @@
-// ai-generated: Cursor
+// Generated-by: Cursor
 import React from 'react';
 import { Tooltip } from '@patternfly/react-core';
 

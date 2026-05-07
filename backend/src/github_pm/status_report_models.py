@@ -1,4 +1,7 @@
-"""Pydantic models for the weekly project status report API."""
+"""Pydantic models for the weekly project status report API.
+
+Generated-by: Cursor
+"""
 
 from __future__ import annotations
 
@@ -16,7 +19,7 @@ class StatusReportItem(BaseModel):
 
 
 class ProjectStatusReportResponse(BaseModel):
-    """Seven calendar days inclusive ending on ``end_date`` (UTC calendar dates)."""
+    """Inclusive calendar window from ``start_date`` through ``end_date`` (UTC calendar dates)."""
 
     start_date: date = Field(description="First calendar day of the window (inclusive)")
     end_date: date = Field(description="Last calendar day of the window (inclusive)")

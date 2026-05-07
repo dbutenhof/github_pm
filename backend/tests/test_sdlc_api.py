@@ -1,4 +1,7 @@
-"""Tests for SDLC KPI API routes (mocked GitHub)."""
+"""Tests for SDLC KPI API routes (mocked GitHub).
+
+Generated-by: Cursor
+"""
 
 from datetime import datetime, UTC
 from unittest.mock import MagicMock, patch

@@ -1,4 +1,4 @@
-// ai-generated: Cursor
+// Generated-by: Cursor
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   copyTextToClipboard,

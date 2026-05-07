@@ -1,4 +1,4 @@
-// ai-generated: Cursor
+// Generated-by: Cursor
 import React, { useState, useEffect, useRef } from 'react';
 import { Modal, Button, Tooltip, Spinner, Alert } from '@patternfly/react-core';
 import { fetchLabels } from '../services/api';

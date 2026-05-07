@@ -1,4 +1,4 @@
-// ai-generated: Cursor
+// Generated-by: Cursor
 import React, { useState, useEffect } from 'react';
 import { Spinner, Alert } from '@patternfly/react-core';
 import { getDaysSince, formatDate } from '../utils/dateUtils';
