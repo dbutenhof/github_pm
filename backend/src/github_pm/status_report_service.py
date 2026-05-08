@@ -77,6 +77,7 @@ def build_project_status_report(
         for n in opened_pr_nodes
         if n.get("__typename") == "PullRequest"
         and _created_calendar_in_window(n, start_date, end_date)
+        and n.get("state") != "CLOSED"
     ]
     opened_pr_filtered.sort(key=lambda n: int(n["number"]))
 
