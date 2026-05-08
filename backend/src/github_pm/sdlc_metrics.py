@@ -427,6 +427,7 @@ def graphql_search_timeline_nodes(
             title
             url
             createdAt
+            state
           }
           ... on Issue {
             number

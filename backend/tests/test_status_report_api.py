@@ -45,6 +45,7 @@ def mock_connector_graphql():
             "title": "Opened PR",
             "url": "https://github.com/test/repo/pull/11",
             "createdAt": "2025-04-05T12:00:00Z",
+            "state": "OPEN",
         }
     ]
 
@@ -218,3 +219,93 @@ class TestProjectStatusReport:
             "repo:test/repo is:issue created:2025-04-04..2025-04-10" in q
             for q in gql_qs
         )
+
+    def test_opened_prs_exclude_closed_without_merge(self, client):
+        """PRs with GitHub state CLOSED (not merged) must not appear in opened_pull_requests."""
+        gitctx = MagicMock()
+        gitctx.owner = "test"
+        gitctx.repo = "repo"
+
+        merged_nodes = []
+
+        opened_pr_nodes = [
+            {
+                "__typename": "PullRequest",
+                "number": 20,
+                "title": "Still open",
+                "url": "https://github.com/test/repo/pull/20",
+                "createdAt": "2025-04-05T12:00:00Z",
+                "state": "OPEN",
+            },
+            {
+                "__typename": "PullRequest",
+                "number": 21,
+                "title": "Merged same window",
+                "url": "https://github.com/test/repo/pull/21",
+                "createdAt": "2025-04-05T12:00:00Z",
+                "state": "MERGED",
+            },
+            {
+                "__typename": "PullRequest",
+                "number": 22,
+                "title": "Closed without merge",
+                "url": "https://github.com/test/repo/pull/22",
+                "createdAt": "2025-04-05T12:00:00Z",
+                "state": "CLOSED",
+            },
+        ]
+
+        issue_nodes = []
+
+        def post_side(path: str, data=None, **kwargs):
+            body = data
+            if path != "/graphql" or not isinstance(body, dict):
+                raise AssertionError(f"unexpected post {path=!r} body={body!r}")
+            q = (body.get("variables") or {}).get("q") or ""
+            if "is:merged" in q and "merged:" in q:
+                return {
+                    "data": {
+                        "search": {
+                            "pageInfo": {"hasNextPage": False, "endCursor": None},
+                            "nodes": merged_nodes,
+                        }
+                    }
+                }
+            if "is:issue" in q and "created:" in q:
+                return {
+                    "data": {
+                        "search": {
+                            "pageInfo": {"hasNextPage": False, "endCursor": None},
+                            "nodes": issue_nodes,
+                        }
+                    }
+                }
+            if "is:pr" in q and "created:" in q:
+                return {
+                    "data": {
+                        "search": {
+                            "pageInfo": {"hasNextPage": False, "endCursor": None},
+                            "nodes": opened_pr_nodes,
+                        }
+                    }
+                }
+            raise AssertionError(f"unexpected graphql q={q!r}")
+
+        gitctx.post.side_effect = post_side
+
+        async def override_conn():
+            yield gitctx
+
+        app.dependency_overrides[connection] = override_conn
+        try:
+            r = client.get(
+                "/api/v1/project-status",
+                params={"start_date": "2025-04-04", "end_date": "2025-04-10"},
+            )
+        finally:
+            app.dependency_overrides.clear()
+
+        assert r.status_code == 200
+        opened = r.json()["opened_pull_requests"]
+        numbers = {p["number"] for p in opened}
+        assert numbers == {20, 21}
