@@ -42,6 +42,7 @@ describe('ProjectStatusPanel', () => {
       merged_pull_requests: merged,
       opened_pull_requests: [],
       opened_issues: issues,
+      pr_backlog: [],
     });
   });
 
@@ -82,6 +83,9 @@ describe('ProjectStatusPanel', () => {
           name: 'Copy Merged pull requests to clipboard',
         })
       ).toBeInTheDocument();
+      expect(
+        screen.getByRole('heading', { name: 'PR backlog' })
+      ).toBeInTheDocument();
     });
 
     await user.click(
@@ -107,6 +111,7 @@ describe('ProjectStatusPanel', () => {
       merged_pull_requests: [],
       opened_pull_requests: [],
       opened_issues: [],
+      pr_backlog: [],
     });
 
     render(<ProjectStatusPanel />);

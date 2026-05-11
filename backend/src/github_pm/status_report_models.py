@@ -35,3 +35,10 @@ class ProjectStatusReportResponse(BaseModel):
         default_factory=list,
         description="Issues created in the window (pull requests excluded)",
     )
+    pr_backlog: list[StatusReportItem] = Field(
+        default_factory=list,
+        description=(
+            "Open, non-draft pull requests whose last update (UTC) is strictly before "
+            "start_date — not merged or closed, stale since the report window began"
+        ),
+    )

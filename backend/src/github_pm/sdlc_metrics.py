@@ -358,6 +358,9 @@ def graphql_search_pull_requests(
             title
             url
             createdAt
+            updatedAt
+            state
+            isDraft
             mergedAt
             additions
             deletions
@@ -494,6 +497,16 @@ def opened_prs_between_query(github_repo: str, start_d: date, end_d: date) -> st
     if a > b:
         a, b = b, a
     return f"{repo_search_fragment(github_repo)} is:pr created:{a}..{b}"
+
+
+def open_pr_backlog_query(github_repo: str, start_d: date) -> str:
+    """Open, non-draft PRs last updated strictly before ``start_d`` (UTC calendar day at 00:00).
+
+    Uses ``draft:false`` and ``updated:<YYYY-MM-DD``; callers should still verify
+    ``updatedAt`` in UTC against ``start_d`` and ``isDraft`` for edge cases.
+    """
+    d = start_d.isoformat()
+    return f"{repo_search_fragment(github_repo)} is:pr is:open draft:false updated:<{d}"
 
 
 def opened_issues_between_query(github_repo: str, start_d: date, end_d: date) -> str:

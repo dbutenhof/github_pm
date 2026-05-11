@@ -179,6 +179,7 @@ describe('api', () => {
         merged_pull_requests: [],
         opened_pull_requests: [],
         opened_issues: [],
+        pr_backlog: [],
       };
       global.fetch.mockResolvedValue({ ok: true, json: async () => body });
       const result = await fetchProjectStatusReport('2025-04-04', '2025-04-10');
@@ -197,6 +198,7 @@ describe('api', () => {
           merged_pull_requests: [],
           opened_pull_requests: [],
           opened_issues: [],
+          pr_backlog: [],
         }),
       });
       await fetchProjectStatusReport('', '');

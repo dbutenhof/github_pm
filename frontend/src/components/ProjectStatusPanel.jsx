@@ -285,6 +285,7 @@ const ProjectStatusPanel = () => {
             heading="New issues opened"
             items={report.opened_issues}
           />
+          <StatusSection heading="PR backlog" items={report.pr_backlog} />
         </>
       )}
     </div>

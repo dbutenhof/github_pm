@@ -56,6 +56,7 @@ describe('App', () => {
       merged_pull_requests: [],
       opened_pull_requests: [],
       opened_issues: [],
+      pr_backlog: [],
     });
   });
 

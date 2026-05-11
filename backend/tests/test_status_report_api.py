@@ -22,6 +22,7 @@ def mock_connector_graphql():
     gitctx = MagicMock()
     gitctx.owner = "test"
     gitctx.repo = "repo"
+    gitctx.status_backlog_nodes = []
 
     merged_nodes = [
         {
@@ -82,6 +83,15 @@ def mock_connector_graphql():
                     }
                 }
             }
+        if "is:pr" in q and "is:open" in q and "updated:" in q:
+            return {
+                "data": {
+                    "search": {
+                        "pageInfo": {"hasNextPage": False, "endCursor": None},
+                        "nodes": list(gitctx.status_backlog_nodes),
+                    }
+                }
+            }
         if "is:pr" in q and "created:" in q:
             return {
                 "data": {
@@ -123,6 +133,7 @@ class TestProjectStatusReport:
         ]
         assert body["opened_pull_requests"][0]["number"] == 11
         assert body["opened_issues"][0]["number"] == 12
+        assert body["pr_backlog"] == []
 
     def test_report_single_calendar_day(self, client, mock_connector_graphql):
         async def override_conn():
@@ -219,6 +230,77 @@ class TestProjectStatusReport:
             "repo:test/repo is:issue created:2025-04-04..2025-04-10" in q
             for q in gql_qs
         )
+        assert any(
+            "repo:test/repo is:pr is:open draft:false updated:<2025-04-04" in q
+            for q in gql_qs
+        )
+
+    def test_pr_backlog_includes_open_prs_updated_before_start(
+        self, client, mock_connector_graphql
+    ):
+        mock_connector_graphql.status_backlog_nodes = [
+            {
+                "number": 50,
+                "title": "Stale open",
+                "url": "https://github.com/test/repo/pull/50",
+                "createdAt": "2025-01-01T10:00:00Z",
+                "updatedAt": "2025-04-03T23:59:59Z",
+                "state": "OPEN",
+                "isDraft": False,
+                "mergedAt": None,
+                "additions": 1,
+                "deletions": 0,
+                "labels": {"nodes": []},
+                "milestone": None,
+                "author": {"__typename": "User", "login": "u"},
+            },
+            {
+                "number": 51,
+                "title": "Touched on start day",
+                "url": "https://github.com/test/repo/pull/51",
+                "createdAt": "2025-01-01T10:00:00Z",
+                "updatedAt": "2025-04-04T00:00:00Z",
+                "state": "OPEN",
+                "isDraft": False,
+                "mergedAt": None,
+                "additions": 1,
+                "deletions": 0,
+                "labels": {"nodes": []},
+                "milestone": None,
+                "author": {"__typename": "User", "login": "u"},
+            },
+            {
+                "number": 52,
+                "title": "Stale draft",
+                "url": "https://github.com/test/repo/pull/52",
+                "createdAt": "2025-01-01T10:00:00Z",
+                "updatedAt": "2025-04-03T10:00:00Z",
+                "state": "OPEN",
+                "isDraft": True,
+                "mergedAt": None,
+                "additions": 1,
+                "deletions": 0,
+                "labels": {"nodes": []},
+                "milestone": None,
+                "author": {"__typename": "User", "login": "u"},
+            },
+        ]
+
+        async def override_conn():
+            yield mock_connector_graphql
+
+        app.dependency_overrides[connection] = override_conn
+        try:
+            r = client.get(
+                "/api/v1/project-status",
+                params={"start_date": "2025-04-04", "end_date": "2025-04-10"},
+            )
+        finally:
+            app.dependency_overrides.clear()
+
+        assert r.status_code == 200
+        backlog = r.json()["pr_backlog"]
+        assert [p["number"] for p in backlog] == [50]
 
     def test_opened_prs_exclude_closed_without_merge(self, client):
         """PRs with GitHub state CLOSED (not merged) must not appear in opened_pull_requests."""
@@ -280,6 +362,15 @@ class TestProjectStatusReport:
                         }
                     }
                 }
+            if "is:pr" in q and "is:open" in q and "updated:" in q:
+                return {
+                    "data": {
+                        "search": {
+                            "pageInfo": {"hasNextPage": False, "endCursor": None},
+                            "nodes": [],
+                        }
+                    }
+                }
             if "is:pr" in q and "created:" in q:
                 return {
                     "data": {
@@ -309,3 +400,4 @@ class TestProjectStatusReport:
         opened = r.json()["opened_pull_requests"]
         numbers = {p["number"] for p in opened}
         assert numbers == {20, 21}
+        assert r.json()["pr_backlog"] == []

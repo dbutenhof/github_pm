@@ -10,10 +10,7 @@ from typing import Any
 
 from github_pm import sdlc_metrics as sm
 from github_pm.api import Connector
-from github_pm.status_report_models import (
-    ProjectStatusReportResponse,
-    StatusReportItem,
-)
+from github_pm.status_report_models import ProjectStatusReportResponse, StatusReportItem
 
 
 def _item_from_gql_node(node: dict[str, Any]) -> StatusReportItem:
@@ -42,6 +39,14 @@ def _created_calendar_in_window(
         return False
     cd = c.astimezone(UTC).date()
     return start_d <= cd <= end_d
+
+
+def _updated_strictly_before_start_date(node: dict[str, Any], start_d: date) -> bool:
+    """True if ``updatedAt`` exists and its UTC calendar date is before ``start_d``."""
+    u = sm.parse_github_ts(node.get("updatedAt"))
+    if not u:
+        return False
+    return u.astimezone(UTC).date() < start_d
 
 
 def build_project_status_report(
@@ -91,10 +96,28 @@ def build_project_status_report(
     ]
     opened_issue_filtered.sort(key=lambda n: int(n["number"]))
 
+    backlog_q = sm.open_pr_backlog_query(repo, start_date)
+    backlog_nodes = sm.graphql_search_pull_requests(
+        post_gql,
+        backlog_q,
+        filter_bot_authors=False,
+    )
+    backlog_filtered = [
+        n
+        for n in backlog_nodes
+        if n.get("state") == "OPEN"
+        and not n.get("mergedAt")
+        and not n.get("isDraft")
+        and _updated_strictly_before_start_date(n, start_date)
+    ]
+    backlog_filtered.sort(key=lambda n: int(n["number"]))
+    backlog_items = [_item_from_gql_node(n) for n in backlog_filtered]
+
     return ProjectStatusReportResponse(
         start_date=start_date,
         end_date=end_date,
         merged_pull_requests=merged_items,
         opened_pull_requests=[_item_from_gql_node(n) for n in opened_pr_filtered],
         opened_issues=[_item_from_gql_node(n) for n in opened_issue_filtered],
+        pr_backlog=backlog_items,
     )
