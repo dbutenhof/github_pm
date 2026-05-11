@@ -1,8 +1,4 @@
-"""Shared SDLC KPI computation (used by FastAPI routes).
-
-The standalone ``sdlc-report`` script (``scripts/sdlc_report.py``) mirrors this
-logic without importing ``github_pm``; keep behavior aligned when changing
-metrics.
+"""Shared SDLC KPI computation (used by FastAPI routes and the ``sdlc-report`` CLI).
 
 Generated-by: Cursor
 """
