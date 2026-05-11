@@ -40,6 +40,7 @@ include = ["*"]
 
 [project.scripts]
 github_pm = "github_pm.cli:main"
+sdlc-report = "github_pm.sdlc_report_cli:main"
 
 [project.optional-dependencies]
 dev = [
