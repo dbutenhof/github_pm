@@ -5,23 +5,13 @@ Generated-by: Cursor
 
 from __future__ import annotations
 
+from datetime import datetime, UTC
 import importlib.util
-from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
 from click.testing import CliRunner
-
-
-def _have_fastapi() -> bool:
-    return importlib.util.find_spec("fastapi") is not None
-
-
-pytestmark = pytest.mark.skipif(
-    not _have_fastapi(),
-    reason="SDLC report CLI tests require project dependencies (fastapi).",
-)
+import pytest
 
 from github_pm.sdlc_models import (
     BugBacklogResponse,
@@ -33,6 +23,16 @@ from github_pm.sdlc_models import (
     EscapedDefectSeriesResponse,
     FirstReviewPayload,
     ThroughputBreakdown,
+)
+
+
+def _have_fastapi() -> bool:
+    return importlib.util.find_spec("fastapi") is not None
+
+
+pytestmark = pytest.mark.skipif(
+    not _have_fastapi(),
+    reason="SDLC report CLI tests require project dependencies (fastapi).",
 )
 
 

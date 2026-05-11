@@ -3,7 +3,7 @@
 Generated-by: Cursor
 """
 
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, UTC
 
 from github_pm.sdlc_html_render import format_duration_seconds, render_sdlc_report_html
 from github_pm.sdlc_models import (

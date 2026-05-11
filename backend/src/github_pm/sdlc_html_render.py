@@ -5,8 +5,8 @@ Generated-by: Cursor
 
 from __future__ import annotations
 
+from datetime import datetime, UTC
 import html
-from datetime import UTC, datetime
 from typing import Any
 
 from github_pm.sdlc_models import (
