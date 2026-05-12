@@ -179,6 +179,7 @@ describe('api', () => {
         merged_pull_requests: [],
         opened_pull_requests: [],
         opened_issues: [],
+        recently_updated_pull_requests: [],
         pr_backlog: [],
       };
       global.fetch.mockResolvedValue({ ok: true, json: async () => body });
@@ -198,6 +199,7 @@ describe('api', () => {
           merged_pull_requests: [],
           opened_pull_requests: [],
           opened_issues: [],
+          recently_updated_pull_requests: [],
           pr_backlog: [],
         }),
       });

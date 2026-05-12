@@ -302,6 +302,10 @@ const ProjectStatusPanel = () => {
             items={report.opened_issues}
           />
           <StatusSection
+            heading="Recently updated PRs"
+            items={report.recently_updated_pull_requests}
+          />
+          <StatusSection
             heading="PR backlog"
             items={report.pr_backlog}
             renderTitleSuffix={backlogAgeSuffix}

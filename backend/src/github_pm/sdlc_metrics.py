@@ -509,6 +509,17 @@ def open_pr_backlog_query(github_repo: str, start_d: date) -> str:
     return f"{repo_search_fragment(github_repo)} is:pr is:open draft:false updated:<{d}"
 
 
+def open_prs_updated_between_query(github_repo: str, start_d: date, end_d: date) -> str:
+    """Open, non-draft PRs with ``updated`` in ``[start_d, end_d]`` (UTC calendar days, inclusive)."""
+    a, b = start_d.isoformat(), end_d.isoformat()
+    if a > b:
+        a, b = b, a
+    return (
+        f"{repo_search_fragment(github_repo)} is:pr is:open draft:false "
+        f"updated:{a}..{b}"
+    )
+
+
 def opened_issues_between_query(github_repo: str, start_d: date, end_d: date) -> str:
     """Issues (not PRs) with ``created`` in ``[start_d, end_d]`` (UTC calendar days, inclusive)."""
     a, b = start_d.isoformat(), end_d.isoformat()

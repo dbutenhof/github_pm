@@ -42,6 +42,7 @@ describe('ProjectStatusPanel', () => {
       merged_pull_requests: merged,
       opened_pull_requests: [],
       opened_issues: issues,
+      recently_updated_pull_requests: [],
       pr_backlog: [],
     });
   });
@@ -80,6 +81,7 @@ describe('ProjectStatusPanel', () => {
       merged_pull_requests: [],
       opened_pull_requests: [],
       opened_issues: [],
+      recently_updated_pull_requests: [],
       pr_backlog: [
         {
           number: 50,
@@ -105,6 +107,9 @@ describe('ProjectStatusPanel', () => {
         screen.getByRole('button', {
           name: 'Copy Merged pull requests to clipboard',
         })
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole('heading', { name: 'Recently updated PRs' })
       ).toBeInTheDocument();
       expect(
         screen.getByRole('heading', { name: 'PR backlog' })
@@ -134,6 +139,7 @@ describe('ProjectStatusPanel', () => {
       merged_pull_requests: [],
       opened_pull_requests: [],
       opened_issues: [],
+      recently_updated_pull_requests: [],
       pr_backlog: [],
     });
 

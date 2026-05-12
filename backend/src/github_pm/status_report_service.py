@@ -45,6 +45,16 @@ def _created_calendar_in_window(
     return start_d <= cd <= end_d
 
 
+def _updated_calendar_in_window(
+    node: dict[str, Any], start_d: date, end_d: date
+) -> bool:
+    u = sm.parse_github_ts(node.get("updatedAt"))
+    if not u:
+        return False
+    ud = u.astimezone(UTC).date()
+    return start_d <= ud <= end_d
+
+
 def _updated_strictly_before_start_date(node: dict[str, Any], start_d: date) -> bool:
     """True if ``updatedAt`` exists and its UTC calendar date is before ``start_d``."""
     u = sm.parse_github_ts(node.get("updatedAt"))
@@ -119,6 +129,24 @@ def build_project_status_report(
     ]
     opened_issue_filtered.sort(key=lambda n: int(n["number"]))
 
+    recently_q = sm.open_prs_updated_between_query(repo, start_date, end_date)
+    recently_nodes = sm.graphql_search_pull_requests(
+        post_gql,
+        recently_q,
+        filter_bot_authors=False,
+    )
+    recently_filtered = [
+        n
+        for n in recently_nodes
+        if n.get("state") == "OPEN"
+        and not n.get("mergedAt")
+        and not n.get("isDraft")
+        and _updated_calendar_in_window(n, start_date, end_date)
+        and not _created_calendar_in_window(n, start_date, end_date)
+    ]
+    recently_filtered.sort(key=lambda n: int(n["number"]))
+    recently_items = [_item_from_gql_node(n) for n in recently_filtered]
+
     backlog_q = sm.open_pr_backlog_query(repo, start_date)
     backlog_nodes = sm.graphql_search_pull_requests(
         post_gql,
@@ -142,5 +170,6 @@ def build_project_status_report(
         merged_pull_requests=merged_items,
         opened_pull_requests=[_item_from_gql_node(n) for n in opened_pr_filtered],
         opened_issues=[_item_from_gql_node(n) for n in opened_issue_filtered],
+        recently_updated_pull_requests=recently_items,
         pr_backlog=backlog_items,
     )

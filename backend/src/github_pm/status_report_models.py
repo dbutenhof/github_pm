@@ -47,6 +47,13 @@ class ProjectStatusReportResponse(BaseModel):
         default_factory=list,
         description="Issues created in the window (pull requests excluded)",
     )
+    recently_updated_pull_requests: list[StatusReportItem] = Field(
+        default_factory=list,
+        description=(
+            "Open, non-draft pull requests updated in the window whose ``createdAt`` "
+            "UTC calendar date is outside the window (not newly opened this period)"
+        ),
+    )
     pr_backlog: list[PrBacklogItem] = Field(
         default_factory=list,
         description=(
