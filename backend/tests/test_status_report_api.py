@@ -300,7 +300,14 @@ class TestProjectStatusReport:
 
         assert r.status_code == 200
         backlog = r.json()["pr_backlog"]
-        assert [p["number"] for p in backlog] == [50]
+        assert backlog == [
+            {
+                "number": 50,
+                "title": "Stale open",
+                "html_url": "https://github.com/test/repo/pull/50",
+                "days_since_update": 7,
+            }
+        ]
 
     def test_opened_prs_exclude_closed_without_merge(self, client):
         """PRs with GitHub state CLOSED (not merged) must not appear in opened_pull_requests."""

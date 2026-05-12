@@ -10,7 +10,11 @@ from typing import Any
 
 from github_pm import sdlc_metrics as sm
 from github_pm.api import Connector
-from github_pm.status_report_models import ProjectStatusReportResponse, StatusReportItem
+from github_pm.status_report_models import (
+    PrBacklogItem,
+    ProjectStatusReportResponse,
+    StatusReportItem,
+)
 
 
 def _item_from_gql_node(node: dict[str, Any]) -> StatusReportItem:
@@ -47,6 +51,25 @@ def _updated_strictly_before_start_date(node: dict[str, Any], start_d: date) -> 
     if not u:
         return False
     return u.astimezone(UTC).date() < start_d
+
+
+def _calendar_days_since_update_to_end(node: dict[str, Any], end_d: date) -> int:
+    """Calendar days from ``updatedAt`` UTC date through ``end_d`` (inclusive span)."""
+    u = sm.parse_github_ts(node.get("updatedAt"))
+    if not u:
+        return 0
+    ud = u.astimezone(UTC).date()
+    return max(0, (end_d - ud).days)
+
+
+def _backlog_item_from_gql_node(node: dict[str, Any], end_d: date) -> PrBacklogItem:
+    base = _item_from_gql_node(node)
+    return PrBacklogItem(
+        number=base.number,
+        title=base.title,
+        html_url=base.html_url,
+        days_since_update=_calendar_days_since_update_to_end(node, end_d),
+    )
 
 
 def build_project_status_report(
@@ -111,7 +134,7 @@ def build_project_status_report(
         and _updated_strictly_before_start_date(n, start_date)
     ]
     backlog_filtered.sort(key=lambda n: int(n["number"]))
-    backlog_items = [_item_from_gql_node(n) for n in backlog_filtered]
+    backlog_items = [_backlog_item_from_gql_node(n, end_date) for n in backlog_filtered]
 
     return ProjectStatusReportResponse(
         start_date=start_date,

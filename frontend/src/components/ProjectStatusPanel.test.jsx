@@ -73,6 +73,29 @@ describe('ProjectStatusPanel', () => {
     expect(screen.getByText('Track work')).toBeInTheDocument();
   });
 
+  it('shows days since update in PR backlog section', async () => {
+    api.fetchProjectStatusReport.mockResolvedValue({
+      start_date: '2025-04-04',
+      end_date: '2025-04-10',
+      merged_pull_requests: [],
+      opened_pull_requests: [],
+      opened_issues: [],
+      pr_backlog: [
+        {
+          number: 50,
+          title: 'Stale open',
+          html_url: 'https://github.com/o/r/pull/50',
+          days_since_update: 7,
+        },
+      ],
+    });
+    render(<ProjectStatusPanel />);
+    await waitFor(() => {
+      expect(screen.getByText('Stale open')).toBeInTheDocument();
+    });
+    expect(screen.getByText('(7 days)')).toBeInTheDocument();
+  });
+
   it('copy button passes section items to clipboard helper', async () => {
     const user = userEvent.setup();
     render(<ProjectStatusPanel />);

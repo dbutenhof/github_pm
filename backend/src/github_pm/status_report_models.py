@@ -18,6 +18,18 @@ class StatusReportItem(BaseModel):
     html_url: str = Field(description="GitHub HTML URL for the issue or PR")
 
 
+class PrBacklogItem(StatusReportItem):
+    """Open stale PR row including age relative to the report ``end_date``."""
+
+    days_since_update: int = Field(
+        ge=0,
+        description=(
+            "Whole calendar days from the PR's last ``updatedAt`` (UTC date) through "
+            "``end_date`` (inclusive), matching the report window's last day"
+        ),
+    )
+
+
 class ProjectStatusReportResponse(BaseModel):
     """Inclusive calendar window from ``start_date`` through ``end_date`` (UTC calendar dates)."""
 
@@ -35,7 +47,7 @@ class ProjectStatusReportResponse(BaseModel):
         default_factory=list,
         description="Issues created in the window (pull requests excluded)",
     )
-    pr_backlog: list[StatusReportItem] = Field(
+    pr_backlog: list[PrBacklogItem] = Field(
         default_factory=list,
         description=(
             "Open, non-draft pull requests whose last update (UTC) is strictly before "

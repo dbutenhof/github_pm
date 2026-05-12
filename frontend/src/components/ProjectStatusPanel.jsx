@@ -50,7 +50,20 @@ const getInitialDateRange = () => {
 
 const emptyListMessage = 'None in this period.';
 
-const StatusSection = ({ heading, items }) => {
+const backlogAgeSuffix = (row) => {
+  const n = row.days_since_update;
+  if (typeof n !== 'number' || Number.isNaN(n)) {
+    return null;
+  }
+  const unit = n === 1 ? 'day' : 'days';
+  return (
+    <span style={{ marginLeft: '0.25rem', color: 'var(--pf-v5-global--Color--200)' }}>
+      ({n} {unit})
+    </span>
+  );
+};
+
+const StatusSection = ({ heading, items, renderTitleSuffix }) => {
   const hasItems = items && items.length > 0;
   const copyLines = () => {
     if (!hasItems) {
@@ -101,7 +114,10 @@ const StatusSection = ({ heading, items }) => {
                 >
                   #{row.number}
                 </a>
-                <span style={{ marginLeft: '0.35rem' }}>{row.title}</span>
+                <span style={{ marginLeft: '0.35rem' }}>
+                  {row.title}
+                  {renderTitleSuffix ? renderTitleSuffix(row) : null}
+                </span>
               </li>
             ))}
           </ul>
@@ -285,7 +301,11 @@ const ProjectStatusPanel = () => {
             heading="New issues opened"
             items={report.opened_issues}
           />
-          <StatusSection heading="PR backlog" items={report.pr_backlog} />
+          <StatusSection
+            heading="PR backlog"
+            items={report.pr_backlog}
+            renderTitleSuffix={backlogAgeSuffix}
+          />
         </>
       )}
     </div>
