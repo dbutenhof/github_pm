@@ -43,6 +43,8 @@ describe('ProjectStatusPanel', () => {
       opened_pull_requests: [],
       opened_issues: issues,
       recently_updated_pull_requests: [],
+      reviewer_attention_needed: [],
+      creator_attention_needed: [],
       pr_backlog: [],
     });
   });
@@ -82,6 +84,8 @@ describe('ProjectStatusPanel', () => {
       opened_pull_requests: [],
       opened_issues: [],
       recently_updated_pull_requests: [],
+      reviewer_attention_needed: [],
+      creator_attention_needed: [],
       pr_backlog: [
         {
           number: 50,
@@ -112,6 +116,12 @@ describe('ProjectStatusPanel', () => {
         screen.getByRole('heading', { name: 'Recently updated PRs' })
       ).toBeInTheDocument();
       expect(
+        screen.getByRole('heading', { name: 'Reviewer attention needed' })
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole('heading', { name: 'Creator attention needed' })
+      ).toBeInTheDocument();
+      expect(
         screen.getByRole('heading', { name: 'PR backlog' })
       ).toBeInTheDocument();
     });
@@ -140,6 +150,8 @@ describe('ProjectStatusPanel', () => {
       opened_pull_requests: [],
       opened_issues: [],
       recently_updated_pull_requests: [],
+      reviewer_attention_needed: [],
+      creator_attention_needed: [],
       pr_backlog: [],
     });
 

@@ -24,6 +24,7 @@ def mock_connector_graphql():
     gitctx.repo = "repo"
     gitctx.status_backlog_nodes = []
     gitctx.status_recently_updated_nodes = []
+    gitctx.status_attention_open_nodes = []
 
     merged_nodes = [
         {
@@ -81,6 +82,15 @@ def mock_connector_graphql():
                     "search": {
                         "pageInfo": {"hasNextPage": False, "endCursor": None},
                         "nodes": issue_nodes,
+                    }
+                }
+            }
+        if q == "repo:test/repo is:pr is:open":
+            return {
+                "data": {
+                    "search": {
+                        "pageInfo": {"hasNextPage": False, "endCursor": None},
+                        "nodes": list(gitctx.status_attention_open_nodes),
                     }
                 }
             }
@@ -144,6 +154,8 @@ class TestProjectStatusReport:
         assert body["opened_pull_requests"][0]["number"] == 11
         assert body["opened_issues"][0]["number"] == 12
         assert body["recently_updated_pull_requests"] == []
+        assert body["reviewer_attention_needed"] == []
+        assert body["creator_attention_needed"] == []
         assert body["pr_backlog"] == []
 
     def test_report_single_calendar_day(self, client, mock_connector_graphql):
@@ -250,6 +262,134 @@ class TestProjectStatusReport:
             in q
             for q in gql_qs
         )
+        assert any(q == "repo:test/repo is:pr is:open" for q in gql_qs)
+
+    def test_attention_sections_partition_open_prs(
+        self, client, mock_connector_graphql
+    ):
+        mock_connector_graphql.status_attention_open_nodes = [
+            {
+                "number": 70,
+                "title": "Needs first review",
+                "url": "https://github.com/test/repo/pull/70",
+                "createdAt": "2025-01-01T00:00:00Z",
+                "updatedAt": "2025-04-05T12:00:00Z",
+                "state": "OPEN",
+                "isDraft": False,
+                "mergedAt": None,
+                "mergeable": "MERGEABLE",
+                "mergeStateStatus": "CLEAN",
+                "reviews": {"nodes": []},
+                "additions": 1,
+                "deletions": 0,
+                "labels": {"nodes": []},
+                "milestone": None,
+                "author": {"__typename": "User", "login": "u"},
+            },
+            {
+                "number": 71,
+                "title": "Pushed after review",
+                "url": "https://github.com/test/repo/pull/71",
+                "createdAt": "2025-01-01T00:00:00Z",
+                "updatedAt": "2025-04-06T12:00:00Z",
+                "state": "OPEN",
+                "isDraft": False,
+                "mergedAt": None,
+                "mergeable": "MERGEABLE",
+                "mergeStateStatus": "CLEAN",
+                "reviews": {
+                    "nodes": [
+                        {
+                            "submittedAt": "2025-04-03T10:00:00Z",
+                            "state": "COMMENTED",
+                        }
+                    ]
+                },
+                "additions": 1,
+                "deletions": 0,
+                "labels": {"nodes": []},
+                "milestone": None,
+                "author": {"__typename": "User", "login": "u"},
+            },
+            {
+                "number": 72,
+                "title": "Needs author response",
+                "url": "https://github.com/test/repo/pull/72",
+                "createdAt": "2025-01-01T00:00:00Z",
+                "updatedAt": "2025-04-05T12:00:00Z",
+                "state": "OPEN",
+                "isDraft": False,
+                "mergedAt": None,
+                "mergeable": "MERGEABLE",
+                "mergeStateStatus": "CLEAN",
+                "reviews": {
+                    "nodes": [
+                        {
+                            "submittedAt": "2025-04-07T10:00:00Z",
+                            "state": "CHANGES_REQUESTED",
+                        }
+                    ]
+                },
+                "additions": 1,
+                "deletions": 0,
+                "labels": {"nodes": []},
+                "milestone": None,
+                "author": {"__typename": "User", "login": "u"},
+            },
+            {
+                "number": 73,
+                "title": "Conflicted",
+                "url": "https://github.com/test/repo/pull/73",
+                "createdAt": "2025-01-01T00:00:00Z",
+                "updatedAt": "2025-04-04T12:00:00Z",
+                "state": "OPEN",
+                "isDraft": False,
+                "mergedAt": None,
+                "mergeable": "CONFLICTING",
+                "mergeStateStatus": "DIRTY",
+                "reviews": {"nodes": []},
+                "additions": 1,
+                "deletions": 0,
+                "labels": {"nodes": []},
+                "milestone": None,
+                "author": {"__typename": "User", "login": "u"},
+            },
+            {
+                "number": 74,
+                "title": "Behind base branch",
+                "url": "https://github.com/test/repo/pull/74",
+                "createdAt": "2025-01-01T00:00:00Z",
+                "updatedAt": "2025-04-05T12:00:00Z",
+                "state": "OPEN",
+                "isDraft": False,
+                "mergedAt": None,
+                "mergeable": "MERGEABLE",
+                "mergeStateStatus": "BEHIND",
+                "reviews": {"nodes": []},
+                "additions": 1,
+                "deletions": 0,
+                "labels": {"nodes": []},
+                "milestone": None,
+                "author": {"__typename": "User", "login": "u"},
+            },
+        ]
+
+        async def override_conn():
+            yield mock_connector_graphql
+
+        app.dependency_overrides[connection] = override_conn
+        try:
+            r = client.get(
+                "/api/v1/project-status",
+                params={"start_date": "2025-04-04", "end_date": "2025-04-10"},
+            )
+        finally:
+            app.dependency_overrides.clear()
+
+        assert r.status_code == 200
+        body = r.json()
+        assert {p["number"] for p in body["reviewer_attention_needed"]} == {70, 71}
+        assert {p["number"] for p in body["creator_attention_needed"]} == {72, 73, 74}
 
     def test_recently_updated_pull_requests_excludes_opened_in_window(
         self, client, mock_connector_graphql
@@ -458,6 +598,15 @@ class TestProjectStatusReport:
                         }
                     }
                 }
+            if q == "repo:test/repo is:pr is:open":
+                return {
+                    "data": {
+                        "search": {
+                            "pageInfo": {"hasNextPage": False, "endCursor": None},
+                            "nodes": [],
+                        }
+                    }
+                }
             if "is:pr" in q and "is:open" in q and "updated:" in q:
                 if "updated:<" in q:
                     return {
@@ -506,4 +655,6 @@ class TestProjectStatusReport:
         numbers = {p["number"] for p in opened}
         assert numbers == {20, 21}
         assert r.json()["recently_updated_pull_requests"] == []
+        assert r.json()["reviewer_attention_needed"] == []
+        assert r.json()["creator_attention_needed"] == []
         assert r.json()["pr_backlog"] == []

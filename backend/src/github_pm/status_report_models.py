@@ -54,6 +54,22 @@ class ProjectStatusReportResponse(BaseModel):
             "UTC calendar date is outside the window (not newly opened this period)"
         ),
     )
+    reviewer_attention_needed: list[StatusReportItem] = Field(
+        default_factory=list,
+        description=(
+            "Open, non-draft PRs with ``mergeable`` MERGEABLE and a clean branch "
+            "(``mergeStateStatus`` not BEHIND or DIRTY), with no submitted review or "
+            "``updatedAt`` after the latest review ``submittedAt``"
+        ),
+    )
+    creator_attention_needed: list[StatusReportItem] = Field(
+        default_factory=list,
+        description=(
+            "Open PRs (including drafts) that need branch work or author follow-up: "
+            "``mergeable`` CONFLICTING, ``mergeStateStatus`` BEHIND or DIRTY, or latest "
+            "submitted review newer than ``updatedAt``"
+        ),
+    )
     pr_backlog: list[PrBacklogItem] = Field(
         default_factory=list,
         description=(

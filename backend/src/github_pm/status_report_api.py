@@ -46,8 +46,9 @@ async def get_project_status_report(
 
     Sections: merged pull requests (by merge date), pull requests opened, issues
     opened (PRs excluded), recently updated PRs (open, non-draft, touched in the
-    window but not opened in it), and PR backlog (open, non-draft PRs not updated
-    on or after ``start_date``, UTC calendar dates).
+    window but not opened in it), reviewer and creator attention (current open PRs
+    by merge/review state), and PR backlog (open, non-draft PRs not updated on or
+    after ``start_date``, UTC calendar dates).
     """
     resolved_end = end_date if end_date is not None else _default_end_date()
     resolved_start = (

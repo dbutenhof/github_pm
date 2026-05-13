@@ -5,7 +5,7 @@ Generated-by: Cursor
 
 from __future__ import annotations
 
-from datetime import date, UTC
+from datetime import date, datetime, UTC
 from typing import Any
 
 from github_pm import sdlc_metrics as sm
@@ -82,6 +82,56 @@ def _backlog_item_from_gql_node(node: dict[str, Any], end_d: date) -> PrBacklogI
     )
 
 
+def _max_submitted_review_time(node: dict[str, Any]) -> datetime | None:
+    """Latest ``submittedAt`` among non-pending PR reviews, or ``None`` if none."""
+    best: datetime | None = None
+    for r in (node.get("reviews") or {}).get("nodes") or []:
+        if not isinstance(r, dict):
+            continue
+        if r.get("state") == "PENDING":
+            continue
+        ts = sm.parse_github_ts(r.get("submittedAt"))
+        if ts is None:
+            continue
+        if best is None or ts > best:
+            best = ts
+    return best
+
+
+def _partition_attention_open_prs(
+    nodes: list[dict[str, Any]],
+) -> tuple[list[StatusReportItem], list[StatusReportItem]]:
+    """Split open PR nodes into reviewer vs creator attention lists."""
+    reviewer_out: list[StatusReportItem] = []
+    creator_out: list[StatusReportItem] = []
+    for n in nodes:
+        if n.get("state") != "OPEN" or n.get("mergedAt"):
+            continue
+        updated = sm.parse_github_ts(n.get("updatedAt"))
+        if updated is None:
+            continue
+        last_review = _max_submitted_review_time(n)
+        mergeable = str(n.get("mergeable") or "")
+        merge_state = str(n.get("mergeStateStatus") or "")
+        is_draft = bool(n.get("isDraft"))
+        needs_creator_branch = mergeable == "CONFLICTING" or merge_state in (
+            "BEHIND",
+            "DIRTY",
+        )
+        if (
+            not is_draft
+            and mergeable == "MERGEABLE"
+            and merge_state not in ("BEHIND", "DIRTY")
+            and (last_review is None or updated > last_review)
+        ):
+            reviewer_out.append(_item_from_gql_node(n))
+        if needs_creator_branch or (last_review is not None and last_review > updated):
+            creator_out.append(_item_from_gql_node(n))
+    reviewer_out.sort(key=lambda x: x.number)
+    creator_out.sort(key=lambda x: x.number)
+    return reviewer_out, creator_out
+
+
 def build_project_status_report(
     gitctx: Connector,
     *,
@@ -147,6 +197,16 @@ def build_project_status_report(
     recently_filtered.sort(key=lambda n: int(n["number"]))
     recently_items = [_item_from_gql_node(n) for n in recently_filtered]
 
+    attention_q = sm.open_pull_requests_for_attention_query(repo)
+    attention_nodes = sm.graphql_search_open_pull_requests_attention(
+        post_gql,
+        attention_q,
+        filter_bot_authors=False,
+    )
+    reviewer_attention, creator_attention = _partition_attention_open_prs(
+        attention_nodes
+    )
+
     backlog_q = sm.open_pr_backlog_query(repo, start_date)
     backlog_nodes = sm.graphql_search_pull_requests(
         post_gql,
@@ -171,5 +231,7 @@ def build_project_status_report(
         opened_pull_requests=[_item_from_gql_node(n) for n in opened_pr_filtered],
         opened_issues=[_item_from_gql_node(n) for n in opened_issue_filtered],
         recently_updated_pull_requests=recently_items,
+        reviewer_attention_needed=reviewer_attention,
+        creator_attention_needed=creator_attention,
         pr_backlog=backlog_items,
     )
