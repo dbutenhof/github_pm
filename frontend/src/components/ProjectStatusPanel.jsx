@@ -50,7 +50,31 @@ const getInitialDateRange = () => {
 
 const emptyListMessage = 'None in this period.';
 
-const StatusSection = ({ heading, items }) => {
+const backlogAgeSuffix = (row) => {
+  const n = row.days_since_update;
+  if (typeof n !== 'number' || Number.isNaN(n)) {
+    return null;
+  }
+  const unit = n === 1 ? 'day' : 'days';
+  return (
+    <span
+      style={{
+        marginLeft: '0.25rem',
+        color: 'var(--pf-v5-global--Color--200)',
+      }}
+    >
+      ({n} {unit})
+    </span>
+  );
+};
+
+const StatusSection = ({
+  heading,
+  description,
+  items,
+  renderTitleSuffix,
+  emptyMessage,
+}) => {
   const hasItems = items && items.length > 0;
   const copyLines = () => {
     if (!hasItems) {
@@ -59,34 +83,58 @@ const StatusSection = ({ heading, items }) => {
     void copyStatusSectionToClipboard(items);
   };
 
+  const emptyText = emptyMessage ?? emptyListMessage;
+
   return (
     <Card isCompact style={{ marginTop: '1rem' }}>
       <CardTitle>
         <div
           style={{
             display: 'flex',
-            alignItems: 'center',
+            flexDirection: 'column',
             gap: '0.35rem',
-            flexWrap: 'wrap',
+            width: '100%',
           }}
         >
-          <Button
-            type="button"
-            variant="plain"
-            aria-label={`Copy ${heading} to clipboard`}
-            title="Copy for reports: rich paste keeps # as a link to GitHub; plain text uses Markdown [#n](url) before the title"
-            icon={<OutlinedCopyIcon />}
-            onClick={copyLines}
-            isDisabled={!hasItems}
-          />
-          <Title headingLevel="h3" size="lg">
-            {heading}
-          </Title>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.35rem',
+              flexWrap: 'wrap',
+            }}
+          >
+            <Button
+              type="button"
+              variant="plain"
+              aria-label={`Copy ${heading} to clipboard`}
+              title="Copy for reports: rich paste keeps # as a link to GitHub; plain text uses Markdown [#n](url) before the title"
+              icon={<OutlinedCopyIcon />}
+              onClick={copyLines}
+              isDisabled={!hasItems}
+            />
+            <Title headingLevel="h3" size="lg">
+              {heading}
+            </Title>
+          </div>
+          {description ? (
+            <p
+              style={{
+                margin: 0,
+                fontSize: '0.875rem',
+                color: 'var(--pf-v5-global--Color--200)',
+                fontWeight: 400,
+                lineHeight: 1.4,
+              }}
+            >
+              {description}
+            </p>
+          ) : null}
         </div>
       </CardTitle>
       <CardBody>
         {!items || items.length === 0 ? (
-          <TextContent>{emptyListMessage}</TextContent>
+          <TextContent>{emptyText}</TextContent>
         ) : (
           <ul style={{ margin: 0, paddingLeft: '1.25rem' }}>
             {items.map((row) => (
@@ -101,7 +149,10 @@ const StatusSection = ({ heading, items }) => {
                 >
                   #{row.number}
                 </a>
-                <span style={{ marginLeft: '0.35rem' }}>{row.title}</span>
+                <span style={{ marginLeft: '0.35rem' }}>
+                  {row.title}
+                  {renderTitleSuffix ? renderTitleSuffix(row) : null}
+                </span>
               </li>
             ))}
           </ul>
@@ -275,15 +326,41 @@ const ProjectStatusPanel = () => {
         <>
           <StatusSection
             heading="Merged pull requests"
+            description="Merged in this date range (by merge date)."
             items={report.merged_pull_requests}
           />
           <StatusSection
             heading="New pull requests opened"
+            description="Opened in this date range."
             items={report.opened_pull_requests}
           />
           <StatusSection
             heading="New issues opened"
+            description="Issues opened in this date range."
             items={report.opened_issues}
+          />
+          <StatusSection
+            heading="Recently updated PRs"
+            description="Already-open, non-draft PRs updated in this date range."
+            items={report.recently_updated_pull_requests}
+          />
+          <StatusSection
+            heading="Reviewer attention needed"
+            description="Non-draft, cleanly mergeable; needs review or re-review after updates."
+            items={report.reviewer_attention_needed}
+            emptyMessage="None match."
+          />
+          <StatusSection
+            heading="Creator attention needed"
+            description="Rebase/merge fixes, or review is newer than the last PR update, including drafts."
+            items={report.creator_attention_needed}
+            emptyMessage="None match."
+          />
+          <StatusSection
+            heading="PR backlog"
+            description="Still open, non-draft, stale since before the date range start (with age to date range end)."
+            items={report.pr_backlog}
+            renderTitleSuffix={backlogAgeSuffix}
           />
         </>
       )}

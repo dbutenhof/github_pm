@@ -36,6 +36,27 @@ describe('formatStatusSectionClipboardMarkdown', () => {
     expect(formatStatusSectionClipboardMarkdown([])).toBe('');
     expect(formatStatusSectionClipboardMarkdown(null)).toBe('');
   });
+
+  it('appends age suffix for PR backlog rows with days_since_update', () => {
+    expect(
+      formatStatusSectionClipboardMarkdown([
+        {
+          number: 50,
+          title: 'Stale open',
+          html_url: 'https://github.com/o/r/pull/50',
+          days_since_update: 7,
+        },
+        {
+          number: 51,
+          title: 'One day',
+          html_url: 'https://github.com/o/r/pull/51',
+          days_since_update: 1,
+        },
+      ])
+    ).toBe(
+      '[#50](https://github.com/o/r/pull/50) Stale open (7 days)\n[#51](https://github.com/o/r/pull/51) One day (1 day)'
+    );
+  });
 });
 
 describe('formatStatusSectionClipboardHtml', () => {
@@ -45,6 +66,18 @@ describe('formatStatusSectionClipboardHtml', () => {
     ]);
     expect(html).toContain('<a href="https://github.com/o/r/pull/1">#1</a>');
     expect(html).toContain('A &amp; B');
+  });
+
+  it('escapes age suffix in HTML clipboard output', () => {
+    const html = formatStatusSectionClipboardHtml([
+      {
+        number: 50,
+        title: 'T',
+        html_url: 'https://github.com/o/r/pull/50',
+        days_since_update: 3,
+      },
+    ]);
+    expect(html).toContain('T (3 days)');
   });
 });
 

@@ -56,6 +56,10 @@ describe('App', () => {
       merged_pull_requests: [],
       opened_pull_requests: [],
       opened_issues: [],
+      recently_updated_pull_requests: [],
+      reviewer_attention_needed: [],
+      creator_attention_needed: [],
+      pr_backlog: [],
     });
   });
 

@@ -358,7 +358,91 @@ def graphql_search_pull_requests(
             title
             url
             createdAt
+            updatedAt
+            state
+            isDraft
             mergedAt
+            additions
+            deletions
+            labels(first: 30) { nodes { name } }
+            milestone { title }
+            author {
+              __typename
+              ... on User { login }
+              ... on Bot { login }
+              ... on Organization { login }
+            }
+          }
+        }
+      }
+    }
+    """
+    while True:
+        payload = {
+            "query": gql,
+            "variables": {
+                "q": search_query,
+                "first": page_size,
+                "after": cursor,
+            },
+        }
+        data = post_graphql(payload)
+        errors = data.get("errors")
+        if errors:
+            logger.error("GraphQL errors: %s", errors)
+            raise RuntimeError(f"GitHub GraphQL error: {errors!r}")
+        search = data.get("data", {}).get("search") or {}
+        batch = search.get("nodes") or []
+        if filter_bot_authors:
+            nodes.extend(filter_out_bot_pr_nodes(batch))
+        else:
+            nodes.extend([n for n in batch if n and n.get("number") is not None])
+        page = search.get("pageInfo") or {}
+        if not page.get("hasNextPage"):
+            break
+        cursor = page.get("endCursor")
+        if not cursor:
+            break
+    return nodes
+
+
+def graphql_search_open_pull_requests_attention(
+    post_graphql: Callable[[dict[str, Any]], dict[str, Any]],
+    search_query: str,
+    *,
+    page_size: int = 100,
+    filter_bot_authors: bool = False,
+) -> list[dict[str, Any]]:
+    """Paginate GitHub GraphQL search for open PRs including ``mergeable``,
+    ``mergeStateStatus``, and ``reviews``.
+
+    Used for project status "attention" sections; callers filter on merge state and
+    review timestamps.
+    """
+    nodes: list[dict[str, Any]] = []
+    cursor: str | None = None
+    gql = """
+    query($q: String!, $first: Int!, $after: String) {
+      search(query: $q, type: ISSUE, first: $first, after: $after) {
+        pageInfo { hasNextPage endCursor }
+        nodes {
+          ... on PullRequest {
+            number
+            title
+            url
+            createdAt
+            updatedAt
+            state
+            isDraft
+            mergedAt
+            mergeable
+            mergeStateStatus
+            reviews(first: 100) {
+              nodes {
+                submittedAt
+                state
+              }
+            }
             additions
             deletions
             labels(first: 30) { nodes { name } }
@@ -494,6 +578,32 @@ def opened_prs_between_query(github_repo: str, start_d: date, end_d: date) -> st
     if a > b:
         a, b = b, a
     return f"{repo_search_fragment(github_repo)} is:pr created:{a}..{b}"
+
+
+def open_pr_backlog_query(github_repo: str, start_d: date) -> str:
+    """Open, non-draft PRs last updated strictly before ``start_d`` (UTC calendar day at 00:00).
+
+    Uses ``draft:false`` and ``updated:<YYYY-MM-DD``; callers should still verify
+    ``updatedAt`` in UTC against ``start_d`` and ``isDraft`` for edge cases.
+    """
+    d = start_d.isoformat()
+    return f"{repo_search_fragment(github_repo)} is:pr is:open draft:false updated:<{d}"
+
+
+def open_pull_requests_for_attention_query(github_repo: str) -> str:
+    """All open pull requests in the repo (drafts included) for merge/review heuristics."""
+    return f"{repo_search_fragment(github_repo)} is:pr is:open"
+
+
+def open_prs_updated_between_query(github_repo: str, start_d: date, end_d: date) -> str:
+    """Open, non-draft PRs with ``updated`` in ``[start_d, end_d]`` (UTC calendar days, inclusive)."""
+    a, b = start_d.isoformat(), end_d.isoformat()
+    if a > b:
+        a, b = b, a
+    return (
+        f"{repo_search_fragment(github_repo)} is:pr is:open draft:false "
+        f"updated:{a}..{b}"
+    )
 
 
 def opened_issues_between_query(github_repo: str, start_d: date, end_d: date) -> str:

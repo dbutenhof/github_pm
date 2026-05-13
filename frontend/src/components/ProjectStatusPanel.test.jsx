@@ -42,6 +42,10 @@ describe('ProjectStatusPanel', () => {
       merged_pull_requests: merged,
       opened_pull_requests: [],
       opened_issues: issues,
+      recently_updated_pull_requests: [],
+      reviewer_attention_needed: [],
+      creator_attention_needed: [],
+      pr_backlog: [],
     });
   });
 
@@ -72,6 +76,32 @@ describe('ProjectStatusPanel', () => {
     expect(screen.getByText('Track work')).toBeInTheDocument();
   });
 
+  it('shows days since update in PR backlog section', async () => {
+    api.fetchProjectStatusReport.mockResolvedValue({
+      start_date: '2025-04-04',
+      end_date: '2025-04-10',
+      merged_pull_requests: [],
+      opened_pull_requests: [],
+      opened_issues: [],
+      recently_updated_pull_requests: [],
+      reviewer_attention_needed: [],
+      creator_attention_needed: [],
+      pr_backlog: [
+        {
+          number: 50,
+          title: 'Stale open',
+          html_url: 'https://github.com/o/r/pull/50',
+          days_since_update: 7,
+        },
+      ],
+    });
+    render(<ProjectStatusPanel />);
+    await waitFor(() => {
+      expect(screen.getByText('Stale open')).toBeInTheDocument();
+    });
+    expect(screen.getByText('(7 days)')).toBeInTheDocument();
+  });
+
   it('copy button passes section items to clipboard helper', async () => {
     const user = userEvent.setup();
     render(<ProjectStatusPanel />);
@@ -81,6 +111,18 @@ describe('ProjectStatusPanel', () => {
         screen.getByRole('button', {
           name: 'Copy Merged pull requests to clipboard',
         })
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole('heading', { name: 'Recently updated PRs' })
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole('heading', { name: 'Reviewer attention needed' })
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole('heading', { name: 'Creator attention needed' })
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole('heading', { name: 'PR backlog' })
       ).toBeInTheDocument();
     });
 
@@ -107,6 +149,10 @@ describe('ProjectStatusPanel', () => {
       merged_pull_requests: [],
       opened_pull_requests: [],
       opened_issues: [],
+      recently_updated_pull_requests: [],
+      reviewer_attention_needed: [],
+      creator_attention_needed: [],
+      pr_backlog: [],
     });
 
     render(<ProjectStatusPanel />);

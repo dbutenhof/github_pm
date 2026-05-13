@@ -20,20 +20,34 @@ function escapeHtmlAttr(s) {
 }
 
 /**
+ * @param {Record<string, unknown>} row
+ * @returns {string}
+ */
+function statusItemAgeSuffix(row) {
+  const n = row.days_since_update;
+  if (typeof n !== 'number' || Number.isNaN(n)) {
+    return '';
+  }
+  const unit = n === 1 ? 'day' : 'days';
+  return ` (${n} ${unit})`;
+}
+
+/**
  * Markdown lines: linked ``#number`` then space and title (for editors that read plain text).
  *
- * @param {Array<{ number: number, title?: string, html_url?: string }>} items
+ * @param {Array<{ number: number, title?: string, html_url?: string, days_since_update?: number }>} items
  * @returns {string}
  */
 export function formatStatusSectionClipboardMarkdown(items) {
   return (items || [])
     .map((row) => {
       const title = (row.title != null ? String(row.title) : '').trim();
+      const age = statusItemAgeSuffix(row);
       const url = (row.html_url != null ? String(row.html_url) : '').trim();
       if (!url) {
-        return `#${row.number} ${title}`.trim();
+        return `#${row.number} ${title}${age}`.trim();
       }
-      return `[#${row.number}](${url}) ${title}`.trim();
+      return `[#${row.number}](${url}) ${title}${age}`.trim();
     })
     .join('\n');
 }
@@ -41,7 +55,7 @@ export function formatStatusSectionClipboardMarkdown(items) {
 /**
  * Minimal HTML (one line per item) so paste into Word / email keeps the number as a hyperlink.
  *
- * @param {Array<{ number: number, title?: string, html_url?: string }>} items
+ * @param {Array<{ number: number, title?: string, html_url?: string, days_since_update?: number }>} items
  * @returns {string}
  */
 export function formatStatusSectionClipboardHtml(items) {
@@ -50,12 +64,13 @@ export function formatStatusSectionClipboardHtml(items) {
       const title = escapeHtmlText(
         (row.title != null ? String(row.title) : '').trim()
       );
+      const age = escapeHtmlText(statusItemAgeSuffix(row));
       const url = (row.html_url != null ? String(row.html_url) : '').trim();
       if (!url) {
-        return `#${row.number} ${title}`;
+        return `#${row.number} ${title}${age}`;
       }
       const href = escapeHtmlAttr(url);
-      return `<a href="${href}">#${row.number}</a> ${title}`;
+      return `<a href="${href}">#${row.number}</a> ${title}${age}`;
     })
     .join('<br />\n');
 }
@@ -74,7 +89,7 @@ export async function copyTextToClipboard(text) {
 /**
  * Copy section rows with ``#number`` hyperlinked in HTML and Markdown link syntax in plain text.
  *
- * @param {Array<{ number: number, title?: string, html_url?: string }>} items
+ * @param {Array<{ number: number, title?: string, html_url?: string, days_since_update?: number }>} items
  * @returns {Promise<void>}
  */
 export async function copyStatusSectionToClipboard(items) {
