@@ -221,7 +221,12 @@ def build_project_status_report(
         and not n.get("isDraft")
         and _updated_strictly_before_start_date(n, start_date)
     ]
-    backlog_filtered.sort(key=lambda n: int(n["number"]))
+    backlog_filtered.sort(
+        key=lambda n: (
+            -_calendar_days_since_update_to_end(n, end_date),
+            int(n["number"]),
+        )
+    )
     backlog_items = [_backlog_item_from_gql_node(n, end_date) for n in backlog_filtered]
 
     return ProjectStatusReportResponse(

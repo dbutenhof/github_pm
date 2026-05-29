@@ -538,6 +538,58 @@ class TestProjectStatusReport:
             }
         ]
 
+    def test_pr_backlog_sorted_by_age_descending(self, client, mock_connector_graphql):
+        """PR backlog lists stalest PRs first (days_since_update), not by PR number."""
+        mock_connector_graphql.status_backlog_nodes = [
+            {
+                "number": 50,
+                "title": "Recently stale",
+                "url": "https://github.com/test/repo/pull/50",
+                "createdAt": "2025-01-01T10:00:00Z",
+                "updatedAt": "2025-04-03T12:00:00Z",
+                "state": "OPEN",
+                "isDraft": False,
+                "mergedAt": None,
+                "additions": 1,
+                "deletions": 0,
+                "labels": {"nodes": []},
+                "milestone": None,
+                "author": {"__typename": "User", "login": "u"},
+            },
+            {
+                "number": 100,
+                "title": "Very stale",
+                "url": "https://github.com/test/repo/pull/100",
+                "createdAt": "2025-01-01T10:00:00Z",
+                "updatedAt": "2025-04-01T10:00:00Z",
+                "state": "OPEN",
+                "isDraft": False,
+                "mergedAt": None,
+                "additions": 1,
+                "deletions": 0,
+                "labels": {"nodes": []},
+                "milestone": None,
+                "author": {"__typename": "User", "login": "u"},
+            },
+        ]
+
+        async def override_conn():
+            yield mock_connector_graphql
+
+        app.dependency_overrides[connection] = override_conn
+        try:
+            r = client.get(
+                "/api/v1/project-status",
+                params={"start_date": "2025-04-04", "end_date": "2025-04-10"},
+            )
+        finally:
+            app.dependency_overrides.clear()
+
+        assert r.status_code == 200
+        backlog = r.json()["pr_backlog"]
+        assert [row["number"] for row in backlog] == [100, 50]
+        assert [row["days_since_update"] for row in backlog] == [9, 7]
+
     def test_opened_prs_exclude_closed_without_merge(self, client):
         """PRs with GitHub state CLOSED (not merged) must not appear in opened_pull_requests."""
         gitctx = MagicMock()
