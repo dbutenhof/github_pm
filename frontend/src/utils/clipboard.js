@@ -20,6 +20,14 @@ function escapeHtmlAttr(s) {
 }
 
 /**
+ * @param {string} s
+ * @returns {string}
+ */
+function withoutTrailingNewlines(s) {
+  return s.replace(/[\r\n]+$/, '');
+}
+
+/**
  * @param {Record<string, unknown>} row
  * @returns {string}
  */
@@ -39,17 +47,19 @@ function statusItemAgeSuffix(row) {
  * @returns {string}
  */
 export function formatStatusSectionClipboardMarkdown(items) {
-  return (items || [])
-    .map((row) => {
-      const title = (row.title != null ? String(row.title) : '').trim();
-      const age = statusItemAgeSuffix(row);
-      const url = (row.html_url != null ? String(row.html_url) : '').trim();
-      if (!url) {
-        return `#${row.number} ${title}${age}`.trim();
-      }
-      return `[#${row.number}](${url}) ${title}${age}`.trim();
-    })
-    .join('\n');
+  return withoutTrailingNewlines(
+    (items || [])
+      .map((row) => {
+        const title = (row.title != null ? String(row.title) : '').trim();
+        const age = statusItemAgeSuffix(row);
+        const url = (row.html_url != null ? String(row.html_url) : '').trim();
+        if (!url) {
+          return `#${row.number} ${title}${age}`.trim();
+        }
+        return `[#${row.number}](${url}) ${title}${age}`.trim();
+      })
+      .join('\n')
+  );
 }
 
 /**
@@ -72,7 +82,7 @@ export function formatStatusSectionClipboardHtml(items) {
       const href = escapeHtmlAttr(url);
       return `<a href="${href}">#${row.number}</a> ${title}${age}`;
     })
-    .join('<br />\n');
+    .join('<br />');
 }
 
 /**
@@ -98,7 +108,7 @@ export async function copyStatusSectionToClipboard(items) {
     return;
   }
   const innerHtml = formatStatusSectionClipboardHtml(items);
-  const htmlDoc = `<!DOCTYPE html><html><body><meta charset="utf-8"><div>${innerHtml}</div></body></html>`;
+  const htmlDoc = `<!DOCTYPE html><html><head><meta charset="utf-8" /></head><body>${innerHtml}</body></html>`;
 
   if (
     typeof navigator !== 'undefined' &&

@@ -37,6 +37,23 @@ describe('formatStatusSectionClipboardMarkdown', () => {
     expect(formatStatusSectionClipboardMarkdown(null)).toBe('');
   });
 
+  it('does not end with a trailing newline', () => {
+    const text = formatStatusSectionClipboardMarkdown([
+      {
+        number: 42,
+        title: 'Hello world',
+        html_url: 'https://github.com/o/r/pull/42',
+      },
+      {
+        number: 7,
+        title: 'Second',
+        html_url: 'https://github.com/o/r/issues/7',
+      },
+    ]);
+    expect(text.endsWith('\n')).toBe(false);
+    expect(text.endsWith('\r')).toBe(false);
+  });
+
   it('appends age suffix for PR backlog rows with days_since_update', () => {
     expect(
       formatStatusSectionClipboardMarkdown([
@@ -78,6 +95,14 @@ describe('formatStatusSectionClipboardHtml', () => {
       },
     ]);
     expect(html).toContain('T (3 days)');
+  });
+
+  it('does not end with a trailing newline', () => {
+    const html = formatStatusSectionClipboardHtml([
+      { number: 1, title: 'A', html_url: 'https://github.com/o/r/pull/1' },
+      { number: 2, title: 'B', html_url: 'https://github.com/o/r/pull/2' },
+    ]);
+    expect(html.endsWith('\n')).toBe(false);
   });
 });
 
