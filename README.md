@@ -56,12 +56,13 @@ npm run dev        # Start the frontend development server
 ./run-local.sh
 ```
 
-This will start both the backend (on port 8000) and the frontend (on port 3000)
+This will start both the backend (default port 8080) and the frontend (port 3000).
+Pass `--port <n>` to `./run-local.sh` to use a different backend port (the frontend proxy follows automatically).
 in the background. The script will give you a sample alias command to stop both
 of them, like
 
 ```console
-Backend is running in the background at http://localhost:8000
+Backend is running in the background at http://localhost:8080
 Frontend is running in the background at http://localhost:3000
 
 To terminate, run:
@@ -78,7 +79,7 @@ ______________________________________________________________________
 ## Usage
 
 - Navigate to the frontend web UI to manage your GitHub projects visually.
-- Access the API docs at `http://localhost:8000/docs` when the backend is running.
+- Access the API docs at `http://localhost:8080/docs` when the backend is running (adjust the port if you used `--port`).
 
 The UI shows all the milestones defined for the configured GitHub project, with
 the description and due date. You can show all issues and PRs associated with a

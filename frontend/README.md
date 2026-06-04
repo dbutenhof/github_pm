@@ -72,7 +72,17 @@ npm run format:check
 
 ## API Integration
 
-The frontend expects the backend API to be running on `http://localhost:8000`. The Vite dev server is configured to proxy `/api` requests to the backend.
+The Vite dev server proxies `/api` requests to the backend. The backend port defaults to **8080** and is controlled by the `BACKEND_PORT` environment variable (read by `vite.config.js`).
+
+When using `./run-local.sh` from the repo root, `BACKEND_PORT` is set automatically from `--port` (e.g. `./run-local.sh --port 9000`).
+
+For `npm run dev` alone, set the port explicitly:
+
+```bash
+BACKEND_PORT=9000 npm run dev
+```
+
+Or add `BACKEND_PORT=8080` to a `.env.development` file in this directory.
 
 ### API Endpoints
 
