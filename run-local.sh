@@ -5,7 +5,9 @@
 # development.
 #
 # Usage:
-#   ./run-local.sh
+#   ./run-local.sh [--port <n>]
+#
+# Extra arguments are passed through to the github_pm CLI (e.g. --port 9000).
 #
 # Dependencies:
 # - Users will need to update the backend/.env file to meet their needs or
@@ -21,6 +23,8 @@
 # - GITHUB_REPO: the GitHub repository to use for authentication
 #   - This is used to identify the repository in the UI.
 #   - This is optional and will default to "vllm-project/guidellm".
+# - BACKEND_PORT: set automatically from --port (default 8080) for the Vite
+#   dev proxy when starting the frontend via this script.
 #
 # Assisted-by: Cursor AI
 if [ ! -z "${DEBUG}" ]; then
@@ -34,6 +38,28 @@ if [ ! -f "${BACKEND}/.env" -a -z "${GITHUB_TOKEN}" ]; then
     echo "Please set the GITHUB_TOKEN environment variable to meet your needs." >&2
     exit 1
 fi
+
+# Forward script args to github_pm; derive port for readiness checks and messages.
+GITHUB_PM_ARGS=("$@")
+BACKEND_PORT=8080
+args=("${GITHUB_PM_ARGS[@]}")
+idx=0
+while [ "${idx}" -lt "${#args[@]}" ]; do
+    arg="${args[idx]}"
+    case "${arg}" in
+        --port)
+            next=$((idx + 1))
+            if [ "${next}" -lt "${#args[@]}" ]; then
+                BACKEND_PORT="${args[next]}"
+            fi
+            ;;
+        --port=*)
+            BACKEND_PORT="${arg#--port=}"
+            ;;
+    esac
+    idx=$((idx + 1))
+done
+export BACKEND_PORT
 
 # Make sure all dependencies are installed.
 temp_file=$(mktemp)
@@ -56,7 +82,7 @@ fi
 echo "Starting backend..."
 (
     cd ${BACKEND}
-    uv run github_pm
+    uv run github_pm "${GITHUB_PM_ARGS[@]}"
 ) &
 backend_pid=$!
 
@@ -86,7 +112,7 @@ fi
 # Let frontend and backend start up and write their output before we finish,
 # or our helpful note will be lost.
 waiting=0
-while ! curl -s http://localhost:8000/ > /dev/null 2>&1; do
+while ! curl -s "http://localhost:${BACKEND_PORT}/" > /dev/null 2>&1; do
     if [ ${waiting} -eq 0 ]; then
         echo "Waiting for backend to start..."
     fi
@@ -112,7 +138,7 @@ done
 
 echo ""
 echo "--------------------------------"
-echo "Backend is running in the background at http://localhost:8000"
+echo "Backend is running in the background at http://localhost:${BACKEND_PORT}"
 echo "Frontend is running in the background at http://localhost:3000"
 echo ""
 echo "To terminate, run:"
