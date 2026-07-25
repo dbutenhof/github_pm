@@ -1,4 +1,18 @@
 /* Generated-by: Cursor */
+/* Assisted-by: Cursor */
+
+/* Keep app chrome (title + actions + tabs) visible while content scrolls */
+.app-page-chrome.pf-m-sticky-top {
+  z-index: 300;
+  background-color: var(--pf-v5-global--BackgroundColor--100) !important;
+}
+
+.app-header-icon-container,
+.app-icon {
+  background: transparent !important;
+  background-color: transparent !important;
+}
+
 /* Override PatternFly styles to ensure transparent background for icon */
 html,
 body,

@@ -259,19 +259,64 @@ const App = () => {
     // but we can add a callback if needed in the future
   };
 
+  const renderPlanningContent = () => (
+    <>
+      {loading && (
+        <Bullseye>
+          <Spinner size="xl" />
+        </Bullseye>
+      )}
+
+      {error && (
+        <Alert variant="danger" title="Error loading milestones">
+          {error}
+        </Alert>
+      )}
+
+      {!loading && !error && (
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '1rem',
+          }}
+        >
+          {milestones.length === 0 && (
+            <Alert variant="info" title="No milestones found">
+              There are no milestones available.
+            </Alert>
+          )}
+          {milestones.length > 0 &&
+            milestones.map((milestone) => (
+              <MilestoneCard
+                key={milestone.number}
+                milestone={milestone}
+                sortOrder={sortOrder}
+                issueMilestoneRefresh={issueMilestoneRefresh}
+                onIssueMilestoneMoved={handleIssueMilestoneMoved}
+                onIssueLabelsChanged={handleIssueLabelsChanged}
+              />
+            ))}
+        </div>
+      )}
+    </>
+  );
+
   return (
-    <Page>
+    <Page className="app-page">
       <PageSection
-        style={{ background: 'transparent', backgroundColor: 'transparent' }}
+        className="app-page-chrome"
+        variant="light"
+        stickyOnBreakpoint={{ default: 'top' }}
+        hasShadowBottom
       >
         <div
+          className="app-page-header"
           style={{
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
             marginBottom: '1rem',
-            background: 'transparent',
-            backgroundColor: 'transparent',
           }}
         >
           <div
@@ -280,7 +325,6 @@ const App = () => {
               display: 'flex',
               alignItems: 'center',
               gap: '1rem',
-              background: 'transparent',
             }}
           >
             <img
@@ -290,8 +334,6 @@ const App = () => {
               style={{
                 height: '100px',
                 width: 'auto',
-                background: 'transparent',
-                backgroundColor: 'transparent',
                 display: 'block',
               }}
             />
@@ -337,62 +379,25 @@ const App = () => {
           activeKey={activeViewTab}
           onSelect={(_event, key) => setActiveViewTab(key)}
           aria-label="Main views"
-          mountOnEnter
-          style={{ marginTop: '1rem' }}
         >
           <Tab
             eventKey="planning"
             title={<TabTitleText>Planning</TabTitleText>}
-          >
-            {loading && (
-              <Bullseye>
-                <Spinner size="xl" />
-              </Bullseye>
-            )}
-
-            {error && (
-              <Alert variant="danger" title="Error loading milestones">
-                {error}
-              </Alert>
-            )}
-
-            {!loading && !error && (
-              <div
-                style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '1rem',
-                }}
-              >
-                {milestones.length === 0 && (
-                  <Alert variant="info" title="No milestones found">
-                    There are no milestones available.
-                  </Alert>
-                )}
-                {milestones.length > 0 &&
-                  milestones.map((milestone) => (
-                    <MilestoneCard
-                      key={milestone.number}
-                      milestone={milestone}
-                      sortOrder={sortOrder}
-                      issueMilestoneRefresh={issueMilestoneRefresh}
-                      onIssueMilestoneMoved={handleIssueMilestoneMoved}
-                      onIssueLabelsChanged={handleIssueLabelsChanged}
-                    />
-                  ))}
-              </div>
-            )}
-          </Tab>
-          <Tab eventKey="sdlc" title={<TabTitleText>SDLC</TabTitleText>}>
-            <SdlcKpisPanel />
-          </Tab>
+          />
+          <Tab eventKey="sdlc" title={<TabTitleText>SDLC</TabTitleText>} />
           <Tab
             eventKey="project-status"
             title={<TabTitleText>Project status</TabTitleText>}
-          >
-            <ProjectStatusPanel />
-          </Tab>
+          />
         </Tabs>
+      </PageSection>
+      <PageSection
+        className="app-page-content"
+        aria-label="Selected view content"
+      >
+        {activeViewTab === 'planning' && renderPlanningContent()}
+        {activeViewTab === 'sdlc' && <SdlcKpisPanel />}
+        {activeViewTab === 'project-status' && <ProjectStatusPanel />}
       </PageSection>
       <ManageMilestones
         isOpen={isManageMilestonesOpen}

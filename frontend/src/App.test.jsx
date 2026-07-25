@@ -429,4 +429,29 @@ describe('App', () => {
       expect(screen.getByRole('button', { name: /^Refresh$/i })).toBeDisabled();
     });
   });
+
+  it('keeps the header chrome sticky while view content scrolls independently', async () => {
+    api.fetchMilestones.mockResolvedValue([]);
+
+    await act(async () => {
+      render(<App />);
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /^Refresh$/i })
+      ).toBeInTheDocument();
+    });
+
+    const chrome = document.querySelector('.app-page-chrome');
+    expect(chrome).toBeTruthy();
+    expect(chrome.className).toMatch(/pf-m-sticky-top/);
+    expect(chrome).toContainElement(
+      screen.getByRole('button', { name: /^Refresh$/i })
+    );
+    expect(chrome).toContainElement(
+      screen.getByRole('tab', { name: /^Planning$/i })
+    );
+    expect(document.querySelector('.app-page-content')).toBeTruthy();
+  });
 });
