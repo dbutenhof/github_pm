@@ -343,4 +343,90 @@ describe('App', () => {
       );
     });
   });
+
+  it('disables Refresh until milestones are marked dirty, then refreshes on click', async () => {
+    const user = userEvent.setup();
+    const mockMilestones = [
+      {
+        number: 6,
+        title: 'v0.6.0',
+        description: 'Version 0.6.0',
+        due_on: null,
+      },
+      {
+        number: 10,
+        title: 'Next release',
+        description: '',
+        due_on: null,
+      },
+    ];
+    const mockIssue = {
+      id: 1,
+      number: 459,
+      title: 'Test Issue',
+      body: 'Issue body',
+      html_url: 'https://github.com/test/issue/459',
+      user: { login: 'testuser', avatar_url: 'https://avatar.url' },
+      created_at: '2025-01-01T00:00:00Z',
+      labels: [],
+      comments: 0,
+      milestone: { number: 6, title: 'v0.6.0' },
+      assignees: [],
+    };
+
+    api.fetchMilestones.mockResolvedValue(mockMilestones);
+    api.fetchIssues.mockResolvedValue({
+      issues: [mockIssue],
+      pull_requests: [],
+    });
+    api.setIssueMilestone.mockResolvedValue({});
+
+    await act(async () => {
+      render(<App />);
+    });
+
+    await waitFor(() => {
+      expect(screen.getAllByText('v0.6.0').length).toBeGreaterThan(0);
+    });
+
+    const refreshButton = screen.getByRole('button', { name: /^Refresh$/i });
+    expect(refreshButton).toBeDisabled();
+
+    const showIssuesButtons = screen.getAllByRole('button', {
+      name: /show issues/i,
+    });
+    await user.click(showIssuesButtons[0]);
+    await waitFor(() => {
+      expect(screen.getByText(/Test Issue/)).toBeInTheDocument();
+    });
+    expect(api.fetchIssues).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByRole('button', { name: 'v0.6.0' }));
+    const nextReleaseChoices = screen.getAllByText('Next release');
+    // Menu item appears before the destination milestone card title in interaction order
+    await user.click(nextReleaseChoices[0]);
+
+    await waitFor(() => {
+      expect(api.setIssueMilestone).toHaveBeenCalledWith(459, 10);
+    });
+
+    // Milestone moves mark dirty but do not auto-refetch
+    expect(api.fetchIssues).toHaveBeenCalledTimes(1);
+
+    const dirtyRefresh = screen.getByRole('button', {
+      name: /Refresh \(2\)/i,
+    });
+    expect(dirtyRefresh).toBeEnabled();
+
+    await user.click(dirtyRefresh);
+
+    await waitFor(() => {
+      expect(api.fetchIssues).toHaveBeenCalledTimes(2);
+    });
+    expect(api.fetchIssues).toHaveBeenLastCalledWith(6, []);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /^Refresh$/i })).toBeDisabled();
+    });
+  });
 });

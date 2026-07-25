@@ -264,4 +264,42 @@ describe('MilestoneCard', () => {
     });
     expect(api.fetchIssues).toHaveBeenLastCalledWith(6, []);
   });
+
+  it('refetches loaded milestones even when issues section is collapsed', async () => {
+    const user = userEvent.setup();
+    api.fetchIssues.mockResolvedValue({
+      issues: [mockIssue],
+      pull_requests: [],
+    });
+
+    const { rerender } = await act(async () =>
+      render(
+        <MilestoneCard
+          milestone={mockMilestone}
+          issueMilestoneRefresh={{ key: 0, milestoneNumbers: [] }}
+        />
+      )
+    );
+
+    await user.click(screen.getByRole('button', { name: /show issues/i }));
+    await waitFor(() => {
+      expect(api.fetchIssues).toHaveBeenCalledTimes(1);
+    });
+
+    // Collapse issues section
+    await user.click(screen.getByRole('button', { name: /hide 1 issue/i }));
+
+    await act(async () => {
+      rerender(
+        <MilestoneCard
+          milestone={mockMilestone}
+          issueMilestoneRefresh={{ key: 1, milestoneNumbers: [6] }}
+        />
+      );
+    });
+
+    await waitFor(() => {
+      expect(api.fetchIssues).toHaveBeenCalledTimes(2);
+    });
+  });
 });

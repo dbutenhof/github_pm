@@ -417,4 +417,67 @@ describe('IssueCard', () => {
       });
     });
   });
+
+  it('calls onLabelsChange when a label is removed', async () => {
+    const user = userEvent.setup();
+    const onLabelsChange = vi.fn();
+    api.removeLabel.mockResolvedValue({});
+    const issueWithMilestone = {
+      ...mockIssue,
+      milestone: { number: 6, title: 'Current' },
+    };
+
+    await act(async () => {
+      render(
+        <table>
+          <tbody>
+            <IssueCard
+              issue={issueWithMilestone}
+              onLabelsChange={onLabelsChange}
+            />
+          </tbody>
+        </table>
+      );
+    });
+
+    await user.click(
+      screen.getByRole('button', { name: 'Remove enhancement label' })
+    );
+
+    await waitFor(() => {
+      expect(api.removeLabel).toHaveBeenCalledWith(459, 'enhancement');
+      expect(onLabelsChange).toHaveBeenCalledWith({ milestoneNumber: 6 });
+    });
+  });
+
+  it('calls onLabelsChange with milestone 0 when issue has no milestone', async () => {
+    const user = userEvent.setup();
+    const onLabelsChange = vi.fn();
+    api.removeLabel.mockResolvedValue({});
+    const issueWithoutMilestone = {
+      ...mockIssue,
+      milestone: null,
+    };
+
+    await act(async () => {
+      render(
+        <table>
+          <tbody>
+            <IssueCard
+              issue={issueWithoutMilestone}
+              onLabelsChange={onLabelsChange}
+            />
+          </tbody>
+        </table>
+      );
+    });
+
+    await user.click(
+      screen.getByRole('button', { name: 'Remove enhancement label' })
+    );
+
+    await waitFor(() => {
+      expect(onLabelsChange).toHaveBeenCalledWith({ milestoneNumber: 0 });
+    });
+  });
 });

@@ -1,4 +1,5 @@
 // Generated-by: Cursor
+// Assisted-by: Cursor
 import React, { useState, useEffect } from 'react';
 import {
   Page,
@@ -70,6 +71,16 @@ const App = () => {
     key: 0,
     milestoneNumbers: [],
   });
+  // Milestone numbers whose issue/PR lists may be stale after local edits.
+  const [dirtyMilestoneNumbers, setDirtyMilestoneNumbers] = useState([]);
+
+  const markMilestonesDirty = (numbers) => {
+    const normalized = numbers
+      .map((n) => (n == null ? 0 : n))
+      .filter((n) => typeof n === 'number');
+    if (normalized.length === 0) return;
+    setDirtyMilestoneNumbers((prev) => [...new Set([...prev, ...normalized])]);
+  };
 
   useEffect(() => {
     fetchProject()
@@ -227,13 +238,20 @@ const App = () => {
     fromMilestoneNumber,
     toMilestoneNumber,
   }) => {
-    const nums = [fromMilestoneNumber, toMilestoneNumber].filter(
-      (n) => n != null
-    );
+    markMilestonesDirty([fromMilestoneNumber, toMilestoneNumber]);
+  };
+
+  const handleIssueLabelsChanged = ({ milestoneNumber }) => {
+    markMilestonesDirty([milestoneNumber]);
+  };
+
+  const handleRefreshDirtyMilestones = () => {
+    if (dirtyMilestoneNumbers.length === 0) return;
     setIssueMilestoneRefresh((s) => ({
       key: s.key + 1,
-      milestoneNumbers: [...new Set(nums)],
+      milestoneNumbers: [...dirtyMilestoneNumbers],
     }));
+    setDirtyMilestoneNumbers([]);
   };
 
   const handleLabelChange = () => {
@@ -286,6 +304,15 @@ const App = () => {
             </Title>
           </div>
           <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <Button
+              variant="secondary"
+              onClick={handleRefreshDirtyMilestones}
+              isDisabled={dirtyMilestoneNumbers.length === 0}
+            >
+              {dirtyMilestoneNumbers.length > 0
+                ? `Refresh (${dirtyMilestoneNumbers.length})`
+                : 'Refresh'}
+            </Button>
             <Button
               variant="secondary"
               onClick={() => setIsManageMilestonesOpen(true)}
@@ -350,6 +377,7 @@ const App = () => {
                       sortOrder={sortOrder}
                       issueMilestoneRefresh={issueMilestoneRefresh}
                       onIssueMilestoneMoved={handleIssueMilestoneMoved}
+                      onIssueLabelsChanged={handleIssueLabelsChanged}
                     />
                   ))}
               </div>

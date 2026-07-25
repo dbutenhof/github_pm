@@ -108,6 +108,7 @@ const MilestoneCard = ({
   sortOrder = [],
   issueMilestoneRefresh = { key: 0, milestoneNumbers: [] },
   onIssueMilestoneMoved,
+  onIssueLabelsChanged,
 }) => {
   const [isIssuesExpanded, setIsIssuesExpanded] = useState(false);
   const [isPrsExpanded, setIsPrsExpanded] = useState(false);
@@ -194,7 +195,8 @@ const MilestoneCard = ({
     const { key, milestoneNumbers } = issueMilestoneRefresh;
     if (key === 0) return;
     if (!milestoneNumbers.includes(milestone.number)) return;
-    if (!isIssuesExpanded || !hasLoadedOnce) return;
+    // Refresh even when collapsed so expanding later shows fresh data.
+    if (!hasLoadedOnce) return;
     refetchIssues();
     // Bump `key` and `milestoneNumbers` update together; refetch only when key changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -252,6 +254,9 @@ const MilestoneCard = ({
             issue={issue}
             onMilestoneChange={(detail) => {
               onIssueMilestoneMoved?.(detail);
+            }}
+            onLabelsChange={(detail) => {
+              onIssueLabelsChanged?.(detail);
             }}
             onIssueUpdate={onItemUpdate}
           />

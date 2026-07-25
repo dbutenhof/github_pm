@@ -1,4 +1,5 @@
 // Generated-by: Cursor
+// Assisted-by: Cursor
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   ExpandableSection,
@@ -77,7 +78,12 @@ const getTypeContrastColor = (colorName) => {
   return darkColors.includes(colorName.toLowerCase()) ? '#ffffff' : '#000000';
 };
 
-const IssueCard = ({ issue, onMilestoneChange, onIssueUpdate }) => {
+const IssueCard = ({
+  issue,
+  onMilestoneChange,
+  onLabelsChange,
+  onIssueUpdate,
+}) => {
   const daysSince = getDaysSince(issue.created_at);
   const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false);
   const [isCommentsExpanded, setIsCommentsExpanded] = useState(false);
@@ -525,12 +531,20 @@ const IssueCard = ({ issue, onMilestoneChange, onIssueUpdate }) => {
     handleApplyAssignees,
   ]);
 
+  const notifyLabelsChanged = () => {
+    if (!onLabelsChange) return;
+    const milestoneNumber =
+      currentMilestone?.number ?? issue.milestone?.number ?? 0;
+    onLabelsChange({ milestoneNumber });
+  };
+
   const handleRemoveLabel = async (labelName) => {
     try {
       await removeLabel(issue.number, labelName);
       setCurrentLabels(
         currentLabels.filter((label) => label.name !== labelName)
       );
+      notifyLabelsChanged();
     } catch (err) {
       console.error('Failed to remove label:', err);
       setLabelsError(err.message);
@@ -551,6 +565,7 @@ const IssueCard = ({ issue, onMilestoneChange, onIssueUpdate }) => {
           currentLabels.filter((label) => label.name !== labelName)
         );
       }
+      notifyLabelsChanged();
     } catch (err) {
       console.error('Failed to toggle label:', err);
       setLabelsError(err.message);
