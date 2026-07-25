@@ -1,4 +1,5 @@
 // Generated-by: Cursor
+// Assisted-by: Cursor
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Card,
@@ -12,32 +13,129 @@ import {
 import { fetchIssues } from '../services/api';
 import IssueCard from './IssueCard';
 
+const itemTableHeader = (
+  <thead>
+    <tr style={{ borderBottom: '2px solid #0066cc' }}>
+      <th
+        style={{
+          padding: '0.5rem',
+          textAlign: 'left',
+          fontSize: '0.75rem',
+          fontWeight: '600',
+          color: '#6a6e73',
+          textTransform: 'uppercase',
+          width: '2rem',
+        }}
+      />
+      <th
+        style={{
+          padding: '0.5rem',
+          textAlign: 'left',
+          fontSize: '0.75rem',
+          fontWeight: '600',
+          color: '#6a6e73',
+          textTransform: 'uppercase',
+        }}
+      >
+        Number
+      </th>
+      <th
+        style={{
+          padding: '0.5rem',
+          textAlign: 'left',
+          fontSize: '0.75rem',
+          fontWeight: '600',
+          color: '#6a6e73',
+          textTransform: 'uppercase',
+        }}
+      >
+        Author
+      </th>
+      <th
+        style={{
+          padding: '0.5rem',
+          textAlign: 'left',
+          fontSize: '0.75rem',
+          fontWeight: '600',
+          color: '#6a6e73',
+          textTransform: 'uppercase',
+        }}
+      >
+        PR
+      </th>
+      <th
+        style={{
+          padding: '0.5rem',
+          textAlign: 'left',
+          fontSize: '0.75rem',
+          fontWeight: '600',
+          color: '#6a6e73',
+          textTransform: 'uppercase',
+        }}
+      >
+        Milestone
+      </th>
+      <th
+        style={{
+          padding: '0.5rem',
+          textAlign: 'left',
+          fontSize: '0.75rem',
+          fontWeight: '600',
+          color: '#6a6e73',
+          textTransform: 'uppercase',
+        }}
+      >
+        Labels
+      </th>
+      <th
+        style={{
+          padding: '0.5rem',
+          textAlign: 'left',
+          fontSize: '0.75rem',
+          fontWeight: '600',
+          color: '#6a6e73',
+          textTransform: 'uppercase',
+        }}
+      >
+        Title
+      </th>
+    </tr>
+  </thead>
+);
+
 const MilestoneCard = ({
   milestone,
   sortOrder = [],
   issueMilestoneRefresh = { key: 0, milestoneNumbers: [] },
   onIssueMilestoneMoved,
 }) => {
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [isIssuesExpanded, setIsIssuesExpanded] = useState(false);
+  const [isPrsExpanded, setIsPrsExpanded] = useState(false);
   const [issues, setIssues] = useState([]);
+  const [pullRequests, setPullRequests] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const prevMilestoneNumberRef = useRef(milestone.number);
+
+  const applyFetchedData = useCallback((data) => {
+    setIssues(data.issues || []);
+    setPullRequests(data.pull_requests || []);
+  }, []);
 
   const refetchIssues = useCallback(() => {
     setLoading(true);
     setError(null);
     return fetchIssues(milestone.number, sortOrder)
       .then((data) => {
-        setIssues(data);
+        applyFetchedData(data);
         setLoading(false);
       })
       .catch((err) => {
         setError(err.message);
         setLoading(false);
       });
-  }, [milestone.number, sortOrder]);
+  }, [milestone.number, sortOrder, applyFetchedData]);
 
   // Reset loaded state when milestone changes
   useEffect(() => {
@@ -45,18 +143,20 @@ const MilestoneCard = ({
       prevMilestoneNumberRef.current = milestone.number;
       setHasLoadedOnce(false);
       setIssues([]);
+      setPullRequests([]);
       setError(null);
       setLoading(false);
+      setIsPrsExpanded(false);
     }
   }, [milestone.number]);
 
   useEffect(() => {
-    if (isExpanded && !hasLoadedOnce && !loading) {
+    if (isIssuesExpanded && !hasLoadedOnce && !loading) {
       setLoading(true);
       setError(null);
       fetchIssues(milestone.number, sortOrder)
         .then((data) => {
-          setIssues(data);
+          applyFetchedData(data);
           setLoading(false);
           setHasLoadedOnce(true);
         })
@@ -66,7 +166,14 @@ const MilestoneCard = ({
           setHasLoadedOnce(true);
         });
     }
-  }, [isExpanded, milestone.number, hasLoadedOnce, loading, sortOrder]);
+  }, [
+    isIssuesExpanded,
+    milestone.number,
+    hasLoadedOnce,
+    loading,
+    sortOrder,
+    applyFetchedData,
+  ]);
 
   // Re-fetch issues when sort order changes (if already loaded)
   const prevSortOrderRef = useRef(sortOrder);
@@ -74,7 +181,7 @@ const MilestoneCard = ({
     // Only refetch if sort order actually changed and issues are already loaded
     const sortOrderChanged =
       JSON.stringify(prevSortOrderRef.current) !== JSON.stringify(sortOrder);
-    if (isExpanded && hasLoadedOnce && !loading && sortOrderChanged) {
+    if (isIssuesExpanded && hasLoadedOnce && !loading && sortOrderChanged) {
       prevSortOrderRef.current = sortOrder;
       refetchIssues();
     } else {
@@ -87,7 +194,7 @@ const MilestoneCard = ({
     const { key, milestoneNumbers } = issueMilestoneRefresh;
     if (key === 0) return;
     if (!milestoneNumbers.includes(milestone.number)) return;
-    if (!isExpanded || !hasLoadedOnce) return;
+    if (!isIssuesExpanded || !hasLoadedOnce) return;
     refetchIssues();
     // Bump `key` and `milestoneNumbers` update together; refetch only when key changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -103,8 +210,8 @@ const MilestoneCard = ({
     });
   };
 
-  const getToggleText = () => {
-    const baseText = isExpanded ? 'Hide' : 'Show';
+  const getIssuesToggleText = () => {
+    const baseText = isIssuesExpanded ? 'Hide' : 'Show';
 
     if (hasLoadedOnce) {
       const count = issues.length;
@@ -114,6 +221,44 @@ const MilestoneCard = ({
 
     return `${baseText} Issues`;
   };
+
+  const getPrsToggleText = () => {
+    const baseText = isPrsExpanded ? 'Hide' : 'Show';
+    const count = pullRequests.length;
+    const prText = count === 1 ? 'PR' : 'PRs';
+    return `${baseText} ${count} ${prText}`;
+  };
+
+  const updateItemInList = (setter) => (updatedIssue) => {
+    setter((prev) =>
+      prev.map((item) => (item.id === updatedIssue.id ? updatedIssue : item))
+    );
+  };
+
+  const renderItemTable = (items, onItemUpdate) => (
+    <table
+      style={{
+        width: '100%',
+        marginTop: '0.75rem',
+        borderCollapse: 'collapse',
+        border: '1px solid #d2d2d2',
+      }}
+    >
+      {itemTableHeader}
+      <tbody>
+        {items.map((issue) => (
+          <IssueCard
+            key={issue.id}
+            issue={issue}
+            onMilestoneChange={(detail) => {
+              onIssueMilestoneMoved?.(detail);
+            }}
+            onIssueUpdate={onItemUpdate}
+          />
+        ))}
+      </tbody>
+    </table>
+  );
 
   return (
     <Card>
@@ -131,9 +276,9 @@ const MilestoneCard = ({
         </div>
 
         <ExpandableSection
-          toggleText={getToggleText()}
-          onToggle={() => setIsExpanded(!isExpanded)}
-          isExpanded={isExpanded}
+          toggleText={getIssuesToggleText()}
+          onToggle={() => setIsIssuesExpanded(!isIssuesExpanded)}
+          isExpanded={isIssuesExpanded}
         >
           {loading && (
             <div style={{ textAlign: 'center', padding: '2rem' }}>
@@ -148,133 +293,31 @@ const MilestoneCard = ({
           )}
 
           {!loading && !error && issues.length > 0 && (
-            <table
-              style={{
-                width: '100%',
-                marginTop: '0.75rem',
-                borderCollapse: 'collapse',
-                border: '1px solid #d2d2d2',
-              }}
-            >
-              <thead>
-                <tr style={{ borderBottom: '2px solid #0066cc' }}>
-                  <th
-                    style={{
-                      padding: '0.5rem',
-                      textAlign: 'left',
-                      fontSize: '0.75rem',
-                      fontWeight: '600',
-                      color: '#6a6e73',
-                      textTransform: 'uppercase',
-                      width: '2rem',
-                    }}
-                  />
-                  <th
-                    style={{
-                      padding: '0.5rem',
-                      textAlign: 'left',
-                      fontSize: '0.75rem',
-                      fontWeight: '600',
-                      color: '#6a6e73',
-                      textTransform: 'uppercase',
-                    }}
-                  >
-                    Number
-                  </th>
-                  <th
-                    style={{
-                      padding: '0.5rem',
-                      textAlign: 'left',
-                      fontSize: '0.75rem',
-                      fontWeight: '600',
-                      color: '#6a6e73',
-                      textTransform: 'uppercase',
-                    }}
-                  >
-                    Author
-                  </th>
-                  <th
-                    style={{
-                      padding: '0.5rem',
-                      textAlign: 'left',
-                      fontSize: '0.75rem',
-                      fontWeight: '600',
-                      color: '#6a6e73',
-                      textTransform: 'uppercase',
-                    }}
-                  >
-                    PR
-                  </th>
-                  <th
-                    style={{
-                      padding: '0.5rem',
-                      textAlign: 'left',
-                      fontSize: '0.75rem',
-                      fontWeight: '600',
-                      color: '#6a6e73',
-                      textTransform: 'uppercase',
-                    }}
-                  >
-                    Milestone
-                  </th>
-                  <th
-                    style={{
-                      padding: '0.5rem',
-                      textAlign: 'left',
-                      fontSize: '0.75rem',
-                      fontWeight: '600',
-                      color: '#6a6e73',
-                      textTransform: 'uppercase',
-                    }}
-                  >
-                    Labels
-                  </th>
-                  <th
-                    style={{
-                      padding: '0.5rem',
-                      textAlign: 'left',
-                      fontSize: '0.75rem',
-                      fontWeight: '600',
-                      color: '#6a6e73',
-                      textTransform: 'uppercase',
-                    }}
-                  >
-                    Title
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {issues.map((issue) => (
-                  <IssueCard
-                    key={issue.id}
-                    issue={issue}
-                    onMilestoneChange={(detail) => {
-                      onIssueMilestoneMoved?.(detail);
-                    }}
-                    onIssueUpdate={(updatedIssue) => {
-                      // Update the issue in the issues array
-                      setIssues((prevIssues) =>
-                        prevIssues.map((i) =>
-                          i.id === updatedIssue.id ? updatedIssue : i
-                        )
-                      );
-                    }}
-                  />
-                ))}
-              </tbody>
-            </table>
+            <>{renderItemTable(issues, updateItemInList(setIssues))}</>
           )}
 
           {!loading &&
             !error &&
             issues.length === 0 &&
-            isExpanded &&
+            isIssuesExpanded &&
             hasLoadedOnce && (
               <p style={{ color: '#6a6e73', fontStyle: 'italic' }}>
                 No issues found for this milestone.
               </p>
             )}
         </ExpandableSection>
+
+        {hasLoadedOnce && !error && pullRequests.length > 0 && (
+          <div style={{ marginTop: '0.75rem' }}>
+            <ExpandableSection
+              toggleText={getPrsToggleText()}
+              onToggle={() => setIsPrsExpanded(!isPrsExpanded)}
+              isExpanded={isPrsExpanded}
+            >
+              {renderItemTable(pullRequests, updateItemInList(setPullRequests))}
+            </ExpandableSection>
+          </div>
+        )}
       </CardBody>
     </Card>
   );

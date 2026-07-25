@@ -1,4 +1,5 @@
 // Generated-by: Cursor
+// Assisted-by: Cursor
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -14,6 +15,31 @@ describe('MilestoneCard', () => {
     title: 'v0.6.0',
     description: 'Version 0.6.0',
     due_on: '2025-12-31T00:00:00Z',
+  };
+
+  const mockIssue = {
+    id: 1,
+    number: 459,
+    title: 'Test Issue',
+    body: 'Issue body',
+    html_url: 'https://github.com/test/issue/459',
+    user: { login: 'testuser', avatar_url: 'https://avatar.url' },
+    created_at: '2025-01-01T00:00:00Z',
+    labels: [],
+    comments: 0,
+  };
+
+  const mockPr = {
+    id: 2,
+    number: 460,
+    title: 'Test PR',
+    body: 'PR body',
+    html_url: 'https://github.com/test/pull/460',
+    user: { login: 'testuser', avatar_url: 'https://avatar.url' },
+    created_at: '2025-01-01T00:00:00Z',
+    labels: [],
+    comments: 0,
+    pull_request: {},
   };
 
   beforeEach(() => {
@@ -64,20 +90,10 @@ describe('MilestoneCard', () => {
 
   it('expands and fetches issues when clicked', async () => {
     const user = userEvent.setup();
-    const mockIssues = [
-      {
-        id: 1,
-        number: 459,
-        title: 'Test Issue',
-        body: 'Issue body',
-        html_url: 'https://github.com/test/issue/459',
-        user: { login: 'testuser', avatar_url: 'https://avatar.url' },
-        created_at: '2025-01-01T00:00:00Z',
-        labels: [],
-        comments: 0,
-      },
-    ];
-    api.fetchIssues.mockResolvedValue(mockIssues);
+    api.fetchIssues.mockResolvedValue({
+      issues: [mockIssue],
+      pull_requests: [],
+    });
 
     await act(async () => {
       render(<MilestoneCard milestone={mockMilestone} />);
@@ -130,7 +146,7 @@ describe('MilestoneCard', () => {
 
   it('shows empty message when no issues', async () => {
     const user = userEvent.setup();
-    api.fetchIssues.mockResolvedValue([]);
+    api.fetchIssues.mockResolvedValue({ issues: [], pull_requests: [] });
 
     await act(async () => {
       render(<MilestoneCard milestone={mockMilestone} />);
@@ -143,22 +159,75 @@ describe('MilestoneCard', () => {
     });
   });
 
+  it('does not show PR expander before issues are loaded', async () => {
+    await act(async () => {
+      render(<MilestoneCard milestone={mockMilestone} />);
+    });
+    expect(
+      screen.queryByRole('button', { name: /show \d+ prs?/i })
+    ).not.toBeInTheDocument();
+  });
+
+  it('shows closed PR expander when pull requests are discovered', async () => {
+    const user = userEvent.setup();
+    api.fetchIssues.mockResolvedValue({
+      issues: [mockIssue],
+      pull_requests: [mockPr],
+    });
+
+    await act(async () => {
+      render(<MilestoneCard milestone={mockMilestone} />);
+    });
+
+    await user.click(screen.getByRole('button', { name: /show issues/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Test Issue/)).toBeInTheDocument();
+    });
+
+    const prToggle = screen.getByRole('button', { name: /show 1 pr/i });
+    expect(prToggle).toBeInTheDocument();
+    expect(prToggle).toHaveAttribute('aria-expanded', 'false');
+
+    await user.click(prToggle);
+
+    await waitFor(() => {
+      expect(prToggle).toHaveAttribute('aria-expanded', 'true');
+      expect(screen.getByText(/Test PR/)).toBeInTheDocument();
+    });
+    expect(
+      screen.getByRole('button', { name: /hide 1 pr/i })
+    ).toBeInTheDocument();
+  });
+
+  it('does not show PR expander when there are no pull requests', async () => {
+    const user = userEvent.setup();
+    api.fetchIssues.mockResolvedValue({
+      issues: [mockIssue],
+      pull_requests: [],
+    });
+
+    await act(async () => {
+      render(<MilestoneCard milestone={mockMilestone} />);
+    });
+
+    await user.click(screen.getByRole('button', { name: /show issues/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Test Issue/)).toBeInTheDocument();
+    });
+
+    expect(
+      screen.queryByRole('button', { name: /show \d+ prs?/i })
+    ).not.toBeInTheDocument();
+  });
+
   it('refetches issues when issueMilestoneRefresh targets this milestone', async () => {
     const user = userEvent.setup();
-    const mockIssues = [
-      {
-        id: 1,
-        number: 459,
-        title: 'Test Issue',
-        body: 'Issue body',
-        html_url: 'https://github.com/test/issue/459',
-        user: { login: 'testuser', avatar_url: 'https://avatar.url' },
-        created_at: '2025-01-01T00:00:00Z',
-        labels: [],
-        comments: 0,
-      },
-    ];
-    api.fetchIssues.mockResolvedValue(mockIssues);
+    api.fetchIssues.mockResolvedValue({
+      issues: [mockIssue],
+      pull_requests: [],
+    });
 
     const onIssueMilestoneMoved = vi.fn();
     const initialRefresh = { key: 0, milestoneNumbers: [] };

@@ -206,9 +206,10 @@ class TestGetIssues:
             result = await get_issues(mock_gitctx, milestone_number=1)
 
             # Assert
-            assert len(result) == 2
-            assert result[0]["id"] == 1
-            assert result[1]["id"] == 2
+            assert len(result["issues"]) == 1
+            assert len(result["pull_requests"]) == 1
+            assert result["pull_requests"][0]["id"] == 1
+            assert result["issues"][0]["id"] == 2
             mock_gitctx.get_paged.assert_called_once()
             # Issue 1 has pull_request, so no GraphQL call
             # Issue 2 doesn't have pull_request, so GraphQL should be called
@@ -263,17 +264,18 @@ class TestGetIssues:
             result = await get_issues(mock_gitctx, milestone_number=1)
 
             # Assert
-            assert len(result) == 1
-            assert result[0]["id"] == 1
-            assert "closed_by" in result[0]
-            assert len(result[0]["closed_by"]) == 2
-            assert result[0]["closed_by"][0]["number"] == 123
-            assert result[0]["closed_by"][0]["title"] == "Fix Issue 1"
+            assert len(result["issues"]) == 1
+            assert result["pull_requests"] == []
+            assert result["issues"][0]["id"] == 1
+            assert "closed_by" in result["issues"][0]
+            assert len(result["issues"][0]["closed_by"]) == 2
+            assert result["issues"][0]["closed_by"][0]["number"] == 123
+            assert result["issues"][0]["closed_by"][0]["title"] == "Fix Issue 1"
             assert (
-                result[0]["closed_by"][0]["url"]
+                result["issues"][0]["closed_by"][0]["url"]
                 == "https://github.com/test/repo/pull/123"
             )
-            assert result[0]["closed_by"][1]["number"] == 456
+            assert result["issues"][0]["closed_by"][1]["number"] == 456
             mock_gitctx.post.assert_called_once()
 
     @pytest.mark.asyncio
@@ -310,8 +312,9 @@ class TestGetIssues:
             result = await get_issues(mock_gitctx, milestone_number=0)
 
             # Assert
-            assert len(result) == 1
-            assert result[0]["id"] == 1
+            assert len(result["issues"]) == 1
+            assert result["pull_requests"] == []
+            assert result["issues"][0]["id"] == 1
             mock_gitctx.get_paged.assert_called_once()
             # GraphQL should be called for issue without pull_request
             assert mock_gitctx.post.call_count == 1
@@ -362,13 +365,14 @@ class TestGetIssues:
             result = await get_issues(mock_gitctx, milestone_number=0, sort="bug")
 
             # Assert
-            assert len(result) == 3
+            assert len(result["issues"]) == 3
+            assert result["pull_requests"] == []
             # First should be bug issue
-            assert result[0]["id"] == 1
-            assert result[0]["title"] == "Bug Issue"
+            assert result["issues"][0]["id"] == 1
+            assert result["issues"][0]["title"] == "Bug Issue"
             # Then other issues
-            assert result[1]["id"] == 2
-            assert result[2]["id"] == 3
+            assert result["issues"][1]["id"] == 2
+            assert result["issues"][2]["id"] == 3
 
     @pytest.mark.asyncio
     async def test_get_issues_with_sort_multiple_labels(self):
@@ -424,12 +428,13 @@ class TestGetIssues:
             )
 
             # Assert
-            assert len(result) == 4
+            assert len(result["issues"]) == 4
+            assert result["pull_requests"] == []
             # Order should be: bug, feature, enhancement, other
-            assert result[0]["id"] == 1  # bug
-            assert result[1]["id"] == 2  # feature
-            assert result[2]["id"] == 3  # enhancement
-            assert result[3]["id"] == 4  # other (unlabeled)
+            assert result["issues"][0]["id"] == 1  # bug
+            assert result["issues"][1]["id"] == 2  # feature
+            assert result["issues"][2]["id"] == 3  # enhancement
+            assert result["issues"][3]["id"] == 4  # other (unlabeled)
 
     @pytest.mark.asyncio
     async def test_get_issues_with_sort_case_insensitive(self):
@@ -473,10 +478,11 @@ class TestGetIssues:
             )
 
             # Assert
-            assert len(result) == 2
+            assert len(result["issues"]) == 2
+            assert result["pull_requests"] == []
             # Should match despite case difference
-            assert result[0]["id"] == 1  # bug (matched "BUG")
-            assert result[1]["id"] == 2  # feature (matched "Feature")
+            assert result["issues"][0]["id"] == 1  # bug (matched "BUG")
+            assert result["issues"][1]["id"] == 2  # feature (matched "Feature")
 
     @pytest.mark.asyncio
     async def test_get_issues_with_sort_whitespace_stripped(self):
@@ -520,10 +526,11 @@ class TestGetIssues:
             )
 
             # Assert
-            assert len(result) == 2
+            assert len(result["issues"]) == 2
+            assert result["pull_requests"] == []
             # Should match despite whitespace
-            assert result[0]["id"] == 1  # bug
-            assert result[1]["id"] == 2  # feature
+            assert result["issues"][0]["id"] == 1  # bug
+            assert result["issues"][1]["id"] == 2  # feature
 
     @pytest.mark.asyncio
     async def test_get_issues_with_sort_first_match_wins(self):
@@ -570,10 +577,11 @@ class TestGetIssues:
             )
 
             # Assert
-            assert len(result) == 2
+            assert len(result["issues"]) == 2
+            assert result["pull_requests"] == []
             # Issue 1 should be in bug category (first match), not feature
-            assert result[0]["id"] == 1  # bug (first match wins)
-            assert result[1]["id"] == 2  # feature
+            assert result["issues"][0]["id"] == 1  # bug (first match wins)
+            assert result["issues"][1]["id"] == 2  # feature
 
     @pytest.mark.asyncio
     async def test_get_issues_with_sort_all_other(self):
@@ -615,10 +623,71 @@ class TestGetIssues:
             result = await get_issues(mock_gitctx, milestone_number=0, sort=None)
 
             # Assert
-            assert len(result) == 2
+            assert len(result["issues"]) == 2
+            assert result["pull_requests"] == []
             # Both should be in "other" since no sort labels specified
-            assert result[0]["id"] == 1
-            assert result[1]["id"] == 2
+            assert result["issues"][0]["id"] == 1
+            assert result["issues"][1]["id"] == 2
+
+    @pytest.mark.asyncio
+    async def test_get_issues_sorts_issues_and_prs_separately(self):
+        """Issues and PRs are sorted independently by the same label criteria."""
+        # Arrange
+        mock_items = [
+            {
+                "id": 1,
+                "number": 1,
+                "title": "Bug Issue",
+                "labels": [{"name": "bug"}],
+            },
+            {
+                "id": 2,
+                "number": 2,
+                "title": "Feature Issue",
+                "labels": [{"name": "feature"}],
+            },
+            {
+                "id": 10,
+                "number": 10,
+                "title": "Feature PR",
+                "pull_request": {},
+                "labels": [{"name": "feature"}],
+            },
+            {
+                "id": 11,
+                "number": 11,
+                "title": "Bug PR",
+                "pull_request": {},
+                "labels": [{"name": "bug"}],
+            },
+        ]
+
+        mock_gitctx = Mock(spec=Connector)
+        mock_gitctx.get_paged = Mock(return_value=mock_items)
+        mock_gitctx.post = Mock(
+            return_value={
+                "data": {
+                    "repository": {
+                        "issue": {"closedByPullRequestsReferences": {"nodes": []}}
+                    }
+                }
+            }
+        )
+        mock_gitctx.owner = "test"
+        mock_gitctx.repo = "repo"
+
+        with patch("github_pm.api.context") as mock_context:
+            mock_context.github_repo = "test/repo"
+
+            # Act
+            result = await get_issues(
+                mock_gitctx, milestone_number=1, sort="bug,feature"
+            )
+
+            # Assert: each list sorted independently (bug then feature)
+            assert [i["id"] for i in result["issues"]] == [1, 2]
+            assert [p["id"] for p in result["pull_requests"]] == [11, 10]
+            assert mock_gitctx.post.call_count == 2
 
 
 class TestGetComments:

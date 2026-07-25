@@ -185,6 +185,26 @@ async def get_project():
     }
 
 
+def _sort_items_by_labels(items: list[dict], sort_by: list[str]) -> list[dict]:
+    """Sort open items by label priority, then by number within each bucket.
+
+    Assisted-by: Cursor
+    """
+    buckets: dict[str, list] = defaultdict(list)
+    for item in items:
+        labels = {label["name"].lower() for label in item["labels"]}
+        for label in sort_by:
+            if label in labels:
+                buckets[label].append(item)
+                break
+        else:
+            buckets["other"].append(item)
+    ordered: list[dict] = []
+    for label in sort_by + ["other"]:
+        ordered.extend(sorted(buckets[label], key=lambda x: x["number"]))
+    return ordered
+
+
 @api_router.get("/issues/{milestone_number}")
 async def get_issues(
     gitctx: Annotated[Connector, Depends(connection)],
@@ -193,76 +213,79 @@ async def get_issues(
         str | None, Query(title="Sort", description="List of labels to sort by")
     ] = None,
 ):
+    """Return open issues and pull requests for a milestone as separate lists.
+
+    Each list is sorted independently by the optional label sort criteria.
+    Assisted-by: Cursor
+    """
     if sort:
         sort_by = [s.strip() for s in sort.split(",")]
     else:
         sort_by = []
-    sorted_issues = defaultdict(list)
     start = time.time()
     milestone = "none" if milestone_number == 0 else milestone_number
-    issues = gitctx.get_paged(
+    raw_items = gitctx.get_paged(
         f"/repos/{context.github_repo}/issues?milestone={milestone}&state=open",
         headers={"Accept": "application/vnd.github.html+json"},
     )
-    for i in issues:
-        labels = set([label["name"].lower() for label in i["labels"]])
-        if "pull_request" not in i:
-            query = """query($owner: String!, $repo: String!, $issue: Int!) {
-                repository(owner: $owner, name: $repo, followRenames: true) {
-                    issue(number: $issue) {
-                        closedByPullRequestsReferences(first: 100, includeClosedPrs: true) {
-                            nodes {
-                                number
-                                title
-                                url
-                            }
+    issues: list[dict] = []
+    pull_requests: list[dict] = []
+    for i in raw_items:
+        if "pull_request" in i:
+            pull_requests.append(i)
+            continue
+        query = """query($owner: String!, $repo: String!, $issue: Int!) {
+            repository(owner: $owner, name: $repo, followRenames: true) {
+                issue(number: $issue) {
+                    closedByPullRequestsReferences(first: 100, includeClosedPrs: true) {
+                        nodes {
+                            number
+                            title
+                            url
                         }
                     }
                 }
             }
-            """
-            try:
-                response = gitctx.post(
-                    "/graphql",
-                    data={
-                        "query": query,
-                        "variables": {
-                            "owner": gitctx.owner,
-                            "repo": gitctx.repo,
-                            "issue": i["number"],
-                        },
+        }
+        """
+        try:
+            response = gitctx.post(
+                "/graphql",
+                data={
+                    "query": query,
+                    "variables": {
+                        "owner": gitctx.owner,
+                        "repo": gitctx.repo,
+                        "issue": i["number"],
                     },
-                )
-                data = response["data"]
-                issue_node = data["repository"]["issue"]
-                closed = issue_node["closedByPullRequestsReferences"]["nodes"]
-                if len(closed) > 0:
-                    i["closed_by"] = [
-                        {
-                            "number": linked["number"],
-                            "title": linked["title"],
-                            "url": linked["url"],
-                        }
-                        for linked in closed
-                    ]
-            except Exception as e:
-                logger.exception(
-                    f"Error finding linked PRs for issue {i['number']}: {e!r}"
-                )
-                continue
-        for label in sort_by:
-            if label in labels:
-                sorted_issues[label].append(i)
-                break
-        else:
-            sorted_issues["other"].append(i)
-    all_issues = []
-    for label in sort_by + ["other"]:
-        all_issues.extend(sorted(sorted_issues[label], key=lambda x: x["number"]))
+                },
+            )
+            data = response["data"]
+            issue_node = data["repository"]["issue"]
+            closed = issue_node["closedByPullRequestsReferences"]["nodes"]
+            if len(closed) > 0:
+                i["closed_by"] = [
+                    {
+                        "number": linked["number"],
+                        "title": linked["title"],
+                        "url": linked["url"],
+                    }
+                    for linked in closed
+                ]
+        except Exception as e:
+            logger.exception(f"Error finding linked PRs for issue {i['number']}: {e!r}")
+            continue
+        issues.append(i)
+    sorted_issues = _sort_items_by_labels(issues, sort_by)
+    sorted_prs = _sort_items_by_labels(pull_requests, sort_by)
     logger.debug(
-        f"{len(issues)}({len(all_issues)}) issues: {time.time() - start:.3f} seconds"
+        "%s(%s issues, %s PRs) items: %.3f seconds",
+        len(raw_items),
+        len(sorted_issues),
+        len(sorted_prs),
+        time.time() - start,
     )
-    return all_issues
+    return {"issues": sorted_issues, "pull_requests": sorted_prs}
 
 
 @api_router.get("/issue/{issue_number}")

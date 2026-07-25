@@ -45,14 +45,17 @@ describe('api', () => {
 
   describe('fetchIssues', () => {
     it('fetches issues successfully', async () => {
-      const mockIssues = [{ id: 1, number: 459, title: 'Test Issue' }];
+      const mockPayload = {
+        issues: [{ id: 1, number: 459, title: 'Test Issue' }],
+        pull_requests: [{ id: 2, number: 460, title: 'Test PR' }],
+      };
       global.fetch.mockResolvedValue({
         ok: true,
-        json: async () => mockIssues,
+        json: async () => mockPayload,
       });
 
       const result = await fetchIssues(6);
-      expect(result).toEqual(mockIssues);
+      expect(result).toEqual(mockPayload);
       expect(global.fetch).toHaveBeenCalledWith('/api/v1/issues/6');
     });
 
