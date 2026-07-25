@@ -70,6 +70,27 @@ describe('MilestoneCard', () => {
     });
   });
 
+  it('renders Add Issue control under milestone header', async () => {
+    await act(async () => {
+      render(<MilestoneCard milestone={mockMilestone} />);
+    });
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: 'Add Issue' })
+      ).toBeInTheDocument();
+    });
+  });
+
+  it('opens create-issue modal from Add Issue', async () => {
+    const user = userEvent.setup();
+    await act(async () => {
+      render(<MilestoneCard milestone={mockMilestone} />);
+    });
+    await user.click(screen.getByRole('button', { name: 'Add Issue' }));
+    expect(screen.getByText('Add issue to v0.6.0')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Issue title')).toBeInTheDocument();
+  });
+
   it('renders milestone description when provided', async () => {
     await act(async () => {
       render(<MilestoneCard milestone={mockMilestone} />);

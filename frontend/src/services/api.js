@@ -30,6 +30,67 @@ export const fetchComments = async (issueNumber) => {
   return response.json();
 };
 
+export const createComment = async (issueNumber, body) => {
+  const response = await fetch(`${API_BASE}/comments/${issueNumber}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ body }),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to create comment: ${response.statusText}`);
+  }
+  return response.json();
+};
+
+export const closeIssueWithComment = async (issueNumber, body) => {
+  const response = await fetch(
+    `${API_BASE}/issues/${issueNumber}/close-with-comment`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ body }),
+    }
+  );
+  if (!response.ok) {
+    throw new Error(
+      `Failed to close issue with comment: ${response.statusText}`
+    );
+  }
+  return response.json();
+};
+
+export const renderMarkdown = async (text) => {
+  const response = await fetch(`${API_BASE}/markdown`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ text }),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to render markdown: ${response.statusText}`);
+  }
+  return response.json();
+};
+
+export const createIssue = async (issueData) => {
+  const response = await fetch(`${API_BASE}/issues`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(issueData),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to create issue: ${response.statusText}`);
+  }
+  return response.json();
+};
+
 export const fetchProject = async () => {
   const response = await fetch(`${API_BASE}/project`);
   if (!response.ok) {

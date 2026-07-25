@@ -22,6 +22,7 @@ import {
   CatalogIcon,
   TaskIcon,
   ExclamationTriangleIcon,
+  PlusIcon,
 } from '@patternfly/react-icons';
 import { getDaysSince, formatDate } from '../utils/dateUtils';
 import {
@@ -37,10 +38,14 @@ import {
   setIssueAssignees,
   removeIssueAssignees,
   adoptParentMilestone,
+  createComment,
+  closeIssueWithComment,
+  createIssue,
 } from '../services/api';
 import CommentCard from './CommentCard';
 import Reactions from './Reactions';
 import UserAvatar from './UserAvatar';
+import MarkdownInputModal from './MarkdownInputModal';
 import labelsCache, { clearLabelsCache } from '../utils/labelsCache';
 import milestonesCache from '../utils/milestonesCache';
 import assigneesCache from '../utils/assigneesCache';
@@ -98,6 +103,9 @@ const IssueCard = ({
   onDragOverIssue,
   onDragEndIssue,
   onAdoptParentMilestone,
+  onIssueClosed,
+  onIssueCreated,
+  milestoneNumber = null,
 }) => {
   const daysSince = getDaysSince(issue.created_at);
   const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false);
@@ -138,13 +146,16 @@ const IssueCard = ({
   const [pendingAssignees, setPendingAssignees] = useState([]); // Temporary selection while dropdown is open
   const assigneesMenuRef = useRef(null);
   const assigneesToggleRef = useRef(null);
+  const [isCommentModalOpen, setIsCommentModalOpen] = useState(false);
+  const [isCreateSubIssueOpen, setIsCreateSubIssueOpen] = useState(false);
+  const [commentCount, setCommentCount] = useState(issue.comments || 0);
 
   useEffect(() => {
     if (
       isCommentsExpanded &&
       comments.length === 0 &&
       !commentsLoading &&
-      issue.comments > 0
+      commentCount > 0
     ) {
       setCommentsLoading(true);
       setCommentsError(null);
@@ -161,10 +172,14 @@ const IssueCard = ({
   }, [
     isCommentsExpanded,
     issue.number,
-    issue.comments,
+    commentCount,
     comments.length,
     commentsLoading,
   ]);
+
+  useEffect(() => {
+    setCommentCount(issue.comments || 0);
+  }, [issue.comments]);
 
   // Collapse comments when description is collapsed
   useEffect(() => {
@@ -745,8 +760,44 @@ const IssueCard = ({
 
   const getCommentsToggleText = () => {
     return isCommentsExpanded
-      ? `Hide Comments (${issue.comments})`
-      : `Show Comments (${issue.comments})`;
+      ? `Hide Comments (${commentCount})`
+      : `Show Comments (${commentCount})`;
+  };
+
+  const handleAddComment = async (body) => {
+    const created = await createComment(issue.number, body);
+    setComments((prev) => [...prev, created]);
+    setCommentCount((prev) => prev + 1);
+    setIsCommentsExpanded(true);
+    if (onIssueUpdate) {
+      onIssueUpdate({ ...issue, comments: (commentCount || 0) + 1 });
+    }
+  };
+
+  const handleCloseWithComment = async (body) => {
+    await closeIssueWithComment(issue.number, body);
+    onIssueClosed?.({ issueNumber: issue.number });
+  };
+
+  const handleCreateSubIssue = async (payload) => {
+    const created = await createIssue({
+      ...payload,
+      milestone:
+        milestoneNumber ??
+        currentMilestone?.number ??
+        issue.milestone?.number ??
+        undefined,
+      parent_number: issue.number,
+    });
+    onIssueCreated?.({
+      issue: created,
+      parentNumber: issue.number,
+      milestoneNumber:
+        milestoneNumber ??
+        currentMilestone?.number ??
+        issue.milestone?.number ??
+        0,
+    });
   };
 
   // Column 4: PR icon, "closed by #<pr>", or blank
@@ -869,6 +920,19 @@ const IssueCard = ({
               )}
             </span>
           </Tooltip>
+          <Tooltip content="Add sub-issue">
+            <Button
+              variant="plain"
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsCreateSubIssueOpen(true);
+              }}
+              style={{ padding: '0.125rem' }}
+              aria-label="Add sub-issue"
+            >
+              <PlusIcon style={{ fontSize: '0.75rem' }} />
+            </Button>
+          </Tooltip>
           {issue.external_parent && (
             <Tooltip
               content={`Linked under #${issue.external_parent.number}${
@@ -924,23 +988,21 @@ const IssueCard = ({
       >
         {/* Column 1: Expansion icon */}
         <td style={{ ...cellStyle, width: '2rem' }}>
-          {issue.body_html ? (
-            <Button
-              variant="plain"
-              onClick={() => setIsDescriptionExpanded(!isDescriptionExpanded)}
-              style={{ padding: '0.125rem' }}
-              aria-expanded={isDescriptionExpanded}
-              aria-label={
-                isDescriptionExpanded ? 'Hide description' : 'Show description'
-              }
-            >
-              {isDescriptionExpanded ? (
-                <CaretDownIcon style={{ fontSize: '1rem' }} />
-              ) : (
-                <CaretRightIcon style={{ fontSize: '1rem' }} />
-              )}
-            </Button>
-          ) : null}
+          <Button
+            variant="plain"
+            onClick={() => setIsDescriptionExpanded(!isDescriptionExpanded)}
+            style={{ padding: '0.125rem' }}
+            aria-expanded={isDescriptionExpanded}
+            aria-label={
+              isDescriptionExpanded ? 'Hide description' : 'Show description'
+            }
+          >
+            {isDescriptionExpanded ? (
+              <CaretDownIcon style={{ fontSize: '1rem' }} />
+            ) : (
+              <CaretRightIcon style={{ fontSize: '1rem' }} />
+            )}
+          </Button>
         </td>
 
         {/* Column 2: Issue number link */}
@@ -1632,7 +1694,7 @@ const IssueCard = ({
       </tr>
 
       {/* Expanded description and comments - only shown when expanded */}
-      {issue.body_html && isDescriptionExpanded && (
+      {isDescriptionExpanded && (
         <tr>
           <td
             colSpan={columnCount}
@@ -1642,49 +1704,72 @@ const IssueCard = ({
               backgroundColor: '#fafafa',
             }}
           >
-            <div
-              style={{ paddingTop: '0.5rem' }}
-              dangerouslySetInnerHTML={{ __html: issue.body_html }}
-            />
-            {issue.comments > 0 && (
-              <div style={{ marginTop: issue.body_html ? '1rem' : '0rem' }}>
-                <ExpandableSection
-                  toggleText={getCommentsToggleText()}
-                  onToggle={() => setIsCommentsExpanded(!isCommentsExpanded)}
-                  isExpanded={isCommentsExpanded}
-                >
-                  <div style={{ paddingTop: '0.5rem' }}>
-                    {commentsLoading && (
-                      <div style={{ textAlign: 'center', padding: '1rem' }}>
-                        <Spinner size="md" />
+            {issue.body_html ? (
+              <div
+                style={{ paddingTop: '0.5rem' }}
+                dangerouslySetInnerHTML={{ __html: issue.body_html }}
+              />
+            ) : (
+              <p style={{ color: '#6a6e73', fontStyle: 'italic' }}>
+                No description.
+              </p>
+            )}
+            <div style={{ marginTop: issue.body_html ? '1rem' : '0.5rem' }}>
+              <ExpandableSection
+                toggleText={getCommentsToggleText()}
+                onToggle={() => setIsCommentsExpanded(!isCommentsExpanded)}
+                isExpanded={isCommentsExpanded}
+              >
+                <div style={{ paddingTop: '0.5rem' }}>
+                  {commentsLoading && (
+                    <div style={{ textAlign: 'center', padding: '1rem' }}>
+                      <Spinner size="md" />
+                    </div>
+                  )}
+                  {commentsError && (
+                    <Alert variant="danger" title="Error loading comments">
+                      {commentsError}
+                    </Alert>
+                  )}
+                  {!commentsLoading &&
+                    !commentsError &&
+                    comments.length > 0 && (
+                      <div>
+                        {comments.map((comment) => (
+                          <CommentCard key={comment.id} comment={comment} />
+                        ))}
                       </div>
                     )}
-                    {commentsError && (
-                      <Alert variant="danger" title="Error loading comments">
-                        {commentsError}
-                      </Alert>
+                  {!commentsLoading &&
+                    !commentsError &&
+                    comments.length === 0 &&
+                    isCommentsExpanded && (
+                      <p style={{ color: '#6a6e73', fontStyle: 'italic' }}>
+                        No comments found.
+                      </p>
                     )}
-                    {!commentsLoading &&
-                      !commentsError &&
-                      comments.length > 0 && (
-                        <div>
-                          {comments.map((comment) => (
-                            <CommentCard key={comment.id} comment={comment} />
-                          ))}
-                        </div>
-                      )}
-                    {!commentsLoading &&
-                      !commentsError &&
-                      comments.length === 0 &&
-                      isCommentsExpanded && (
-                        <p style={{ color: '#6a6e73', fontStyle: 'italic' }}>
-                          No comments found.
-                        </p>
-                      )}
-                  </div>
-                </ExpandableSection>
+                </div>
+              </ExpandableSection>
+              <div
+                style={{
+                  marginTop: '0.5rem',
+                  display: 'flex',
+                  gap: '0.5rem',
+                  flexWrap: 'wrap',
+                }}
+              >
+                <Button
+                  variant="secondary"
+                  onClick={() => setIsCommentModalOpen(true)}
+                  style={{
+                    padding: '0.25rem 0.75rem',
+                    fontSize: '0.75rem',
+                  }}
+                >
+                  Add Comment
+                </Button>
               </div>
-            )}
+            </div>
             {issue.reactions?.total_count > 0 && (
               <div style={{ marginTop: '0.75rem' }}>
                 {reactionsLoading && (
@@ -1709,6 +1794,24 @@ const IssueCard = ({
           </td>
         </tr>
       )}
+      <MarkdownInputModal
+        isOpen={isCommentModalOpen}
+        onClose={() => setIsCommentModalOpen(false)}
+        mode="comment"
+        title={`Comment on #${issue.number}`}
+        submitLabel="Submit"
+        showCloseWithComment
+        onSubmit={handleAddComment}
+        onCloseWithComment={handleCloseWithComment}
+      />
+      <MarkdownInputModal
+        isOpen={isCreateSubIssueOpen}
+        onClose={() => setIsCreateSubIssueOpen(false)}
+        mode="issue"
+        title={`Add sub-issue under #${issue.number}`}
+        submitLabel="Create Issue"
+        onSubmit={handleCreateSubIssue}
+      />
       <Modal
         title="Create New Label"
         isOpen={isCreateLabelDialogOpen}

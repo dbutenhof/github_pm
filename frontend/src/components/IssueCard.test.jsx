@@ -90,15 +90,15 @@ describe('IssueCard', () => {
     });
   });
 
-  it('does not show expansion icon when body is absent', async () => {
+  it('shows expansion icon when body is absent (for comments)', async () => {
     const issueWithoutBody = { ...mockIssue, body: null, body_html: null };
     await act(async () => {
       render(<IssueCard issue={issueWithoutBody} />);
     });
     await waitFor(() => {
       expect(
-        screen.queryByRole('button', { name: /show description/i })
-      ).not.toBeInTheDocument();
+        screen.getByRole('button', { name: /show description/i })
+      ).toBeInTheDocument();
     });
   });
 
@@ -506,6 +506,36 @@ describe('IssueCard', () => {
     expect(screen.getByText('2')).toBeInTheDocument();
     expect(
       screen.getByRole('button', { name: 'Show sub-issues' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Add sub-issue' })
+    ).toBeInTheDocument();
+  });
+
+  it('shows Add Comment under expanded description', async () => {
+    const user = userEvent.setup();
+    await act(async () => {
+      render(<IssueCard issue={mockIssue} />);
+    });
+    await user.click(screen.getByRole('button', { name: /show description/i }));
+    expect(
+      screen.getByRole('button', { name: /show comments/i })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Add Comment' })
+    ).toBeInTheDocument();
+  });
+
+  it('opens comment modal from Add Comment', async () => {
+    const user = userEvent.setup();
+    await act(async () => {
+      render(<IssueCard issue={mockIssue} />);
+    });
+    await user.click(screen.getByRole('button', { name: /show description/i }));
+    await user.click(screen.getByRole('button', { name: 'Add Comment' }));
+    expect(screen.getByText('Comment on #459')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Close with Comment' })
     ).toBeInTheDocument();
   });
 

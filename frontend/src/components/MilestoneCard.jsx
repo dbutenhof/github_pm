@@ -9,9 +9,11 @@ import {
   Spinner,
   Alert,
   ExpandableSection,
+  Button,
 } from '@patternfly/react-core';
-import { fetchIssues } from '../services/api';
+import { fetchIssues, createIssue } from '../services/api';
 import IssueCard from './IssueCard';
+import MarkdownInputModal from './MarkdownInputModal';
 import { usePlanningDnD } from './PlanningDnDContext';
 import {
   flattenVisibleIssues,
@@ -61,6 +63,7 @@ const MilestoneCard = ({
   const [error, setError] = useState(null);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [expandedHierarchy, setExpandedHierarchy] = useState(() => new Set());
+  const [isCreateIssueOpen, setIsCreateIssueOpen] = useState(false);
   const prevMilestoneNumberRef = useRef(milestone.number);
   const dnd = usePlanningDnD();
 
@@ -256,6 +259,33 @@ const MilestoneCard = ({
     });
   };
 
+  const handleCreateEpic = async (payload) => {
+    await createIssue({
+      ...payload,
+      milestone: milestone.number === 0 ? undefined : milestone.number,
+    });
+    setIsIssuesExpanded(true);
+    setHasLoadedOnce(true);
+    await refetchIssues();
+  };
+
+  const handleIssueCreated = async ({ parentNumber }) => {
+    if (parentNumber != null) {
+      setExpandedHierarchy((prev) => new Set(prev).add(parentNumber));
+    }
+    if (hasLoadedOnce) {
+      await refetchIssues();
+    }
+  };
+
+  const handleIssueClosed = async ({ issueNumber }) => {
+    if (!hasLoadedOnce) return;
+    setIssues((prev) => {
+      const { forest } = removeIssueFromForest(prev, issueNumber);
+      return reannotateDepths(forest);
+    });
+  };
+
   const renderIssueTable = () => {
     const visible = flattenVisibleIssues(issues, expandedHierarchy);
     return (
@@ -275,6 +305,7 @@ const MilestoneCard = ({
               issue={issue}
               enableHierarchy
               columnCount={8}
+              milestoneNumber={milestone.number}
               isHierarchyExpanded={expandedHierarchy.has(issue.number)}
               onToggleHierarchy={() => toggleHierarchy(issue.number)}
               isDropTarget={
@@ -306,6 +337,8 @@ const MilestoneCard = ({
               onAdoptParentMilestone={(detail) => {
                 onIssueMilestoneMoved?.(detail);
               }}
+              onIssueCreated={handleIssueCreated}
+              onIssueClosed={handleIssueClosed}
             />
           ))}
         </tbody>
@@ -346,7 +379,25 @@ const MilestoneCard = ({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{milestone.title}</CardTitle>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            width: '100%',
+            gap: '1rem',
+            flexWrap: 'wrap',
+          }}
+        >
+          <CardTitle>{milestone.title}</CardTitle>
+          <Button
+            variant="secondary"
+            onClick={() => setIsCreateIssueOpen(true)}
+            style={{ padding: '0.25rem 0.75rem', fontSize: '0.875rem' }}
+          >
+            Add Issue
+          </Button>
+        </div>
       </CardHeader>
       <CardBody>
         <div style={{ marginBottom: '1rem' }}>
@@ -395,6 +446,14 @@ const MilestoneCard = ({
           </ExpandableSection>
         )}
       </CardBody>
+      <MarkdownInputModal
+        isOpen={isCreateIssueOpen}
+        onClose={() => setIsCreateIssueOpen(false)}
+        mode="issue"
+        title={`Add issue to ${milestone.title}`}
+        submitLabel="Create Issue"
+        onSubmit={handleCreateEpic}
+      />
     </Card>
   );
 };

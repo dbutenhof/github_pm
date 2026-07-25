@@ -12,6 +12,10 @@ import {
   setIssueParent,
   clearIssueParent,
   adoptParentMilestone,
+  createComment,
+  closeIssueWithComment,
+  renderMarkdown,
+  createIssue,
 } from './api';
 
 describe('api', () => {
@@ -259,6 +263,85 @@ describe('api', () => {
       expect(global.fetch).toHaveBeenCalledWith(
         '/api/v1/issues/20/adopt-parent-milestone',
         { method: 'POST' }
+      );
+    });
+  });
+
+  describe('comment and issue write APIs', () => {
+    it('createComment POSTs body', async () => {
+      global.fetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({ id: 1, body: 'Hi' }),
+      });
+      await createComment(42, 'Hi');
+      expect(global.fetch).toHaveBeenCalledWith('/api/v1/comments/42', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ body: 'Hi' }),
+      });
+    });
+
+    it('closeIssueWithComment POSTs body', async () => {
+      global.fetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({ comment: {}, issue: { state: 'closed' } }),
+      });
+      await closeIssueWithComment(42, 'Done');
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/v1/issues/42/close-with-comment',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ body: 'Done' }),
+        }
+      );
+    });
+
+    it('renderMarkdown POSTs text', async () => {
+      global.fetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({ html: '<p>x</p>' }),
+      });
+      const result = await renderMarkdown('**x**');
+      expect(result).toEqual({ html: '<p>x</p>' });
+      expect(global.fetch).toHaveBeenCalledWith('/api/v1/markdown', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: '**x**' }),
+      });
+    });
+
+    it('createIssue POSTs issue payload', async () => {
+      global.fetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({ number: 99, title: 'New' }),
+      });
+      await createIssue({
+        title: 'New',
+        body: 'Body',
+        type: 'Bug',
+        labels: ['bug'],
+        assignees: ['alice'],
+        milestone: 6,
+      });
+      expect(global.fetch).toHaveBeenCalledWith('/api/v1/issues', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: 'New',
+          body: 'Body',
+          type: 'Bug',
+          labels: ['bug'],
+          assignees: ['alice'],
+          milestone: 6,
+        }),
+      });
+    });
+
+    it('throws on createComment failure', async () => {
+      global.fetch.mockResolvedValue({ ok: false, statusText: 'Forbidden' });
+      await expect(createComment(1, 'x')).rejects.toThrow(
+        'Failed to create comment'
       );
     });
   });

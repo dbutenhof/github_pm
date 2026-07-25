@@ -150,6 +150,25 @@ class Connector:
         )
         return response.json()
 
+    def post_text(
+        self, path: str, text: str, headers: dict[str, str] | None = None
+    ) -> str:
+        """POST plain text (e.g. ``/markdown/raw``); returns response body as text.
+
+        Generated-by: Cursor
+        """
+        request_headers = {"Content-Type": "text/plain; charset=utf-8"}
+        if headers:
+            request_headers.update(headers)
+        response = self._with_504_retry(
+            lambda: self.github.post(
+                f"{self.base_url}{path}",
+                data=text.encode("utf-8"),
+                headers=request_headers,
+            )
+        )
+        return response.text
+
     def delete(
         self,
         path: str,
@@ -357,6 +376,158 @@ async def get_comments(
         f"{len(comments)} issue {issue_number} comments: {time.time() - start:.3f} seconds"
     )
     return comments
+
+
+class CreateComment(BaseModel):
+    """Body for creating an issue comment.
+
+    Generated-by: Cursor
+    """
+
+    body: str = Field(title="Comment Body", min_length=1)
+
+
+@api_router.post("/comments/{issue_number}")
+async def create_comment(
+    gitctx: Annotated[Connector, Depends(connection)],
+    issue_number: Annotated[int, Path(title="Issue")],
+    comment: Annotated[CreateComment, Body(title="Comment")],
+):
+    """Create a comment on an issue.
+
+    Generated-by: Cursor
+    """
+    created = gitctx.post(
+        f"/repos/{context.github_repo}/issues/{issue_number}/comments",
+        data={"body": comment.body},
+        headers={"Accept": "application/vnd.github.html+json"},
+    )
+    logger.info("Created comment on issue #%s", issue_number)
+    return created
+
+
+class CloseWithComment(BaseModel):
+    """Body for closing an issue with an optional comment.
+
+    Generated-by: Cursor
+    """
+
+    body: str = Field(title="Comment Body", min_length=1)
+
+
+@api_router.post("/issues/{issue_number}/close-with-comment")
+async def close_issue_with_comment(
+    gitctx: Annotated[Connector, Depends(connection)],
+    issue_number: Annotated[int, Path(title="Issue")],
+    comment: Annotated[CloseWithComment, Body(title="Comment")],
+):
+    """Add a comment to an issue and mark it closed.
+
+    Generated-by: Cursor
+    """
+    created_comment = gitctx.post(
+        f"/repos/{context.github_repo}/issues/{issue_number}/comments",
+        data={"body": comment.body},
+        headers={"Accept": "application/vnd.github.html+json"},
+    )
+    closed_issue = gitctx.patch(
+        f"/repos/{context.github_repo}/issues/{issue_number}",
+        data={"state": "closed"},
+        headers={"Accept": "application/vnd.github.html+json"},
+    )
+    logger.info("Closed issue #%s with comment", issue_number)
+    return {"comment": created_comment, "issue": closed_issue}
+
+
+class RenderMarkdown(BaseModel):
+    """Body for rendering markdown via GitHub.
+
+    Generated-by: Cursor
+    """
+
+    text: str = Field(title="Markdown Text", default="")
+
+
+@api_router.post("/markdown")
+async def render_markdown(
+    gitctx: Annotated[Connector, Depends(connection)],
+    payload: Annotated[RenderMarkdown, Body(title="Markdown")],
+):
+    """Render markdown to HTML using GitHub ``POST /markdown/raw``.
+
+    Generated-by: Cursor
+    """
+    html = gitctx.post_text("/markdown/raw", payload.text)
+    return {"html": html}
+
+
+class CreateIssue(BaseModel):
+    """Body for creating a repository issue (optionally as a sub-issue).
+
+    Generated-by: Cursor
+    """
+
+    title: str = Field(title="Issue Title", min_length=1)
+    body: str | None = Field(default=None, title="Issue Body")
+    labels: list[str] | None = Field(default=None, title="Labels")
+    assignees: list[str] | None = Field(default=None, title="Assignees")
+    type: str | None = Field(
+        default=None,
+        title="Issue Type",
+        description="GitHub issue type name, e.g. Bug or Feature",
+    )
+    milestone: int | None = Field(default=None, title="Milestone Number")
+    parent_number: int | None = Field(
+        default=None,
+        title="Parent Issue Number",
+        description="When set, link the new issue as a sub-issue of this parent",
+    )
+
+
+@api_router.post("/issues")
+async def create_issue(
+    gitctx: Annotated[Connector, Depends(connection)],
+    issue: Annotated[CreateIssue, Body(title="Issue")],
+):
+    """Create an issue; optionally assign milestone and/or parent.
+
+    Generated-by: Cursor
+    """
+    data: dict[str, Any] = {"title": issue.title}
+    if issue.body is not None:
+        data["body"] = issue.body
+    if issue.labels is not None:
+        data["labels"] = issue.labels
+    if issue.assignees is not None:
+        data["assignees"] = issue.assignees
+    if issue.type is not None:
+        data["type"] = issue.type
+    if issue.milestone is not None and issue.milestone != 0:
+        data["milestone"] = issue.milestone
+
+    created = gitctx.post(
+        f"/repos/{context.github_repo}/issues",
+        data=data,
+        headers={"Accept": "application/vnd.github.html+json"},
+    )
+    logger.info("Created issue #%s: %s", created.get("number"), issue.title)
+
+    parent_number = issue.parent_number
+    if parent_number is not None:
+        if parent_number == created["number"]:
+            raise HTTPException(
+                status_code=422, detail="An issue cannot be its own parent"
+            )
+        gitctx.post(
+            f"/repos/{context.github_repo}/issues/{parent_number}/sub_issues",
+            data={"sub_issue_id": created["id"], "replace_parent": True},
+        )
+        logger.info(
+            "Linked issue #%s as sub-issue of #%s", created["number"], parent_number
+        )
+        created["parent_number"] = parent_number
+
+    return created
 
 
 @api_router.get("/issues/{issue_number}/reactions")
