@@ -146,4 +146,38 @@ describe('PlanningDnDContext', () => {
       );
     });
   });
+
+  it('removes the custom drag image from the DOM on unmount', async () => {
+    const issue = { number: 5, parent_number: null };
+    const dragImages = () =>
+      document.body.querySelectorAll('[data-planning-drag-image="true"]');
+
+    let unmount;
+    await act(async () => {
+      ({ unmount } = render(
+        <PlanningDnDProvider milestones={[{ number: 1, title: 'M1' }]}>
+          <Probe issue={issue} />
+        </PlanningDnDProvider>
+      ));
+    });
+
+    expect(dragImages()).toHaveLength(0);
+
+    const dragBtn = screen.getByText('drag-me');
+    await act(async () => {
+      const start = new Event('dragstart', { bubbles: true });
+      Object.defineProperty(start, 'dataTransfer', {
+        value: makeDataTransfer(),
+      });
+      dragBtn.dispatchEvent(start);
+    });
+
+    expect(dragImages()).toHaveLength(1);
+
+    await act(async () => {
+      unmount();
+    });
+
+    expect(dragImages()).toHaveLength(0);
+  });
 });

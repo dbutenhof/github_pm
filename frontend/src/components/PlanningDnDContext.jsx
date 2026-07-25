@@ -3,6 +3,7 @@ import React, {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -30,6 +31,18 @@ export const PlanningDnDProvider = ({
   const isUnlinkZoneRef = useRef(false);
   const onHierarchyChangedRef = useRef(onHierarchyChanged);
   onHierarchyChangedRef.current = onHierarchyChanged;
+
+  // Custom drag-image node is appended to document.body; remove on unmount so
+  // remounting the Planning tab does not leave orphaned elements behind.
+  useEffect(() => {
+    return () => {
+      const el = dragImageRef.current;
+      if (el?.parentNode) {
+        el.parentNode.removeChild(el);
+      }
+      dragImageRef.current = null;
+    };
+  }, []);
 
   const [dragged, setDragged] = useState(null);
   const [hoverParent, setHoverParentState] = useState(null);
@@ -89,6 +102,7 @@ export const PlanningDnDProvider = ({
 
       if (!dragImageRef.current) {
         const el = document.createElement('div');
+        el.dataset.planningDragImage = 'true';
         el.style.position = 'absolute';
         el.style.top = '-1000px';
         el.style.left = '-1000px';

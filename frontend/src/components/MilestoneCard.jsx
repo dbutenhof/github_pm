@@ -19,6 +19,7 @@ import {
   flattenVisibleIssues,
   collectSubtreeNumbers,
   removeIssueFromForest,
+  removeClosedIssueFromForest,
   insertIssueInForest,
   reannotateDepths,
 } from '../utils/issueHierarchy';
@@ -281,7 +282,11 @@ const MilestoneCard = ({
   const handleIssueClosed = async ({ issueNumber }) => {
     if (!hasLoadedOnce) return;
     setIssues((prev) => {
-      const { forest } = removeIssueFromForest(prev, issueNumber);
+      const { forest, removed } = removeClosedIssueFromForest(
+        prev,
+        issueNumber
+      );
+      if (!removed) return prev;
       return reannotateDepths(forest);
     });
   };

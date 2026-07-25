@@ -34,6 +34,7 @@ export const collectSubtreeNumbers = (issue) => {
 
 /**
  * Remove an issue (by number) from a forest; returns { forest, removed }.
+ * The removed node retains its children subtree (used by DnD unlink/relink).
  */
 export const removeIssueFromForest = (forest, issueNumber) => {
   let removed = null;
@@ -54,6 +55,39 @@ export const removeIssueFromForest = (forest, issueNumber) => {
     return next;
   };
   return { forest: filterNodes(forest), removed };
+};
+
+/**
+ * Remove a closed issue and promote its former children to forest roots.
+ * Matches server build_issue_forest: closed parent is absent, children are
+ * display roots with external_parent pointing at the closed parent.
+ */
+export const removeClosedIssueFromForest = (forest, issueNumber) => {
+  const { forest: next, removed } = removeIssueFromForest(forest, issueNumber);
+  if (!removed) {
+    return { forest: next, removed: null };
+  }
+  const milestone = removed.milestone;
+  const externalParent = {
+    number: removed.number,
+    title: removed.title ?? null,
+    milestone:
+      milestone && typeof milestone === 'object'
+        ? {
+            number: milestone.number,
+            title: milestone.title,
+          }
+        : null,
+  };
+  const promoted = (removed.children || []).map((child) => ({
+    ...child,
+    parent_number: null,
+    external_parent: externalParent,
+  }));
+  return {
+    forest: [...next, ...promoted],
+    removed,
+  };
 };
 
 /**
