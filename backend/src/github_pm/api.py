@@ -11,6 +11,14 @@ from pydantic import BaseModel, Field
 import requests
 
 from github_pm.context import context
+from github_pm.issue_hierarchy import (
+    apply_graphql_hierarchy,
+    build_issue_forest,
+    collect_descendant_numbers,
+    is_ancestor,
+    ISSUE_HIERARCHY_GRAPHQL,
+    PARENT_ONLY_GRAPHQL,
+)
 from github_pm.logger import logger
 
 api_router = APIRouter()
@@ -213,9 +221,11 @@ async def get_issues(
         str | None, Query(title="Sort", description="List of labels to sort by")
     ] = None,
 ):
-    """Return open issues and pull requests for a milestone as separate lists.
+    """Return open issues (as a sub-issue forest) and PRs for a milestone.
 
-    Each list is sorted independently by the optional label sort criteria.
+    Issues are nested via GitHub parent/sub-issue links discovered over GraphQL.
+    Pull requests remain a flat list. Each sibling list is sorted by optional
+    label criteria.
     Assisted-by: Cursor
     """
     if sort:
@@ -234,25 +244,11 @@ async def get_issues(
         if "pull_request" in i:
             pull_requests.append(i)
             continue
-        query = """query($owner: String!, $repo: String!, $issue: Int!) {
-            repository(owner: $owner, name: $repo, followRenames: true) {
-                issue(number: $issue) {
-                    closedByPullRequestsReferences(first: 100, includeClosedPrs: true) {
-                        nodes {
-                            number
-                            title
-                            url
-                        }
-                    }
-                }
-            }
-        }
-        """
         try:
             response = gitctx.post(
                 "/graphql",
                 data={
-                    "query": query,
+                    "query": ISSUE_HIERARCHY_GRAPHQL,
                     "variables": {
                         "owner": gitctx.owner,
                         "repo": gitctx.repo,
@@ -262,7 +258,8 @@ async def get_issues(
             )
             data = response["data"]
             issue_node = data["repository"]["issue"]
-            closed = issue_node["closedByPullRequestsReferences"]["nodes"]
+            closed_refs = issue_node.get("closedByPullRequestsReferences") or {}
+            closed = closed_refs.get("nodes") or []
             if len(closed) > 0:
                 i["closed_by"] = [
                     {
@@ -272,20 +269,23 @@ async def get_issues(
                     }
                     for linked in closed
                 ]
+            apply_graphql_hierarchy(i, issue_node)
         except Exception as e:
-            logger.exception(f"Error finding linked PRs for issue {i['number']}: {e!r}")
+            logger.exception(
+                f"Error enriching hierarchy/PRs for issue {i['number']}: {e!r}"
+            )
             continue
         issues.append(i)
-    sorted_issues = _sort_items_by_labels(issues, sort_by)
+    forest = build_issue_forest(issues, sort_by, _sort_items_by_labels)
     sorted_prs = _sort_items_by_labels(pull_requests, sort_by)
     logger.debug(
         "%s(%s issues, %s PRs) items: %.3f seconds",
         len(raw_items),
-        len(sorted_issues),
+        len(forest),
         len(sorted_prs),
         time.time() - start,
     )
-    return {"issues": sorted_issues, "pull_requests": sorted_prs}
+    return {"issues": forest, "pull_requests": sorted_prs}
 
 
 @api_router.get("/issue/{issue_number}")
@@ -475,6 +475,178 @@ async def remove_milestone_from_issue(
         data={"milestone": None},
     )
     return issue
+
+
+def _list_sub_issue_numbers(gitctx: Connector, issue_number: int) -> list[int]:
+    """List child issue numbers via REST; fall back to empty on failure.
+
+    Generated-by: Cursor
+    """
+    try:
+        items = gitctx.get_paged(
+            f"/repos/{context.github_repo}/issues/{issue_number}/sub_issues"
+        )
+        return [item["number"] for item in items if "number" in item]
+    except Exception as e:
+        logger.exception("Failed listing sub-issues for #%s: %r", issue_number, e)
+        return []
+
+
+def _cascade_milestone(
+    gitctx: Connector,
+    root_number: int,
+    milestone_number: int | None,
+) -> list[int]:
+    """Set milestone on root and all GitHub descendants. Returns updated numbers.
+
+    Generated-by: Cursor
+    """
+
+    def list_children(n: int) -> list[int]:
+        return _list_sub_issue_numbers(gitctx, n)
+
+    numbers = [root_number] + collect_descendant_numbers(list_children, root_number)
+    updated: list[int] = []
+    for number in numbers:
+        gitctx.patch(
+            f"/repos/{context.github_repo}/issues/{number}",
+            data={"milestone": milestone_number},
+        )
+        updated.append(number)
+    return updated
+
+
+def _graphql_issue_node(gitctx: Connector, issue_number: int) -> dict:
+    response = gitctx.post(
+        "/graphql",
+        data={
+            "query": PARENT_ONLY_GRAPHQL,
+            "variables": {
+                "owner": gitctx.owner,
+                "repo": gitctx.repo,
+                "issue": issue_number,
+            },
+        },
+    )
+    data = response.get("data") or {}
+    repo = data.get("repository") or {}
+    issue_node = repo.get("issue")
+    if not issue_node:
+        raise HTTPException(status_code=404, detail=f"Issue #{issue_number} not found")
+    return issue_node
+
+
+class SetIssueParent(BaseModel):
+    parent_number: int = Field(title="Parent Issue Number")
+
+
+@api_router.put("/issues/{issue_number}/parent")
+async def set_issue_parent(
+    gitctx: Annotated[Connector, Depends(connection)],
+    issue_number: Annotated[int, Path(title="Issue")],
+    body: Annotated[SetIssueParent, Body(title="Parent")],
+):
+    """Link issue as a sub-issue of parent, cascading milestone when needed.
+
+    Generated-by: Cursor
+    """
+    parent_number = body.parent_number
+    if parent_number == issue_number:
+        raise HTTPException(status_code=422, detail="An issue cannot be its own parent")
+
+    def list_children(n: int) -> list[int]:
+        return _list_sub_issue_numbers(gitctx, n)
+
+    if is_ancestor(list_children, issue_number, parent_number):
+        raise HTTPException(
+            status_code=422,
+            detail="Cannot link an issue under one of its descendants",
+        )
+
+    child = gitctx.get(f"/repos/{context.github_repo}/issues/{issue_number}")
+    parent = gitctx.get(f"/repos/{context.github_repo}/issues/{parent_number}")
+
+    gitctx.post(
+        f"/repos/{context.github_repo}/issues/{parent_number}/sub_issues",
+        data={"sub_issue_id": child["id"], "replace_parent": True},
+    )
+
+    child_ms = (child.get("milestone") or {}).get("number")
+    parent_ms = (parent.get("milestone") or {}).get("number")
+    updated_issue_numbers: list[int] = []
+    if child_ms != parent_ms:
+        # parent_ms may be None (no milestone); still cascade to match parent.
+        updated_issue_numbers = _cascade_milestone(gitctx, issue_number, parent_ms)
+
+    return {
+        "issue_number": issue_number,
+        "parent_number": parent_number,
+        "from_milestone": child_ms,
+        "to_milestone": parent_ms,
+        "updated_issue_numbers": updated_issue_numbers,
+    }
+
+
+@api_router.delete("/issues/{issue_number}/parent")
+async def clear_issue_parent(
+    gitctx: Annotated[Connector, Depends(connection)],
+    issue_number: Annotated[int, Path(title="Issue")],
+):
+    """Unlink issue from its current parent (becomes an epic).
+
+    Generated-by: Cursor
+    """
+    child = gitctx.get(f"/repos/{context.github_repo}/issues/{issue_number}")
+    issue_node = _graphql_issue_node(gitctx, issue_number)
+    parent = issue_node.get("parent")
+    if not parent or parent.get("number") is None:
+        raise HTTPException(
+            status_code=404, detail=f"Issue #{issue_number} has no parent"
+        )
+    parent_number = parent["number"]
+    gitctx.delete(
+        f"/repos/{context.github_repo}/issues/{parent_number}/sub_issue",
+        data={"sub_issue_id": child["id"]},
+    )
+    return {
+        "issue_number": issue_number,
+        "parent_number": parent_number,
+        "message": "parent cleared",
+    }
+
+
+@api_router.post("/issues/{issue_number}/adopt-parent-milestone")
+async def adopt_parent_milestone(
+    gitctx: Annotated[Connector, Depends(connection)],
+    issue_number: Annotated[int, Path(title="Issue")],
+):
+    """Move this issue and descendants to its GitHub parent's milestone.
+
+    Generated-by: Cursor
+    """
+    issue = gitctx.get(f"/repos/{context.github_repo}/issues/{issue_number}")
+    issue_node = _graphql_issue_node(gitctx, issue_number)
+    parent = issue_node.get("parent")
+    if not parent or parent.get("number") is None:
+        raise HTTPException(
+            status_code=404, detail=f"Issue #{issue_number} has no parent"
+        )
+    parent_ms_info = parent.get("milestone")
+    if not parent_ms_info or parent_ms_info.get("number") is None:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Parent #{parent['number']} has no milestone to adopt",
+        )
+    to_milestone = parent_ms_info["number"]
+    from_milestone = (issue.get("milestone") or {}).get("number")
+    updated = _cascade_milestone(gitctx, issue_number, to_milestone)
+    return {
+        "issue_number": issue_number,
+        "parent_number": parent["number"],
+        "from_milestone": from_milestone,
+        "to_milestone": to_milestone,
+        "updated_issue_numbers": updated,
+    }
 
 
 # """Label Management"""

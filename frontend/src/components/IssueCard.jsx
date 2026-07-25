@@ -18,6 +18,10 @@ import {
   CodeBranchIcon,
   CaretDownIcon,
   CaretRightIcon,
+  LayerGroupIcon,
+  CatalogIcon,
+  TaskIcon,
+  ExclamationTriangleIcon,
 } from '@patternfly/react-icons';
 import { getDaysSince, formatDate } from '../utils/dateUtils';
 import {
@@ -32,6 +36,7 @@ import {
   fetchAssignees,
   setIssueAssignees,
   removeIssueAssignees,
+  adoptParentMilestone,
 } from '../services/api';
 import CommentCard from './CommentCard';
 import Reactions from './Reactions';
@@ -83,6 +88,16 @@ const IssueCard = ({
   onMilestoneChange,
   onLabelsChange,
   onIssueUpdate,
+  enableHierarchy = false,
+  columnCount = 7,
+  isHierarchyExpanded = false,
+  onToggleHierarchy,
+  isDropTarget = false,
+  isDragging = false,
+  onDragStartIssue,
+  onDragOverIssue,
+  onDragEndIssue,
+  onAdoptParentMilestone,
 }) => {
   const daysSince = getDaysSince(issue.created_at);
   const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false);
@@ -783,9 +798,130 @@ const IssueCard = ({
     borderBottom: '1px solid #d2d2d2',
   };
 
+  const depth = issue.hierarchy_depth || 0;
+  const childCount = issue.child_count ?? (issue.children || []).length;
+  const indentPx = enableHierarchy ? depth * 16 : 0;
+
+  const handleAdoptParentMilestone = async () => {
+    try {
+      const result = await adoptParentMilestone(issue.number);
+      onAdoptParentMilestone?.({
+        fromMilestoneNumber: result.from_milestone ?? currentMilestone?.number,
+        toMilestoneNumber: result.to_milestone,
+      });
+    } catch (err) {
+      console.error('Failed to adopt parent milestone:', err);
+    }
+  };
+
+  const renderHierarchyType = () => {
+    if (!enableHierarchy) return null;
+    let Icon = LayerGroupIcon;
+    let label = 'Epic';
+    if (depth === 1) {
+      Icon = CatalogIcon;
+      label = 'Story';
+    } else if (depth >= 2) {
+      Icon = TaskIcon;
+      label = 'Sub-story';
+    }
+    return (
+      <td style={cellStyle}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.35rem',
+            flexWrap: 'wrap',
+          }}
+        >
+          {childCount > 0 && (
+            <Button
+              variant="plain"
+              onClick={onToggleHierarchy}
+              style={{ padding: '0.125rem' }}
+              aria-expanded={isHierarchyExpanded}
+              aria-label={
+                isHierarchyExpanded ? 'Hide sub-issues' : 'Show sub-issues'
+              }
+            >
+              {isHierarchyExpanded ? (
+                <CaretDownIcon style={{ fontSize: '0.875rem' }} />
+              ) : (
+                <CaretRightIcon style={{ fontSize: '0.875rem' }} />
+              )}
+            </Button>
+          )}
+          <Tooltip content={label}>
+            <span
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.25rem',
+              }}
+              aria-label={label}
+            >
+              <Icon style={{ fontSize: '1rem' }} />
+              {depth === 0 && childCount > 0 && (
+                <span style={{ fontSize: '0.75rem', color: '#6a6e73' }}>
+                  {childCount}
+                </span>
+              )}
+            </span>
+          </Tooltip>
+          {issue.external_parent && (
+            <Tooltip
+              content={`Linked under #${issue.external_parent.number}${
+                issue.external_parent.milestone
+                  ? ` (${issue.external_parent.milestone.title || `milestone #${issue.external_parent.milestone.number}`})`
+                  : ''
+              } outside this milestone`}
+            >
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.25rem',
+                }}
+              >
+                <ExclamationTriangleIcon
+                  style={{ color: '#f0ab00', fontSize: '0.875rem' }}
+                  aria-label="External parent"
+                />
+                <Button
+                  variant="link"
+                  isInline
+                  onClick={handleAdoptParentMilestone}
+                  style={{ fontSize: '0.75rem', padding: 0 }}
+                >
+                  Match parent milestone
+                </Button>
+              </span>
+            </Tooltip>
+          )}
+        </div>
+      </td>
+    );
+  };
+
+  const rowStyle = {
+    backgroundColor: isDropTarget
+      ? '#e7f1fa'
+      : isDragging
+        ? '#f0f0f0'
+        : undefined,
+    opacity: isDragging ? 0.6 : 1,
+  };
+
   return (
     <>
-      <tr>
+      <tr
+        style={rowStyle}
+        draggable={enableHierarchy}
+        onDragStart={enableHierarchy ? onDragStartIssue : undefined}
+        onDragOver={enableHierarchy ? onDragOverIssue : undefined}
+        onDragEnd={enableHierarchy ? onDragEndIssue : undefined}
+      >
         {/* Column 1: Expansion icon */}
         <td style={{ ...cellStyle, width: '2rem' }}>
           {issue.body_html ? (
@@ -808,7 +944,7 @@ const IssueCard = ({
         </td>
 
         {/* Column 2: Issue number link */}
-        <td style={cellStyle}>
+        <td style={{ ...cellStyle, paddingLeft: `${0.5 + indentPx / 16}rem` }}>
           <a
             href={issue.html_url}
             target="_blank"
@@ -824,7 +960,9 @@ const IssueCard = ({
           </a>
         </td>
 
-        {/* Column 3: Owner avatar, creation date, assigned chiclet stacked */}
+        {renderHierarchyType()}
+
+        {/* Column: Owner avatar, creation date, assigned chiclet stacked */}
         <td style={cellStyle}>
           <div
             style={{
@@ -1497,7 +1635,7 @@ const IssueCard = ({
       {issue.body_html && isDescriptionExpanded && (
         <tr>
           <td
-            colSpan={7}
+            colSpan={columnCount}
             style={{
               padding: '0.75rem',
               borderBottom: '1px solid #d2d2d2',

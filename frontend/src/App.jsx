@@ -20,6 +20,8 @@ import {
   fetchAssignees,
 } from './services/api';
 import MilestoneCard from './components/MilestoneCard';
+import PlanningBoard from './components/PlanningBoard';
+import { PlanningDnDProvider } from './components/PlanningDnDContext';
 import SdlcKpisPanel from './components/SdlcKpisPanel';
 import ProjectStatusPanel from './components/ProjectStatusPanel';
 import ManageMilestones from './components/ManageMilestones';
@@ -73,6 +75,7 @@ const App = () => {
   });
   // Milestone numbers whose issue/PR lists may be stale after local edits.
   const [dirtyMilestoneNumbers, setDirtyMilestoneNumbers] = useState([]);
+  const [hierarchyAction, setHierarchyAction] = useState(null);
 
   const markMilestonesDirty = (numbers) => {
     const normalized = numbers
@@ -80,6 +83,25 @@ const App = () => {
       .filter((n) => typeof n === 'number');
     if (normalized.length === 0) return;
     setDirtyMilestoneNumbers((prev) => [...new Set([...prev, ...normalized])]);
+  };
+
+  const handleHierarchyChanged = (action) => {
+    setHierarchyAction({ ...action, key: Date.now() });
+    if (action.type === 'relink') {
+      markMilestonesDirty([
+        action.sourceMilestoneNumber,
+        action.targetMilestoneNumber,
+        action.fromMilestone,
+        action.toMilestone,
+      ]);
+    } else if (action.type === 'unlink') {
+      markMilestonesDirty([action.sourceMilestoneNumber]);
+    } else if (action.type === 'error') {
+      markMilestonesDirty([
+        action.sourceMilestoneNumber,
+        action.targetMilestoneNumber,
+      ]);
+    }
   };
 
   useEffect(() => {
@@ -260,7 +282,10 @@ const App = () => {
   };
 
   const renderPlanningContent = () => (
-    <>
+    <PlanningDnDProvider
+      milestones={milestones}
+      onHierarchyChanged={handleHierarchyChanged}
+    >
       {loading && (
         <Bullseye>
           <Spinner size="xl" />
@@ -274,13 +299,7 @@ const App = () => {
       )}
 
       {!loading && !error && (
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '1rem',
-          }}
-        >
+        <PlanningBoard>
           {milestones.length === 0 && (
             <Alert variant="info" title="No milestones found">
               There are no milestones available.
@@ -293,13 +312,14 @@ const App = () => {
                 milestone={milestone}
                 sortOrder={sortOrder}
                 issueMilestoneRefresh={issueMilestoneRefresh}
+                hierarchyAction={hierarchyAction}
                 onIssueMilestoneMoved={handleIssueMilestoneMoved}
                 onIssueLabelsChanged={handleIssueLabelsChanged}
               />
             ))}
-        </div>
+        </PlanningBoard>
       )}
-    </>
+    </PlanningDnDProvider>
   );
 
   return (

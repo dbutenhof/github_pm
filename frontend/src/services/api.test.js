@@ -9,6 +9,9 @@ import {
   fetchEscapedDefectRate,
   fetchBugBacklogDelta,
   fetchProjectStatusReport,
+  setIssueParent,
+  clearIssueParent,
+  adoptParentMilestone,
 } from './api';
 
 describe('api', () => {
@@ -219,6 +222,44 @@ describe('api', () => {
       await expect(
         fetchProjectStatusReport('2025-04-04', '2025-04-10')
       ).rejects.toThrow('Failed to fetch project status report');
+    });
+  });
+
+  describe('hierarchy APIs', () => {
+    it('setIssueParent PUTs parent_number', async () => {
+      global.fetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({ parent_number: 10 }),
+      });
+      await setIssueParent(20, 10);
+      expect(global.fetch).toHaveBeenCalledWith('/api/v1/issues/20/parent', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ parent_number: 10 }),
+      });
+    });
+
+    it('clearIssueParent DELETEs parent', async () => {
+      global.fetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({ message: 'parent cleared' }),
+      });
+      await clearIssueParent(20);
+      expect(global.fetch).toHaveBeenCalledWith('/api/v1/issues/20/parent', {
+        method: 'DELETE',
+      });
+    });
+
+    it('adoptParentMilestone POSTs', async () => {
+      global.fetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({ to_milestone: 2 }),
+      });
+      await adoptParentMilestone(20);
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/v1/issues/20/adopt-parent-milestone',
+        { method: 'POST' }
+      );
     });
   });
 });

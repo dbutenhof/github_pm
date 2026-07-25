@@ -146,6 +146,43 @@ export const removeIssueMilestone = async (issueNumber, milestoneNumber) => {
   return response.json();
 };
 
+export const setIssueParent = async (issueNumber, parentNumber) => {
+  const response = await fetch(`${API_BASE}/issues/${issueNumber}/parent`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ parent_number: parentNumber }),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to set parent: ${response.statusText}`);
+  }
+  return response.json();
+};
+
+export const clearIssueParent = async (issueNumber) => {
+  const response = await fetch(`${API_BASE}/issues/${issueNumber}/parent`, {
+    method: 'DELETE',
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to clear parent: ${response.statusText}`);
+  }
+  return response.json();
+};
+
+export const adoptParentMilestone = async (issueNumber) => {
+  const response = await fetch(
+    `${API_BASE}/issues/${issueNumber}/adopt-parent-milestone`,
+    {
+      method: 'POST',
+    }
+  );
+  if (!response.ok) {
+    throw new Error(`Failed to adopt parent milestone: ${response.statusText}`);
+  }
+  return response.json();
+};
+
 export const fetchIssueReactions = async (issueNumber) => {
   const response = await fetch(`${API_BASE}/issues/${issueNumber}/reactions`);
   if (!response.ok) {

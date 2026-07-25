@@ -480,4 +480,102 @@ describe('IssueCard', () => {
       expect(onLabelsChange).toHaveBeenCalledWith({ milestoneNumber: 0 });
     });
   });
+
+  it('shows Epic type icon and child count when hierarchy enabled', async () => {
+    const epic = {
+      ...mockIssue,
+      hierarchy_depth: 0,
+      child_count: 2,
+      children: [{ number: 2 }, { number: 3 }],
+    };
+    await act(async () => {
+      render(
+        <table>
+          <tbody>
+            <IssueCard
+              issue={epic}
+              enableHierarchy
+              columnCount={8}
+              onToggleHierarchy={vi.fn()}
+            />
+          </tbody>
+        </table>
+      );
+    });
+    expect(screen.getByLabelText('Epic')).toBeInTheDocument();
+    expect(screen.getByText('2')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Show sub-issues' })
+    ).toBeInTheDocument();
+  });
+
+  it('shows Story and Sub-story icons by depth', async () => {
+    await act(async () => {
+      render(
+        <table>
+          <tbody>
+            <IssueCard
+              issue={{ ...mockIssue, hierarchy_depth: 1, child_count: 0 }}
+              enableHierarchy
+              columnCount={8}
+            />
+            <IssueCard
+              issue={{
+                ...mockIssue,
+                id: 2,
+                number: 460,
+                hierarchy_depth: 2,
+                child_count: 0,
+              }}
+              enableHierarchy
+              columnCount={8}
+            />
+          </tbody>
+        </table>
+      );
+    });
+    expect(screen.getByLabelText('Story')).toBeInTheDocument();
+    expect(screen.getByLabelText('Sub-story')).toBeInTheDocument();
+  });
+
+  it('calls adoptParentMilestone for external parent', async () => {
+    const user = userEvent.setup();
+    const onAdopt = vi.fn();
+    api.adoptParentMilestone.mockResolvedValue({
+      from_milestone: 1,
+      to_milestone: 2,
+    });
+    const issue = {
+      ...mockIssue,
+      hierarchy_depth: 0,
+      child_count: 0,
+      external_parent: {
+        number: 99,
+        title: 'Other',
+        milestone: { number: 2, title: 'M2' },
+      },
+    };
+    await act(async () => {
+      render(
+        <table>
+          <tbody>
+            <IssueCard
+              issue={issue}
+              enableHierarchy
+              columnCount={8}
+              onAdoptParentMilestone={onAdopt}
+            />
+          </tbody>
+        </table>
+      );
+    });
+    await user.click(screen.getByText('Match parent milestone'));
+    await waitFor(() => {
+      expect(api.adoptParentMilestone).toHaveBeenCalledWith(459);
+      expect(onAdopt).toHaveBeenCalledWith({
+        fromMilestoneNumber: 1,
+        toMilestoneNumber: 2,
+      });
+    });
+  });
 });

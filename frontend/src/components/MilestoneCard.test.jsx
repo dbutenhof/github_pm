@@ -302,4 +302,48 @@ describe('MilestoneCard', () => {
       expect(api.fetchIssues).toHaveBeenCalledTimes(2);
     });
   });
+
+  it('renders nested children when epic hierarchy is expanded', async () => {
+    const user = userEvent.setup();
+    const nested = {
+      ...mockIssue,
+      hierarchy_depth: 0,
+      child_count: 1,
+      children: [
+        {
+          id: 99,
+          number: 500,
+          title: 'Child Story',
+          html_url: 'https://github.com/test/issue/500',
+          user: { login: 'testuser', avatar_url: 'https://avatar.url' },
+          created_at: '2025-01-01T00:00:00Z',
+          labels: [],
+          comments: 0,
+          hierarchy_depth: 1,
+          child_count: 0,
+          children: [],
+        },
+      ],
+    };
+    api.fetchIssues.mockResolvedValue({
+      issues: [nested],
+      pull_requests: [],
+    });
+
+    await act(async () => {
+      render(<MilestoneCard milestone={mockMilestone} />);
+    });
+
+    await user.click(screen.getByRole('button', { name: /show issues/i }));
+    await waitFor(() => {
+      expect(screen.getByText(/Test Issue/)).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/Child Story/)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Show sub-issues' }));
+    await waitFor(() => {
+      expect(screen.getByText(/Child Story/)).toBeInTheDocument();
+    });
+    expect(screen.getByText('Type')).toBeInTheDocument();
+  });
 });
