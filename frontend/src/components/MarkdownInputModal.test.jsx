@@ -150,4 +150,51 @@ describe('MarkdownInputModal', () => {
     await user.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(onClose).toHaveBeenCalled();
   });
+
+  it('pre-fills initialBody and submits with OK', async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    render(
+      <MarkdownInputModal
+        isOpen
+        onClose={vi.fn()}
+        mode="comment"
+        title="Edit comment"
+        submitLabel="OK"
+        initialBody="Existing markdown"
+        onSubmit={onSubmit}
+      />
+    );
+
+    expect(screen.getByPlaceholderText('Write markdown…')).toHaveValue(
+      'Existing markdown'
+    );
+    await user.click(screen.getByRole('button', { name: 'OK' }));
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledWith('Existing markdown');
+    });
+  });
+
+  it('allows empty body when bodyRequired is false', async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    render(
+      <MarkdownInputModal
+        isOpen
+        onClose={vi.fn()}
+        mode="comment"
+        submitLabel="OK"
+        bodyRequired={false}
+        bodyLabel="Description"
+        initialBody=""
+        onSubmit={onSubmit}
+      />
+    );
+
+    expect(screen.getByText('Description')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'OK' }));
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledWith('');
+    });
+  });
 });

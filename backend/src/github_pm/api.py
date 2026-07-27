@@ -31,6 +31,11 @@ VERSION_MATCH = re.compile(r"^v\d+\.\d+\.\d+$")
 _GITHUB_504_MAX_ATTEMPTS = 5
 _GITHUB_504_BACKOFF_SEC = 1.5
 
+# full+json returns raw markdown ``body`` and rendered ``body_html``.
+# html+json alone omits ``body``, which breaks edit-in-place flows.
+# Assisted-by: Cursor
+_GITHUB_BODY_ACCEPT = {"Accept": "application/vnd.github.full+json"}
+
 
 class Connector:
     def __init__(self, github_token: str, *, github_repo: str | None = None):
@@ -255,7 +260,7 @@ async def get_issues(
     milestone = "none" if milestone_number == 0 else milestone_number
     raw_items = gitctx.get_paged(
         f"/repos/{context.github_repo}/issues?milestone={milestone}&state=open",
-        headers={"Accept": "application/vnd.github.html+json"},
+        headers=_GITHUB_BODY_ACCEPT,
     )
     issues: list[dict] = []
     pull_requests: list[dict] = []
@@ -314,7 +319,7 @@ async def get_issue(
 ):
     issue = gitctx.get(
         f"/repos/{context.github_repo}/issues/{issue_number}",
-        headers={"Accept": "application/vnd.github.html+json"},
+        headers=_GITHUB_BODY_ACCEPT,
     )
     if "pull_request" not in issue:
         query = """query($owner: String!, $repo: String!, $issue: Int!) {
@@ -370,7 +375,7 @@ async def get_comments(
     start = time.time()
     comments = gitctx.get_paged(
         f"/repos/{context.github_repo}/issues/{issue_number}/comments",
-        headers={"Accept": "application/vnd.github.html+json"},
+        headers=_GITHUB_BODY_ACCEPT,
     )
     logger.debug(
         f"{len(comments)} issue {issue_number} comments: {time.time() - start:.3f} seconds"
@@ -400,10 +405,66 @@ async def create_comment(
     created = gitctx.post(
         f"/repos/{context.github_repo}/issues/{issue_number}/comments",
         data={"body": comment.body},
-        headers={"Accept": "application/vnd.github.html+json"},
+        headers=_GITHUB_BODY_ACCEPT,
     )
     logger.info("Created comment on issue #%s", issue_number)
     return created
+
+
+class UpdateComment(BaseModel):
+    """Body for updating an issue comment.
+
+    Generated-by: Cursor
+    """
+
+    body: str = Field(title="Comment Body", min_length=1)
+
+
+@api_router.patch("/comments/{comment_id}/body")
+async def update_comment(
+    gitctx: Annotated[Connector, Depends(connection)],
+    comment_id: Annotated[int, Path(title="Comment ID")],
+    comment: Annotated[UpdateComment, Body(title="Comment")],
+):
+    """Update an issue comment's markdown body.
+
+    Generated-by: Cursor
+    """
+    updated = gitctx.patch(
+        f"/repos/{context.github_repo}/issues/comments/{comment_id}",
+        data={"body": comment.body},
+        headers=_GITHUB_BODY_ACCEPT,
+    )
+    logger.info("Updated comment %s", comment_id)
+    return updated
+
+
+class UpdateIssueBody(BaseModel):
+    """Body for updating an issue description.
+
+    Generated-by: Cursor
+    """
+
+    body: str = Field(title="Issue Body", default="")
+
+
+@api_router.patch("/issues/{issue_number}/body")
+async def update_issue_body(
+    gitctx: Annotated[Connector, Depends(connection)],
+    issue_number: Annotated[int, Path(title="Issue")],
+    payload: Annotated[UpdateIssueBody, Body(title="Issue Body")],
+):
+    """Update an issue's markdown description.
+
+    Generated-by: Cursor
+    """
+    updated = gitctx.patch(
+        f"/repos/{context.github_repo}/issues/{issue_number}",
+        data={"body": payload.body},
+        headers=_GITHUB_BODY_ACCEPT,
+    )
+    logger.info("Updated body for issue #%s", issue_number)
+    return updated
 
 
 class CloseWithComment(BaseModel):
@@ -428,12 +489,12 @@ async def close_issue_with_comment(
     created_comment = gitctx.post(
         f"/repos/{context.github_repo}/issues/{issue_number}/comments",
         data={"body": comment.body},
-        headers={"Accept": "application/vnd.github.html+json"},
+        headers=_GITHUB_BODY_ACCEPT,
     )
     closed_issue = gitctx.patch(
         f"/repos/{context.github_repo}/issues/{issue_number}",
         data={"state": "closed"},
-        headers={"Accept": "application/vnd.github.html+json"},
+        headers=_GITHUB_BODY_ACCEPT,
     )
     logger.info("Closed issue #%s with comment", issue_number)
     return {"comment": created_comment, "issue": closed_issue}
@@ -508,7 +569,7 @@ async def create_issue(
     created = gitctx.post(
         f"/repos/{context.github_repo}/issues",
         data=data,
-        headers={"Accept": "application/vnd.github.html+json"},
+        headers=_GITHUB_BODY_ACCEPT,
     )
     logger.info("Created issue #%s: %s", created.get("number"), issue.title)
 
@@ -538,7 +599,7 @@ async def get_issue_reactions(
     start = time.time()
     reactions = gitctx.get_paged(
         f"/repos/{context.github_repo}/issues/{issue_number}/reactions",
-        headers={"Accept": "application/vnd.github.html+json"},
+        headers=_GITHUB_BODY_ACCEPT,
     )
     logger.debug(
         f"{len(reactions)} issue {issue_number} reactions: {time.time() - start:.3f} seconds"
@@ -553,7 +614,7 @@ async def get_comment_reactions(
 ):
     reactions = gitctx.get_paged(
         f"/repos/{context.github_repo}/issues/comments/{comment_id}/reactions",
-        headers={"Accept": "application/vnd.github.html+json"},
+        headers=_GITHUB_BODY_ACCEPT,
     )
     return reactions
 
@@ -565,7 +626,7 @@ async def get_comment_reactions(
 async def get_milestones(gitctx: Annotated[Connector, Depends(connection)]):
     milestones = gitctx.get_paged(
         f"/repos/{context.github_repo}/milestones",
-        headers={"Accept": "application/vnd.github.html+json"},
+        headers=_GITHUB_BODY_ACCEPT,
     )
     versions = []
     others = []
@@ -827,7 +888,7 @@ async def adopt_parent_milestone(
 async def get_labels(gitctx: Annotated[Connector, Depends(connection)]):
     labels = gitctx.get_paged(
         f"/repos/{context.github_repo}/labels",
-        headers={"Accept": "application/vnd.github.html+json"},
+        headers=_GITHUB_BODY_ACCEPT,
     )
     return labels
 
@@ -904,7 +965,7 @@ async def get_assignees(gitctx: Annotated[Connector, Depends(connection)]):
     """Get all allowed assignees for the repository"""
     assignees = gitctx.get_paged(
         f"/repos/{context.github_repo}/assignees",
-        headers={"Accept": "application/vnd.github.html+json"},
+        headers=_GITHUB_BODY_ACCEPT,
     )
     return sorted(assignees, key=lambda x: x["login"])
 

@@ -30,6 +30,7 @@ const ISSUE_TYPES = ['Bug', 'Feature'];
  * - issue: title, type, labels, assignees + body; action Submit + Cancel
  *
  * Generated-by: Cursor
+ * Assisted-by: Cursor
  */
 const MarkdownInputModal = ({
   isOpen,
@@ -40,6 +41,9 @@ const MarkdownInputModal = ({
   onSubmit,
   showCloseWithComment = false,
   onCloseWithComment,
+  initialBody = '',
+  bodyRequired,
+  bodyLabel,
 }) => {
   const [activeTab, setActiveTab] = useState(0);
   const [body, setBody] = useState('');
@@ -58,6 +62,10 @@ const MarkdownInputModal = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const textareaRef = useRef(null);
   const previewRequestId = useRef(0);
+  const isBodyRequired =
+    bodyRequired !== undefined ? bodyRequired : mode === 'comment';
+  const resolvedBodyLabel =
+    bodyLabel || (mode === 'issue' ? 'Description' : 'Comment');
 
   const resetState = () => {
     setActiveTab(0);
@@ -77,6 +85,17 @@ const MarkdownInputModal = ({
       resetState();
       return;
     }
+    setActiveTab(0);
+    setBody(initialBody || '');
+    setIssueTitle('');
+    setIssueType('Feature');
+    setSelectedLabels([]);
+    setSelectedAssignees([]);
+    setPreviewHtml('');
+    setPreviewError(null);
+    setSubmitError(null);
+    setIsSubmitting(false);
+
     if (mode !== 'issue') return;
 
     // Load labels
@@ -106,7 +125,7 @@ const MarkdownInputModal = ({
         })
         .catch(() => setAssigneesLoading(false));
     }
-  }, [isOpen, mode]);
+  }, [isOpen, mode, initialBody]);
 
   useEffect(() => {
     if (!isOpen || activeTab !== 1) return;
@@ -146,7 +165,7 @@ const MarkdownInputModal = ({
       setSubmitError('Title is required');
       return;
     }
-    if (mode === 'comment' && !body.trim()) {
+    if (isBodyRequired && !body.trim()) {
       setSubmitError('Comment body is required');
       return;
     }
@@ -202,7 +221,8 @@ const MarkdownInputModal = ({
       onClick={handleSubmit}
       isLoading={isSubmitting}
       isDisabled={
-        isSubmitting || (mode === 'issue' ? !issueTitle.trim() : !body.trim())
+        isSubmitting ||
+        (mode === 'issue' ? !issueTitle.trim() : isBodyRequired && !body.trim())
       }
     >
       {submitLabel}
@@ -388,9 +408,9 @@ const MarkdownInputModal = ({
         )}
 
         <FormGroup
-          label={mode === 'issue' ? 'Description' : 'Comment'}
+          label={resolvedBodyLabel}
           fieldId="markdown-body"
-          isRequired={mode === 'comment'}
+          isRequired={isBodyRequired}
         >
           <Tabs
             activeKey={activeTab}

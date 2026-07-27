@@ -1,7 +1,12 @@
 // Generated-by: Cursor
-import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+// Assisted-by: Cursor
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import CommentCard from './CommentCard';
+import * as api from '../services/api';
+
+vi.mock('../services/api');
 
 describe('CommentCard', () => {
   const mockComment = {
@@ -14,6 +19,10 @@ describe('CommentCard', () => {
     },
     created_at: '2025-08-03T15:47:13Z',
   };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
 
   it('renders comment body as HTML', () => {
     const { container } = render(<CommentCard comment={mockComment} />);
@@ -55,5 +64,49 @@ describe('CommentCard', () => {
     const commentWithoutUser = { ...mockComment, user: null };
     render(<CommentCard comment={commentWithoutUser} />);
     expect(screen.getByText('Unknown')).toBeInTheDocument();
+  });
+
+  it('shows edit icon and opens markdown editor with current body', async () => {
+    const user = userEvent.setup();
+    render(<CommentCard comment={mockComment} />);
+
+    await user.click(screen.getByRole('button', { name: 'Edit comment' }));
+    expect(screen.getByText('Edit comment')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Write markdown…')).toHaveValue(
+      mockComment.body
+    );
+    expect(screen.getByRole('button', { name: 'OK' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
+    expect(screen.getByText('Preview')).toBeInTheDocument();
+  });
+
+  it('updates comment on OK and notifies parent', async () => {
+    const user = userEvent.setup();
+    const onCommentUpdated = vi.fn();
+    const updated = {
+      ...mockComment,
+      body: 'Updated body',
+      body_html: '<p>Updated body</p>',
+    };
+    api.updateComment.mockResolvedValue(updated);
+
+    render(
+      <CommentCard comment={mockComment} onCommentUpdated={onCommentUpdated} />
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Edit comment' }));
+    const textarea = screen.getByPlaceholderText('Write markdown…');
+    await user.clear(textarea);
+    await user.type(textarea, 'Updated body');
+    await user.click(screen.getByRole('button', { name: 'OK' }));
+
+    await waitFor(() => {
+      expect(api.updateComment).toHaveBeenCalledWith(
+        mockComment.id,
+        'Updated body'
+      );
+      expect(onCommentUpdated).toHaveBeenCalledWith(updated);
+      expect(screen.getByText('Updated body')).toBeInTheDocument();
+    });
   });
 });

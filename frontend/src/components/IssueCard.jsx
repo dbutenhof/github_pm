@@ -23,6 +23,7 @@ import {
   TaskIcon,
   ExclamationTriangleIcon,
   PlusIcon,
+  PencilAltIcon,
 } from '@patternfly/react-icons';
 import { getDaysSince, formatDate } from '../utils/dateUtils';
 import {
@@ -41,6 +42,7 @@ import {
   createComment,
   closeIssueWithComment,
   createIssue,
+  updateIssueBody,
 } from '../services/api';
 import CommentCard from './CommentCard';
 import Reactions from './Reactions';
@@ -151,8 +153,16 @@ const IssueCard = ({
   const assigneesMenuRef = useRef(null);
   const assigneesToggleRef = useRef(null);
   const [isCommentModalOpen, setIsCommentModalOpen] = useState(false);
+  const [isEditDescriptionOpen, setIsEditDescriptionOpen] = useState(false);
   const [isCreateSubIssueOpen, setIsCreateSubIssueOpen] = useState(false);
   const [commentCount, setCommentCount] = useState(issue.comments || 0);
+  const [descriptionBody, setDescriptionBody] = useState(issue.body || '');
+  const [descriptionHtml, setDescriptionHtml] = useState(issue.body_html || '');
+
+  useEffect(() => {
+    setDescriptionBody(issue.body || '');
+    setDescriptionHtml(issue.body_html || '');
+  }, [issue.body, issue.body_html, issue.id]);
 
   useEffect(() => {
     if (
@@ -783,6 +793,25 @@ const IssueCard = ({
     if (onIssueUpdate) {
       onIssueUpdate({ ...issue, comments: (commentCount || 0) + 1 });
     }
+  };
+
+  const handleUpdateDescription = async (body) => {
+    const updated = await updateIssueBody(issue.number, body);
+    setDescriptionBody(updated.body || '');
+    setDescriptionHtml(updated.body_html || '');
+    if (onIssueUpdate) {
+      onIssueUpdate({
+        ...issue,
+        body: updated.body,
+        body_html: updated.body_html,
+      });
+    }
+  };
+
+  const handleCommentUpdated = (updatedComment) => {
+    setComments((prev) =>
+      prev.map((c) => (c.id === updatedComment.id ? updatedComment : c))
+    );
   };
 
   const handleCloseWithComment = async (body) => {
@@ -1715,17 +1744,37 @@ const IssueCard = ({
               backgroundColor: '#fafafa',
             }}
           >
-            {issue.body_html ? (
-              <div
-                className="markdown-body"
-                dangerouslySetInnerHTML={{ __html: issue.body_html }}
-              />
-            ) : (
-              <p style={{ color: '#6a6e73', fontStyle: 'italic' }}>
-                No description.
-              </p>
-            )}
-            <div style={{ marginTop: issue.body_html ? '1rem' : '0.5rem' }}>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '0.5rem',
+              }}
+            >
+              <div style={{ flex: 1, minWidth: 0 }}>
+                {descriptionHtml ? (
+                  <div
+                    className="markdown-body"
+                    dangerouslySetInnerHTML={{ __html: descriptionHtml }}
+                  />
+                ) : (
+                  <p style={{ color: '#6a6e73', fontStyle: 'italic' }}>
+                    No description.
+                  </p>
+                )}
+              </div>
+              <Tooltip content="Edit description">
+                <Button
+                  variant="plain"
+                  aria-label="Edit description"
+                  onClick={() => setIsEditDescriptionOpen(true)}
+                  style={{ padding: '0.25rem' }}
+                >
+                  <PencilAltIcon />
+                </Button>
+              </Tooltip>
+            </div>
+            <div style={{ marginTop: descriptionHtml ? '1rem' : '0.5rem' }}>
               <ExpandableSection
                 toggleText={getCommentsToggleText()}
                 onToggle={() => setIsCommentsExpanded(!isCommentsExpanded)}
@@ -1747,7 +1796,11 @@ const IssueCard = ({
                     comments.length > 0 && (
                       <div>
                         {comments.map((comment) => (
-                          <CommentCard key={comment.id} comment={comment} />
+                          <CommentCard
+                            key={comment.id}
+                            comment={comment}
+                            onCommentUpdated={handleCommentUpdated}
+                          />
                         ))}
                       </div>
                     )}
@@ -1814,6 +1867,17 @@ const IssueCard = ({
         showCloseWithComment
         onSubmit={handleAddComment}
         onCloseWithComment={handleCloseWithComment}
+      />
+      <MarkdownInputModal
+        isOpen={isEditDescriptionOpen}
+        onClose={() => setIsEditDescriptionOpen(false)}
+        mode="comment"
+        title={`Edit description for #${issue.number}`}
+        submitLabel="OK"
+        bodyLabel="Description"
+        bodyRequired={false}
+        initialBody={descriptionBody}
+        onSubmit={handleUpdateDescription}
       />
       <MarkdownInputModal
         isOpen={isCreateSubIssueOpen}

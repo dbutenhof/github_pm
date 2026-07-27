@@ -44,6 +44,34 @@ export const createComment = async (issueNumber, body) => {
   return response.json();
 };
 
+export const updateComment = async (commentId, body) => {
+  const response = await fetch(`${API_BASE}/comments/${commentId}/body`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ body }),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to update comment: ${response.statusText}`);
+  }
+  return response.json();
+};
+
+export const updateIssueBody = async (issueNumber, body) => {
+  const response = await fetch(`${API_BASE}/issues/${issueNumber}/body`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ body }),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to update issue body: ${response.statusText}`);
+  }
+  return response.json();
+};
+
 export const closeIssueWithComment = async (issueNumber, body) => {
   const response = await fetch(
     `${API_BASE}/issues/${issueNumber}/close-with-comment`,

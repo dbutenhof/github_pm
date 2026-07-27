@@ -16,6 +16,8 @@ import {
   closeIssueWithComment,
   renderMarkdown,
   createIssue,
+  updateComment,
+  updateIssueBody,
 } from './api';
 
 describe('api', () => {
@@ -278,6 +280,32 @@ describe('api', () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ body: 'Hi' }),
+      });
+    });
+
+    it('updateComment PATCHes body', async () => {
+      global.fetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({ id: 99, body: 'Updated' }),
+      });
+      await updateComment(99, 'Updated');
+      expect(global.fetch).toHaveBeenCalledWith('/api/v1/comments/99/body', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ body: 'Updated' }),
+      });
+    });
+
+    it('updateIssueBody PATCHes body', async () => {
+      global.fetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({ number: 42, body: 'New desc' }),
+      });
+      await updateIssueBody(42, 'New desc');
+      expect(global.fetch).toHaveBeenCalledWith('/api/v1/issues/42/body', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ body: 'New desc' }),
       });
     });
 
