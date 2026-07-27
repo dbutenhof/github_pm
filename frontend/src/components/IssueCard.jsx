@@ -1706,7 +1706,7 @@ const IssueCard = ({
           >
             {issue.body_html ? (
               <div
-                style={{ paddingTop: '0.5rem' }}
+                className="markdown-body"
                 dangerouslySetInnerHTML={{ __html: issue.body_html }}
               />
             ) : (

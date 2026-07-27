@@ -437,6 +437,7 @@ const MarkdownInputModal = ({
                 )}
                 {!previewLoading && !previewError && (
                   <div
+                    className="markdown-body"
                     dangerouslySetInnerHTML={{
                       __html:
                         previewHtml || '<p><em>Nothing to preview</em></p>',

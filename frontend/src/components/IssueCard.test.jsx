@@ -104,7 +104,7 @@ describe('IssueCard', () => {
 
   it('expands and shows HTML body when expansion icon is clicked', async () => {
     const user = userEvent.setup();
-    render(<IssueCard issue={mockIssue} />);
+    const { container } = render(<IssueCard issue={mockIssue} />);
     const expandButton = screen.getByRole('button', {
       name: /show description/i,
     });
@@ -117,6 +117,7 @@ describe('IssueCard', () => {
       expect(
         screen.getByRole('button', { name: /hide description/i })
       ).toBeInTheDocument();
+      expect(container.querySelector('.markdown-body')).toBeInTheDocument();
     });
   });
 

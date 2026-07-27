@@ -80,7 +80,7 @@ describe('MarkdownInputModal', () => {
 
   it('loads preview via renderMarkdown when Preview tab selected', async () => {
     const user = userEvent.setup();
-    render(
+    const { container } = render(
       <MarkdownInputModal
         isOpen
         onClose={vi.fn()}
@@ -97,6 +97,7 @@ describe('MarkdownInputModal', () => {
     });
     await waitFor(() => {
       expect(screen.getByText('hi')).toBeInTheDocument();
+      expect(container.querySelector('.markdown-body')).toBeInTheDocument();
     });
   });
 
