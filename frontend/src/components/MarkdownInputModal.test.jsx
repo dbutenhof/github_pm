@@ -80,7 +80,7 @@ describe('MarkdownInputModal', () => {
 
   it('loads preview via renderMarkdown when Preview tab selected', async () => {
     const user = userEvent.setup();
-    const { container } = render(
+    render(
       <MarkdownInputModal
         isOpen
         onClose={vi.fn()}
@@ -97,7 +97,8 @@ describe('MarkdownInputModal', () => {
     });
     await waitFor(() => {
       expect(screen.getByText('hi')).toBeInTheDocument();
-      expect(container.querySelector('.markdown-body')).toBeInTheDocument();
+      // Modal content is portaled to document.body, not the RTL container
+      expect(document.querySelector('.markdown-body')).toBeInTheDocument();
     });
   });
 
