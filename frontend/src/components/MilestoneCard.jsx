@@ -271,22 +271,39 @@ const MilestoneCard = ({
     });
   };
 
+  // Link a newly created issue into the local forest from the POST body so it
+  // appears immediately (milestone list GET can lag behind GitHub create).
+  const insertCreatedIssue = (created, parentNumber = null) => {
+    if (created?.number == null) return;
+    setIssues((prev) => {
+      const { forest } = removeIssueFromForest(prev, created.number);
+      const node = {
+        ...created,
+        children: [],
+        child_count: 0,
+      };
+      return reannotateDepths(insertIssueInForest(forest, node, parentNumber));
+    });
+  };
+
   const handleCreateEpic = async (payload) => {
-    await createIssue({
+    const created = await createIssue({
       ...payload,
       milestone: milestone.number === 0 ? undefined : milestone.number,
     });
     setIsIssuesExpanded(true);
     setHasLoadedOnce(true);
-    await refetchIssues();
+    insertCreatedIssue(created, null);
   };
 
-  const handleIssueCreated = async ({ parentNumber }) => {
+  const handleIssueCreated = ({ issue: created, parentNumber }) => {
     if (parentNumber != null) {
       setExpandedHierarchy((prev) => new Set(prev).add(parentNumber));
     }
-    if (hasLoadedOnce) {
-      await refetchIssues();
+    if (created) {
+      setIsIssuesExpanded(true);
+      setHasLoadedOnce(true);
+      insertCreatedIssue(created, parentNumber ?? null);
     }
   };
 

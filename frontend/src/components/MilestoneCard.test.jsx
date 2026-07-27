@@ -368,6 +368,106 @@ describe('MilestoneCard', () => {
     expect(screen.getByText('Type')).toBeInTheDocument();
   });
 
+  it('shows a newly created epic immediately from the POST response', async () => {
+    const user = userEvent.setup();
+    const created = {
+      id: 900,
+      number: 900,
+      title: 'Brand New Epic',
+      html_url: 'https://github.com/test/issue/900',
+      user: { login: 'testuser', avatar_url: 'https://avatar.url' },
+      created_at: '2025-01-01T00:00:00Z',
+      labels: [],
+      comments: 0,
+    };
+    api.createIssue.mockResolvedValue(created);
+    // Simulate GitHub list lag: refetch would still be empty.
+    api.fetchIssues.mockResolvedValue({ issues: [], pull_requests: [] });
+
+    await act(async () => {
+      render(<MilestoneCard milestone={mockMilestone} />);
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Add Issue' }));
+    await user.type(
+      screen.getByPlaceholderText('Issue title'),
+      'Brand New Epic'
+    );
+    await user.click(screen.getByRole('button', { name: 'Create Issue' }));
+
+    await waitFor(() => {
+      expect(api.createIssue).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Brand New Epic',
+          milestone: 6,
+        })
+      );
+    });
+    await waitFor(() => {
+      expect(screen.getByText(/Brand New Epic/)).toBeInTheDocument();
+    });
+    // Visibility must not depend on a follow-up list fetch.
+    expect(api.fetchIssues).not.toHaveBeenCalled();
+  });
+
+  it('shows a newly created sub-issue under its parent immediately', async () => {
+    const user = userEvent.setup();
+    const parent = {
+      ...mockIssue,
+      hierarchy_depth: 0,
+      child_count: 0,
+      children: [],
+    };
+    const createdChild = {
+      id: 901,
+      number: 901,
+      title: 'Fresh Sub-issue',
+      html_url: 'https://github.com/test/issue/901',
+      user: { login: 'testuser', avatar_url: 'https://avatar.url' },
+      created_at: '2025-01-01T00:00:00Z',
+      labels: [],
+      comments: 0,
+      parent_number: parent.number,
+    };
+    api.fetchIssues.mockResolvedValue({
+      issues: [parent],
+      pull_requests: [],
+    });
+    api.createIssue.mockResolvedValue(createdChild);
+
+    await act(async () => {
+      render(<MilestoneCard milestone={mockMilestone} />);
+    });
+
+    await user.click(screen.getByRole('button', { name: /show issues/i }));
+    await waitFor(() => {
+      expect(screen.getByText(/Test Issue/)).toBeInTheDocument();
+    });
+
+    const fetchCountAfterLoad = api.fetchIssues.mock.calls.length;
+
+    await user.click(screen.getByRole('button', { name: 'Add sub-issue' }));
+    await user.type(
+      screen.getByPlaceholderText('Issue title'),
+      'Fresh Sub-issue'
+    );
+    await user.click(screen.getByRole('button', { name: 'Create Issue' }));
+
+    await waitFor(() => {
+      expect(api.createIssue).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Fresh Sub-issue',
+          parent_number: parent.number,
+          milestone: 6,
+        })
+      );
+    });
+    await waitFor(() => {
+      expect(screen.getByText(/Fresh Sub-issue/)).toBeInTheDocument();
+    });
+    expect(api.fetchIssues.mock.calls.length).toBe(fetchCountAfterLoad);
+  });
+
   it('does not duplicate an issue when a stale cross-milestone relink action re-applies', async () => {
     const user = userEvent.setup();
     const parent = {
@@ -421,12 +521,7 @@ describe('MilestoneCard', () => {
     };
 
     const { rerender } = await act(async () =>
-      render(
-        <MilestoneCard
-          milestone={mockMilestone}
-          hierarchyAction={null}
-        />
-      )
+      render(<MilestoneCard milestone={mockMilestone} hierarchyAction={null} />)
     );
 
     await user.click(screen.getByRole('button', { name: /show issues/i }));
