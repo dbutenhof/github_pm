@@ -87,7 +87,7 @@ Or add `BACKEND_PORT=8080` to a `.env.development` file in this directory.
 ### API Endpoints
 
 - `GET /api/milestones` - Returns list of milestones
-- `GET /api/issues/{milestone_number}` - Returns issues for a milestone
+- `GET /api/issues/{milestone_number}` - Returns `{ issues, pull_requests }` for a milestone
 
 ## Project Structure
 

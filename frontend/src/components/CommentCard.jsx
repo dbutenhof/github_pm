@@ -93,7 +93,10 @@ const CommentCard = ({ comment }) => {
           {formatDate(comment.created_at)} ({daysSince} days ago)
         </div>
       </div>
-      <div dangerouslySetInnerHTML={{ __html: comment.body_html || '' }} />
+      <div
+        className="markdown-body"
+        dangerouslySetInnerHTML={{ __html: comment.body_html || '' }}
+      />
       {comment.reactions?.total_count > 0 && (
         <div style={{ marginTop: '0.5rem' }}>
           {reactionsLoading && (

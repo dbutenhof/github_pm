@@ -1,0 +1,51 @@
+/* Generated-by: Cursor */
+/*
+ * Layout + PatternFly reset overrides for GitHub-rendered Markdown.
+ * github-markdown-css relies on browser defaults for list markers; PatternFly
+ * sets list-style: none and normalizes heading size/weight, so restore those
+ * under .markdown-body after both stylesheets load.
+ */
+.markdown-body {
+  box-sizing: border-box;
+  min-width: 200px;
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+@media (max-width: 767px) {
+  .markdown-body {
+    padding: 0.75rem;
+  }
+}
+
+/* Restore list markers removed by PatternFly's :where(ul) { list-style: none } */
+.markdown-body ul {
+  list-style-type: disc !important;
+  list-style-position: outside;
+  padding-left: 2em !important;
+}
+
+.markdown-body ol {
+  list-style-type: decimal !important;
+  list-style-position: outside;
+  padding-left: 2em !important;
+}
+
+.markdown-body ul ul {
+  list-style-type: circle !important;
+}
+
+.markdown-body ul ul ul {
+  list-style-type: square !important;
+}
+
+.markdown-body li {
+  display: list-item !important;
+}
+
+.markdown-body ul.no-list,
+.markdown-body ol.no-list {
+  list-style-type: none !important;
+  padding-left: 0 !important;
+}

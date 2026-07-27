@@ -13,11 +13,19 @@ import requests
 from github_pm.api import (
     add_label_to_issue,
     add_milestone_to_issue,
+    adopt_parent_milestone,
     api_router,
+    clear_issue_parent,
+    close_issue_with_comment,
+    CloseWithComment,
     connection,
     Connector,
+    create_comment,
+    create_issue,
     create_label,
     create_milestone,
+    CreateComment,
+    CreateIssue,
     CreateLabel,
     CreateMilestone,
     delete_label,
@@ -31,6 +39,10 @@ from github_pm.api import (
     get_project,
     remove_label_from_issue,
     remove_milestone_from_issue,
+    render_markdown,
+    RenderMarkdown,
+    set_issue_parent,
+    SetIssueParent,
 )
 from github_pm.app import app
 
@@ -206,13 +218,69 @@ class TestGetIssues:
             result = await get_issues(mock_gitctx, milestone_number=1)
 
             # Assert
-            assert len(result) == 2
-            assert result[0]["id"] == 1
-            assert result[1]["id"] == 2
+            assert len(result["issues"]) == 1
+            assert len(result["pull_requests"]) == 1
+            assert result["pull_requests"][0]["id"] == 1
+            assert result["issues"][0]["id"] == 2
+            assert result["issues"][0]["hierarchy_depth"] == 0
+            assert result["issues"][0]["children"] == []
+            assert result["issues"][0]["child_count"] == 0
             mock_gitctx.get_paged.assert_called_once()
             # Issue 1 has pull_request, so no GraphQL call
             # Issue 2 doesn't have pull_request, so GraphQL should be called
             assert mock_gitctx.post.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_get_issues_builds_hierarchy(self):
+        """Test nesting when GraphQL reports an in-milestone parent."""
+        mock_issues = [
+            {"id": 10, "number": 10, "title": "Epic", "labels": []},
+            {"id": 20, "number": 20, "title": "Story", "labels": []},
+        ]
+
+        def graphql_side_effect(*_args, **kwargs):
+            issue_num = kwargs["data"]["variables"]["issue"]
+            parent = None
+            if issue_num == 20:
+                parent = {
+                    "number": 10,
+                    "title": "Epic",
+                    "milestone": {"number": 1, "title": "M1"},
+                }
+            return {
+                "data": {
+                    "repository": {
+                        "issue": {
+                            "closedByPullRequestsReferences": {"nodes": []},
+                            "parent": parent,
+                            "subIssues": {"nodes": []},
+                            "subIssuesSummary": {
+                                "total": 0,
+                                "completed": 0,
+                                "percentCompleted": 0,
+                            },
+                        }
+                    }
+                }
+            }
+
+        mock_gitctx = Mock(spec=Connector)
+        mock_gitctx.get_paged = Mock(return_value=mock_issues)
+        mock_gitctx.post = Mock(side_effect=graphql_side_effect)
+        mock_gitctx.owner = "test"
+        mock_gitctx.repo = "repo"
+
+        with patch("github_pm.api.context") as mock_context:
+            mock_context.github_repo = "test/repo"
+            result = await get_issues(mock_gitctx, milestone_number=1)
+
+        assert len(result["issues"]) == 1
+        epic = result["issues"][0]
+        assert epic["number"] == 10
+        assert epic["child_count"] == 1
+        assert epic["children"][0]["number"] == 20
+        assert epic["children"][0]["hierarchy_depth"] == 1
+        assert epic["children"][0]["parent_number"] == 10
 
     @pytest.mark.asyncio
     async def test_get_issues_with_linked_prs(self):
@@ -263,17 +331,18 @@ class TestGetIssues:
             result = await get_issues(mock_gitctx, milestone_number=1)
 
             # Assert
-            assert len(result) == 1
-            assert result[0]["id"] == 1
-            assert "closed_by" in result[0]
-            assert len(result[0]["closed_by"]) == 2
-            assert result[0]["closed_by"][0]["number"] == 123
-            assert result[0]["closed_by"][0]["title"] == "Fix Issue 1"
+            assert len(result["issues"]) == 1
+            assert result["pull_requests"] == []
+            assert result["issues"][0]["id"] == 1
+            assert "closed_by" in result["issues"][0]
+            assert len(result["issues"][0]["closed_by"]) == 2
+            assert result["issues"][0]["closed_by"][0]["number"] == 123
+            assert result["issues"][0]["closed_by"][0]["title"] == "Fix Issue 1"
             assert (
-                result[0]["closed_by"][0]["url"]
+                result["issues"][0]["closed_by"][0]["url"]
                 == "https://github.com/test/repo/pull/123"
             )
-            assert result[0]["closed_by"][1]["number"] == 456
+            assert result["issues"][0]["closed_by"][1]["number"] == 456
             mock_gitctx.post.assert_called_once()
 
     @pytest.mark.asyncio
@@ -310,8 +379,9 @@ class TestGetIssues:
             result = await get_issues(mock_gitctx, milestone_number=0)
 
             # Assert
-            assert len(result) == 1
-            assert result[0]["id"] == 1
+            assert len(result["issues"]) == 1
+            assert result["pull_requests"] == []
+            assert result["issues"][0]["id"] == 1
             mock_gitctx.get_paged.assert_called_once()
             # GraphQL should be called for issue without pull_request
             assert mock_gitctx.post.call_count == 1
@@ -362,13 +432,14 @@ class TestGetIssues:
             result = await get_issues(mock_gitctx, milestone_number=0, sort="bug")
 
             # Assert
-            assert len(result) == 3
+            assert len(result["issues"]) == 3
+            assert result["pull_requests"] == []
             # First should be bug issue
-            assert result[0]["id"] == 1
-            assert result[0]["title"] == "Bug Issue"
+            assert result["issues"][0]["id"] == 1
+            assert result["issues"][0]["title"] == "Bug Issue"
             # Then other issues
-            assert result[1]["id"] == 2
-            assert result[2]["id"] == 3
+            assert result["issues"][1]["id"] == 2
+            assert result["issues"][2]["id"] == 3
 
     @pytest.mark.asyncio
     async def test_get_issues_with_sort_multiple_labels(self):
@@ -424,12 +495,13 @@ class TestGetIssues:
             )
 
             # Assert
-            assert len(result) == 4
+            assert len(result["issues"]) == 4
+            assert result["pull_requests"] == []
             # Order should be: bug, feature, enhancement, other
-            assert result[0]["id"] == 1  # bug
-            assert result[1]["id"] == 2  # feature
-            assert result[2]["id"] == 3  # enhancement
-            assert result[3]["id"] == 4  # other (unlabeled)
+            assert result["issues"][0]["id"] == 1  # bug
+            assert result["issues"][1]["id"] == 2  # feature
+            assert result["issues"][2]["id"] == 3  # enhancement
+            assert result["issues"][3]["id"] == 4  # other (unlabeled)
 
     @pytest.mark.asyncio
     async def test_get_issues_with_sort_case_insensitive(self):
@@ -473,10 +545,11 @@ class TestGetIssues:
             )
 
             # Assert
-            assert len(result) == 2
+            assert len(result["issues"]) == 2
+            assert result["pull_requests"] == []
             # Should match despite case difference
-            assert result[0]["id"] == 1  # bug (matched "BUG")
-            assert result[1]["id"] == 2  # feature (matched "Feature")
+            assert result["issues"][0]["id"] == 1  # bug (matched "BUG")
+            assert result["issues"][1]["id"] == 2  # feature (matched "Feature")
 
     @pytest.mark.asyncio
     async def test_get_issues_with_sort_whitespace_stripped(self):
@@ -520,10 +593,11 @@ class TestGetIssues:
             )
 
             # Assert
-            assert len(result) == 2
+            assert len(result["issues"]) == 2
+            assert result["pull_requests"] == []
             # Should match despite whitespace
-            assert result[0]["id"] == 1  # bug
-            assert result[1]["id"] == 2  # feature
+            assert result["issues"][0]["id"] == 1  # bug
+            assert result["issues"][1]["id"] == 2  # feature
 
     @pytest.mark.asyncio
     async def test_get_issues_with_sort_first_match_wins(self):
@@ -570,10 +644,11 @@ class TestGetIssues:
             )
 
             # Assert
-            assert len(result) == 2
+            assert len(result["issues"]) == 2
+            assert result["pull_requests"] == []
             # Issue 1 should be in bug category (first match), not feature
-            assert result[0]["id"] == 1  # bug (first match wins)
-            assert result[1]["id"] == 2  # feature
+            assert result["issues"][0]["id"] == 1  # bug (first match wins)
+            assert result["issues"][1]["id"] == 2  # feature
 
     @pytest.mark.asyncio
     async def test_get_issues_with_sort_all_other(self):
@@ -615,10 +690,71 @@ class TestGetIssues:
             result = await get_issues(mock_gitctx, milestone_number=0, sort=None)
 
             # Assert
-            assert len(result) == 2
+            assert len(result["issues"]) == 2
+            assert result["pull_requests"] == []
             # Both should be in "other" since no sort labels specified
-            assert result[0]["id"] == 1
-            assert result[1]["id"] == 2
+            assert result["issues"][0]["id"] == 1
+            assert result["issues"][1]["id"] == 2
+
+    @pytest.mark.asyncio
+    async def test_get_issues_sorts_issues_and_prs_separately(self):
+        """Issues and PRs are sorted independently by the same label criteria."""
+        # Arrange
+        mock_items = [
+            {
+                "id": 1,
+                "number": 1,
+                "title": "Bug Issue",
+                "labels": [{"name": "bug"}],
+            },
+            {
+                "id": 2,
+                "number": 2,
+                "title": "Feature Issue",
+                "labels": [{"name": "feature"}],
+            },
+            {
+                "id": 10,
+                "number": 10,
+                "title": "Feature PR",
+                "pull_request": {},
+                "labels": [{"name": "feature"}],
+            },
+            {
+                "id": 11,
+                "number": 11,
+                "title": "Bug PR",
+                "pull_request": {},
+                "labels": [{"name": "bug"}],
+            },
+        ]
+
+        mock_gitctx = Mock(spec=Connector)
+        mock_gitctx.get_paged = Mock(return_value=mock_items)
+        mock_gitctx.post = Mock(
+            return_value={
+                "data": {
+                    "repository": {
+                        "issue": {"closedByPullRequestsReferences": {"nodes": []}}
+                    }
+                }
+            }
+        )
+        mock_gitctx.owner = "test"
+        mock_gitctx.repo = "repo"
+
+        with patch("github_pm.api.context") as mock_context:
+            mock_context.github_repo = "test/repo"
+
+            # Act
+            result = await get_issues(
+                mock_gitctx, milestone_number=1, sort="bug,feature"
+            )
+
+            # Assert: each list sorted independently (bug then feature)
+            assert [i["id"] for i in result["issues"]] == [1, 2]
+            assert [p["id"] for p in result["pull_requests"]] == [11, 10]
+            assert mock_gitctx.post.call_count == 2
 
 
 class TestGetComments:
@@ -836,6 +972,192 @@ class TestRemoveMilestoneFromIssue:
             mock_gitctx.patch.assert_called_once_with(
                 "/repos/test/repo/issues/123", data={"milestone": None}
             )
+
+
+class TestSetIssueParent:
+    """Test PUT /issues/{n}/parent."""
+
+    @pytest.mark.asyncio
+    async def test_set_parent_same_milestone(self):
+        mock_gitctx = Mock(spec=Connector)
+        mock_gitctx.get = Mock(
+            side_effect=[
+                {"id": 200, "number": 20, "milestone": {"number": 1}},
+                {"id": 100, "number": 10, "milestone": {"number": 1}},
+            ]
+        )
+        mock_gitctx.get_paged = Mock(return_value=[])
+        mock_gitctx.post = Mock(return_value={})
+        mock_gitctx.patch = Mock()
+
+        with patch("github_pm.api.context") as mock_context:
+            mock_context.github_repo = "test/repo"
+            result = await set_issue_parent(
+                mock_gitctx, 20, SetIssueParent(parent_number=10)
+            )
+
+        assert result["parent_number"] == 10
+        assert result["updated_issue_numbers"] == []
+        mock_gitctx.post.assert_called_once_with(
+            "/repos/test/repo/issues/10/sub_issues",
+            data={"sub_issue_id": 200, "replace_parent": True},
+        )
+        mock_gitctx.patch.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_set_parent_cascades_milestone(self):
+        mock_gitctx = Mock(spec=Connector)
+        mock_gitctx.get = Mock(
+            side_effect=[
+                {"id": 200, "number": 20, "milestone": {"number": 1}},
+                {"id": 100, "number": 10, "milestone": {"number": 2}},
+            ]
+        )
+        mock_gitctx.get_paged = Mock(
+            side_effect=[
+                [],  # cycle check: children of 20
+                [{"number": 30}],  # cascade: children of 20
+                [],  # cascade: children of 30
+            ]
+        )
+        mock_gitctx.post = Mock(return_value={})
+        mock_gitctx.patch = Mock(return_value={})
+
+        with patch("github_pm.api.context") as mock_context:
+            mock_context.github_repo = "test/repo"
+            result = await set_issue_parent(
+                mock_gitctx, 20, SetIssueParent(parent_number=10)
+            )
+
+        assert result["from_milestone"] == 1
+        assert result["to_milestone"] == 2
+        assert result["updated_issue_numbers"] == [20, 30]
+        assert mock_gitctx.patch.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_set_parent_rejects_self(self):
+        mock_gitctx = Mock(spec=Connector)
+        with pytest.raises(HTTPException) as exc:
+            await set_issue_parent(mock_gitctx, 5, SetIssueParent(parent_number=5))
+        assert exc.value.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_set_parent_rejects_descendant(self):
+        mock_gitctx = Mock(spec=Connector)
+        mock_gitctx.get_paged = Mock(return_value=[{"number": 10}])
+
+        with patch("github_pm.api.context") as mock_context:
+            mock_context.github_repo = "test/repo"
+            with pytest.raises(HTTPException) as exc:
+                await set_issue_parent(
+                    mock_gitctx, 20, SetIssueParent(parent_number=10)
+                )
+        assert exc.value.status_code == 422
+
+
+class TestClearIssueParent:
+    """Test DELETE /issues/{n}/parent."""
+
+    @pytest.mark.asyncio
+    async def test_clear_parent(self):
+        mock_gitctx = Mock(spec=Connector)
+        mock_gitctx.get = Mock(return_value={"id": 200, "number": 20})
+        mock_gitctx.post = Mock(
+            return_value={
+                "data": {
+                    "repository": {
+                        "issue": {
+                            "number": 20,
+                            "parent": {"number": 10, "title": "Epic"},
+                            "subIssues": {"nodes": []},
+                        }
+                    }
+                }
+            }
+        )
+        mock_gitctx.delete = Mock(return_value={})
+        mock_gitctx.owner = "test"
+        mock_gitctx.repo = "repo"
+
+        with patch("github_pm.api.context") as mock_context:
+            mock_context.github_repo = "test/repo"
+            result = await clear_issue_parent(mock_gitctx, 20)
+
+        assert result["parent_number"] == 10
+        mock_gitctx.delete.assert_called_once_with(
+            "/repos/test/repo/issues/10/sub_issue",
+            data={"sub_issue_id": 200},
+        )
+
+    @pytest.mark.asyncio
+    async def test_clear_parent_missing(self):
+        mock_gitctx = Mock(spec=Connector)
+        mock_gitctx.get = Mock(return_value={"id": 200, "number": 20})
+        mock_gitctx.post = Mock(
+            return_value={
+                "data": {
+                    "repository": {
+                        "issue": {
+                            "number": 20,
+                            "parent": None,
+                            "subIssues": {"nodes": []},
+                        }
+                    }
+                }
+            }
+        )
+        mock_gitctx.owner = "test"
+        mock_gitctx.repo = "repo"
+
+        with pytest.raises(HTTPException) as exc:
+            await clear_issue_parent(mock_gitctx, 20)
+        assert exc.value.status_code == 404
+
+
+class TestAdoptParentMilestone:
+    """Test POST adopt-parent-milestone."""
+
+    @pytest.mark.asyncio
+    async def test_adopt_cascades(self):
+        mock_gitctx = Mock(spec=Connector)
+        mock_gitctx.get = Mock(
+            return_value={"id": 200, "number": 20, "milestone": {"number": 1}}
+        )
+        mock_gitctx.post = Mock(
+            return_value={
+                "data": {
+                    "repository": {
+                        "issue": {
+                            "number": 20,
+                            "parent": {
+                                "number": 10,
+                                "title": "Epic",
+                                "milestone": {"number": 2, "title": "M2"},
+                            },
+                            "subIssues": {"nodes": [{"number": 30}]},
+                        }
+                    }
+                }
+            }
+        )
+        mock_gitctx.get_paged = Mock(
+            side_effect=[
+                [{"number": 30}],
+                [],
+            ]
+        )
+        mock_gitctx.patch = Mock(return_value={})
+        mock_gitctx.owner = "test"
+        mock_gitctx.repo = "repo"
+
+        with patch("github_pm.api.context") as mock_context:
+            mock_context.github_repo = "test/repo"
+            result = await adopt_parent_milestone(mock_gitctx, 20)
+
+        assert result["from_milestone"] == 1
+        assert result["to_milestone"] == 2
+        assert result["updated_issue_numbers"] == [20, 30]
+        assert mock_gitctx.patch.call_count == 2
 
 
 class TestGetLabels:
@@ -1310,3 +1632,206 @@ class TestSearchIssueItems:
 
         assert items == [{"number": 1}, {"number": 2}]
         assert mock_session.get.call_count == 2
+
+
+class TestCreateComment:
+    """Test the create_comment endpoint.
+
+    Generated-by: Cursor
+    """
+
+    @pytest.mark.asyncio
+    async def test_create_comment_success(self):
+        mock_comment = {
+            "id": 99,
+            "body": "Hello",
+            "body_html": "<p>Hello</p>",
+        }
+        mock_gitctx = Mock(spec=Connector)
+        mock_gitctx.post = Mock(return_value=mock_comment)
+
+        with patch("github_pm.api.context") as mock_context:
+            mock_context.github_repo = "test/repo"
+            result = await create_comment(mock_gitctx, 42, CreateComment(body="Hello"))
+
+        assert result == mock_comment
+        mock_gitctx.post.assert_called_once_with(
+            "/repos/test/repo/issues/42/comments",
+            data={"body": "Hello"},
+            headers={"Accept": "application/vnd.github.html+json"},
+        )
+
+
+class TestCloseIssueWithComment:
+    """Test the close_issue_with_comment endpoint.
+
+    Generated-by: Cursor
+    """
+
+    @pytest.mark.asyncio
+    async def test_close_with_comment_success(self):
+        mock_comment = {"id": 1, "body": "Done"}
+        mock_issue = {"number": 42, "state": "closed"}
+        mock_gitctx = Mock(spec=Connector)
+        mock_gitctx.post = Mock(return_value=mock_comment)
+        mock_gitctx.patch = Mock(return_value=mock_issue)
+
+        with patch("github_pm.api.context") as mock_context:
+            mock_context.github_repo = "test/repo"
+            result = await close_issue_with_comment(
+                mock_gitctx, 42, CloseWithComment(body="Done")
+            )
+
+        assert result == {"comment": mock_comment, "issue": mock_issue}
+        mock_gitctx.post.assert_called_once()
+        mock_gitctx.patch.assert_called_once_with(
+            "/repos/test/repo/issues/42",
+            data={"state": "closed"},
+            headers={"Accept": "application/vnd.github.html+json"},
+        )
+
+
+class TestRenderMarkdown:
+    """Test the render_markdown endpoint.
+
+    Generated-by: Cursor
+    """
+
+    @pytest.mark.asyncio
+    async def test_render_markdown_success(self):
+        mock_gitctx = Mock(spec=Connector)
+        mock_gitctx.post_text = Mock(return_value="<p><strong>hi</strong></p>")
+
+        result = await render_markdown(mock_gitctx, RenderMarkdown(text="**hi**"))
+
+        assert result == {"html": "<p><strong>hi</strong></p>"}
+        mock_gitctx.post_text.assert_called_once_with("/markdown/raw", "**hi**")
+
+    @pytest.mark.asyncio
+    async def test_render_markdown_empty(self):
+        mock_gitctx = Mock(spec=Connector)
+        mock_gitctx.post_text = Mock(return_value="")
+
+        result = await render_markdown(mock_gitctx, RenderMarkdown(text=""))
+
+        assert result == {"html": ""}
+        mock_gitctx.post_text.assert_called_once_with("/markdown/raw", "")
+
+
+class TestCreateIssue:
+    """Test the create_issue endpoint.
+
+    Generated-by: Cursor
+    """
+
+    @pytest.mark.asyncio
+    async def test_create_issue_basic(self):
+        mock_created = {"id": 100, "number": 50, "title": "New"}
+        mock_gitctx = Mock(spec=Connector)
+        mock_gitctx.post = Mock(return_value=mock_created)
+
+        with patch("github_pm.api.context") as mock_context:
+            mock_context.github_repo = "test/repo"
+            result = await create_issue(
+                mock_gitctx,
+                CreateIssue(title="New", body="Body text", type="Bug"),
+            )
+
+        assert result == mock_created
+        call_args = mock_gitctx.post.call_args
+        assert call_args[0][0] == "/repos/test/repo/issues"
+        assert call_args[1]["data"]["title"] == "New"
+        assert call_args[1]["data"]["body"] == "Body text"
+        assert call_args[1]["data"]["type"] == "Bug"
+        assert mock_gitctx.post.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_create_issue_with_milestone_labels_assignees(self):
+        mock_created = {"id": 100, "number": 50, "title": "Epic"}
+        mock_gitctx = Mock(spec=Connector)
+        mock_gitctx.post = Mock(return_value=mock_created)
+
+        with patch("github_pm.api.context") as mock_context:
+            mock_context.github_repo = "test/repo"
+            result = await create_issue(
+                mock_gitctx,
+                CreateIssue(
+                    title="Epic",
+                    labels=["enhancement"],
+                    assignees=["alice"],
+                    milestone=6,
+                    type="Feature",
+                ),
+            )
+
+        assert result["number"] == 50
+        data = mock_gitctx.post.call_args[1]["data"]
+        assert data["labels"] == ["enhancement"]
+        assert data["assignees"] == ["alice"]
+        assert data["milestone"] == 6
+        assert data["type"] == "Feature"
+
+    @pytest.mark.asyncio
+    async def test_create_issue_skips_milestone_zero(self):
+        mock_created = {"id": 100, "number": 50, "title": "No MS"}
+        mock_gitctx = Mock(spec=Connector)
+        mock_gitctx.post = Mock(return_value=mock_created)
+
+        with patch("github_pm.api.context") as mock_context:
+            mock_context.github_repo = "test/repo"
+            await create_issue(mock_gitctx, CreateIssue(title="No MS", milestone=0))
+
+        assert "milestone" not in mock_gitctx.post.call_args[1]["data"]
+
+    @pytest.mark.asyncio
+    async def test_create_issue_with_parent(self):
+        mock_created = {"id": 100, "number": 50, "title": "Child"}
+        mock_gitctx = Mock(spec=Connector)
+        mock_gitctx.post = Mock(return_value=mock_created)
+
+        with patch("github_pm.api.context") as mock_context:
+            mock_context.github_repo = "test/repo"
+            result = await create_issue(
+                mock_gitctx,
+                CreateIssue(title="Child", parent_number=10, milestone=6),
+            )
+
+        assert result["parent_number"] == 10
+        assert mock_gitctx.post.call_count == 2
+        parent_call = mock_gitctx.post.call_args_list[1]
+        assert parent_call[0][0] == "/repos/test/repo/issues/10/sub_issues"
+        assert parent_call[1]["data"] == {
+            "sub_issue_id": 100,
+            "replace_parent": True,
+        }
+
+
+class TestConnectorPostText:
+    """Test Connector.post_text for markdown/raw.
+
+    Generated-by: Cursor
+    """
+
+    def test_post_text_returns_response_text(self):
+        mock_session = Mock()
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.raise_for_status = Mock()
+        mock_response.text = "<p>ok</p>"
+        mock_session.post.return_value = mock_response
+
+        with (
+            patch("github_pm.api.requests.session", return_value=mock_session),
+            patch("github_pm.api.context") as mock_context,
+        ):
+            mock_context.github_repo = "o/r"
+            mock_context.github_token = "tok"
+            conn = Connector("tok", github_repo="o/r")
+            html = conn.post_text("/markdown/raw", "**ok**")
+
+        assert html == "<p>ok</p>"
+        mock_session.post.assert_called_once()
+        call_kwargs = mock_session.post.call_args
+        assert call_kwargs[0][0] == "https://api.github.com/markdown/raw"
+        assert call_kwargs[1]["data"] == b"**ok**"
+        assert call_kwargs[1]["headers"]["Content-Type"] == "text/plain; charset=utf-8"

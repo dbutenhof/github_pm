@@ -90,21 +90,21 @@ describe('IssueCard', () => {
     });
   });
 
-  it('does not show expansion icon when body is absent', async () => {
+  it('shows expansion icon when body is absent (for comments)', async () => {
     const issueWithoutBody = { ...mockIssue, body: null, body_html: null };
     await act(async () => {
       render(<IssueCard issue={issueWithoutBody} />);
     });
     await waitFor(() => {
       expect(
-        screen.queryByRole('button', { name: /show description/i })
-      ).not.toBeInTheDocument();
+        screen.getByRole('button', { name: /show description/i })
+      ).toBeInTheDocument();
     });
   });
 
   it('expands and shows HTML body when expansion icon is clicked', async () => {
     const user = userEvent.setup();
-    render(<IssueCard issue={mockIssue} />);
+    const { container } = render(<IssueCard issue={mockIssue} />);
     const expandButton = screen.getByRole('button', {
       name: /show description/i,
     });
@@ -117,6 +117,7 @@ describe('IssueCard', () => {
       expect(
         screen.getByRole('button', { name: /hide description/i })
       ).toBeInTheDocument();
+      expect(container.querySelector('.markdown-body')).toBeInTheDocument();
     });
   });
 
@@ -414,6 +415,243 @@ describe('IssueCard', () => {
       expect(onMilestoneChange).toHaveBeenCalledWith({
         fromMilestoneNumber: 6,
         toMilestoneNumber: null,
+      });
+    });
+  });
+
+  it('calls onLabelsChange when a label is removed', async () => {
+    const user = userEvent.setup();
+    const onLabelsChange = vi.fn();
+    api.removeLabel.mockResolvedValue({});
+    const issueWithMilestone = {
+      ...mockIssue,
+      milestone: { number: 6, title: 'Current' },
+    };
+
+    await act(async () => {
+      render(
+        <table>
+          <tbody>
+            <IssueCard
+              issue={issueWithMilestone}
+              onLabelsChange={onLabelsChange}
+            />
+          </tbody>
+        </table>
+      );
+    });
+
+    await user.click(
+      screen.getByRole('button', { name: 'Remove enhancement label' })
+    );
+
+    await waitFor(() => {
+      expect(api.removeLabel).toHaveBeenCalledWith(459, 'enhancement');
+      expect(onLabelsChange).toHaveBeenCalledWith({ milestoneNumber: 6 });
+    });
+  });
+
+  it('calls onLabelsChange with milestone 0 when issue has no milestone', async () => {
+    const user = userEvent.setup();
+    const onLabelsChange = vi.fn();
+    api.removeLabel.mockResolvedValue({});
+    const issueWithoutMilestone = {
+      ...mockIssue,
+      milestone: null,
+    };
+
+    await act(async () => {
+      render(
+        <table>
+          <tbody>
+            <IssueCard
+              issue={issueWithoutMilestone}
+              onLabelsChange={onLabelsChange}
+            />
+          </tbody>
+        </table>
+      );
+    });
+
+    await user.click(
+      screen.getByRole('button', { name: 'Remove enhancement label' })
+    );
+
+    await waitFor(() => {
+      expect(onLabelsChange).toHaveBeenCalledWith({ milestoneNumber: 0 });
+    });
+  });
+
+  it('shows Epic type icon and child count when hierarchy enabled', async () => {
+    const epic = {
+      ...mockIssue,
+      hierarchy_depth: 0,
+      child_count: 2,
+      children: [{ number: 2 }, { number: 3 }],
+    };
+    await act(async () => {
+      render(
+        <table>
+          <tbody>
+            <IssueCard
+              issue={epic}
+              enableHierarchy
+              columnCount={8}
+              onToggleHierarchy={vi.fn()}
+            />
+          </tbody>
+        </table>
+      );
+    });
+    expect(screen.getByLabelText('Epic')).toBeInTheDocument();
+    expect(screen.getByText('2')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Show sub-issues' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Add sub-issue' })
+    ).toBeInTheDocument();
+  });
+
+  it('shows Add Comment under expanded description', async () => {
+    const user = userEvent.setup();
+    await act(async () => {
+      render(<IssueCard issue={mockIssue} />);
+    });
+    await user.click(screen.getByRole('button', { name: /show description/i }));
+    expect(
+      screen.getByRole('button', { name: /show comments/i })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Add Comment' })
+    ).toBeInTheDocument();
+  });
+
+  it('opens comment modal from Add Comment', async () => {
+    const user = userEvent.setup();
+    await act(async () => {
+      render(<IssueCard issue={mockIssue} />);
+    });
+    await user.click(screen.getByRole('button', { name: /show description/i }));
+    await user.click(screen.getByRole('button', { name: 'Add Comment' }));
+    expect(screen.getByText('Comment on #459')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Close with Comment' })
+    ).toBeInTheDocument();
+  });
+
+  it('loads existing comments when adding a comment before expanding', async () => {
+    const user = userEvent.setup();
+    const existingComment = {
+      id: 1,
+      body: 'Pre-existing comment',
+      body_html: '<p>Pre-existing comment</p>',
+      user: {
+        login: 'alice',
+        avatar_url: 'https://avatar.url/alice',
+      },
+      created_at: '2025-01-01T00:00:00Z',
+    };
+    const createdComment = {
+      id: 2,
+      body: 'Brand new comment',
+      body_html: '<p>Brand new comment</p>',
+      user: {
+        login: 'bob',
+        avatar_url: 'https://avatar.url/bob',
+      },
+      created_at: '2025-01-02T00:00:00Z',
+    };
+    api.createComment.mockResolvedValue(createdComment);
+    api.fetchComments.mockResolvedValue([existingComment, createdComment]);
+
+    const issueWithComments = { ...mockIssue, comments: 1 };
+    await act(async () => {
+      render(<IssueCard issue={issueWithComments} />);
+    });
+
+    await user.click(screen.getByRole('button', { name: /show description/i }));
+    await user.click(screen.getByRole('button', { name: 'Add Comment' }));
+    await user.type(
+      screen.getByPlaceholderText('Write markdown…'),
+      'Brand new comment'
+    );
+    await user.click(screen.getByRole('button', { name: 'Submit' }));
+
+    await waitFor(() => {
+      expect(api.createComment).toHaveBeenCalledWith(459, 'Brand new comment');
+      expect(api.fetchComments).toHaveBeenCalledWith(459);
+      expect(screen.getByText('Pre-existing comment')).toBeInTheDocument();
+      expect(screen.getByText('Brand new comment')).toBeInTheDocument();
+    });
+  });
+
+  it('shows Story and Sub-story icons by depth', async () => {
+    await act(async () => {
+      render(
+        <table>
+          <tbody>
+            <IssueCard
+              issue={{ ...mockIssue, hierarchy_depth: 1, child_count: 0 }}
+              enableHierarchy
+              columnCount={8}
+            />
+            <IssueCard
+              issue={{
+                ...mockIssue,
+                id: 2,
+                number: 460,
+                hierarchy_depth: 2,
+                child_count: 0,
+              }}
+              enableHierarchy
+              columnCount={8}
+            />
+          </tbody>
+        </table>
+      );
+    });
+    expect(screen.getByLabelText('Story')).toBeInTheDocument();
+    expect(screen.getByLabelText('Sub-story')).toBeInTheDocument();
+  });
+
+  it('calls adoptParentMilestone for external parent', async () => {
+    const user = userEvent.setup();
+    const onAdopt = vi.fn();
+    api.adoptParentMilestone.mockResolvedValue({
+      from_milestone: 1,
+      to_milestone: 2,
+    });
+    const issue = {
+      ...mockIssue,
+      hierarchy_depth: 0,
+      child_count: 0,
+      external_parent: {
+        number: 99,
+        title: 'Other',
+        milestone: { number: 2, title: 'M2' },
+      },
+    };
+    await act(async () => {
+      render(
+        <table>
+          <tbody>
+            <IssueCard
+              issue={issue}
+              enableHierarchy
+              columnCount={8}
+              onAdoptParentMilestone={onAdopt}
+            />
+          </tbody>
+        </table>
+      );
+    });
+    await user.click(screen.getByText('Match parent milestone'));
+    await waitFor(() => {
+      expect(api.adoptParentMilestone).toHaveBeenCalledWith(459);
+      expect(onAdopt).toHaveBeenCalledWith({
+        fromMilestoneNumber: 1,
+        toMilestoneNumber: 2,
       });
     });
   });

@@ -16,8 +16,23 @@ describe('CommentCard', () => {
   };
 
   it('renders comment body as HTML', () => {
-    render(<CommentCard comment={mockComment} />);
+    const { container } = render(<CommentCard comment={mockComment} />);
     expect(screen.getByText(/Hi @sjmonson/i)).toBeInTheDocument();
+    expect(container.querySelector('.markdown-body')).toBeInTheDocument();
+  });
+
+  it('keeps list and heading markup inside markdown-body', () => {
+    const commentWithStructure = {
+      ...mockComment,
+      body_html:
+        '<h2>Notes</h2><ul><li>First item</li><li>Second item</li></ul>',
+    };
+    const { container } = render(
+      <CommentCard comment={commentWithStructure} />
+    );
+    const markdown = container.querySelector('.markdown-body');
+    expect(markdown.querySelector('h2')).toHaveTextContent('Notes');
+    expect(markdown.querySelectorAll('ul li')).toHaveLength(2);
   });
 
   it('renders user information', () => {

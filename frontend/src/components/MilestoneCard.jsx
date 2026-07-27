@@ -1,4 +1,5 @@
 // Generated-by: Cursor
+// Assisted-by: Cursor
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Card,
@@ -8,36 +9,84 @@ import {
   Spinner,
   Alert,
   ExpandableSection,
+  Button,
 } from '@patternfly/react-core';
-import { fetchIssues } from '../services/api';
+import { fetchIssues, createIssue } from '../services/api';
 import IssueCard from './IssueCard';
+import MarkdownInputModal from './MarkdownInputModal';
+import { usePlanningDnD } from './PlanningDnDContext';
+import {
+  flattenVisibleIssues,
+  collectSubtreeNumbers,
+  removeIssueFromForest,
+  removeClosedIssueFromForest,
+  insertIssueInForest,
+  reannotateDepths,
+} from '../utils/issueHierarchy';
+
+const thStyle = {
+  padding: '0.5rem',
+  textAlign: 'left',
+  fontSize: '0.75rem',
+  fontWeight: '600',
+  color: '#6a6e73',
+  textTransform: 'uppercase',
+};
+
+const itemTableHeader = (includeType) => (
+  <thead>
+    <tr style={{ borderBottom: '2px solid #0066cc' }}>
+      <th style={{ ...thStyle, width: '2rem' }} />
+      <th style={thStyle}>Number</th>
+      {includeType && <th style={thStyle}>Type</th>}
+      <th style={thStyle}>Author</th>
+      <th style={thStyle}>PR</th>
+      <th style={thStyle}>Milestone</th>
+      <th style={thStyle}>Labels</th>
+      <th style={thStyle}>Title</th>
+    </tr>
+  </thead>
+);
 
 const MilestoneCard = ({
   milestone,
   sortOrder = [],
   issueMilestoneRefresh = { key: 0, milestoneNumbers: [] },
   onIssueMilestoneMoved,
+  onIssueLabelsChanged,
+  hierarchyAction,
 }) => {
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [isIssuesExpanded, setIsIssuesExpanded] = useState(false);
+  const [isPrsExpanded, setIsPrsExpanded] = useState(false);
   const [issues, setIssues] = useState([]);
+  const [pullRequests, setPullRequests] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  const [expandedHierarchy, setExpandedHierarchy] = useState(() => new Set());
+  const [isCreateIssueOpen, setIsCreateIssueOpen] = useState(false);
   const prevMilestoneNumberRef = useRef(milestone.number);
+  const lastAppliedHierarchyKeyRef = useRef(null);
+  const dnd = usePlanningDnD();
+
+  const applyFetchedData = useCallback((data) => {
+    setIssues(data.issues || []);
+    setPullRequests(data.pull_requests || []);
+  }, []);
 
   const refetchIssues = useCallback(() => {
     setLoading(true);
     setError(null);
     return fetchIssues(milestone.number, sortOrder)
       .then((data) => {
-        setIssues(data);
+        applyFetchedData(data);
         setLoading(false);
       })
       .catch((err) => {
         setError(err.message);
         setLoading(false);
       });
-  }, [milestone.number, sortOrder]);
+  }, [milestone.number, sortOrder, applyFetchedData]);
 
   // Reset loaded state when milestone changes
   useEffect(() => {
@@ -45,18 +94,22 @@ const MilestoneCard = ({
       prevMilestoneNumberRef.current = milestone.number;
       setHasLoadedOnce(false);
       setIssues([]);
+      setPullRequests([]);
       setError(null);
       setLoading(false);
+      setIsPrsExpanded(false);
+      setExpandedHierarchy(new Set());
+      lastAppliedHierarchyKeyRef.current = null;
     }
   }, [milestone.number]);
 
   useEffect(() => {
-    if (isExpanded && !hasLoadedOnce && !loading) {
+    if (isIssuesExpanded && !hasLoadedOnce && !loading) {
       setLoading(true);
       setError(null);
       fetchIssues(milestone.number, sortOrder)
         .then((data) => {
-          setIssues(data);
+          applyFetchedData(data);
           setLoading(false);
           setHasLoadedOnce(true);
         })
@@ -66,15 +119,21 @@ const MilestoneCard = ({
           setHasLoadedOnce(true);
         });
     }
-  }, [isExpanded, milestone.number, hasLoadedOnce, loading, sortOrder]);
+  }, [
+    isIssuesExpanded,
+    milestone.number,
+    hasLoadedOnce,
+    loading,
+    sortOrder,
+    applyFetchedData,
+  ]);
 
   // Re-fetch issues when sort order changes (if already loaded)
   const prevSortOrderRef = useRef(sortOrder);
   useEffect(() => {
-    // Only refetch if sort order actually changed and issues are already loaded
     const sortOrderChanged =
       JSON.stringify(prevSortOrderRef.current) !== JSON.stringify(sortOrder);
-    if (isExpanded && hasLoadedOnce && !loading && sortOrderChanged) {
+    if (isIssuesExpanded && hasLoadedOnce && !loading && sortOrderChanged) {
       prevSortOrderRef.current = sortOrder;
       refetchIssues();
     } else {
@@ -87,11 +146,70 @@ const MilestoneCard = ({
     const { key, milestoneNumbers } = issueMilestoneRefresh;
     if (key === 0) return;
     if (!milestoneNumbers.includes(milestone.number)) return;
-    if (!isExpanded || !hasLoadedOnce) return;
+    if (!hasLoadedOnce) return;
     refetchIssues();
-    // Bump `key` and `milestoneNumbers` update together; refetch only when key changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [issueMilestoneRefresh.key]);
+
+  // Apply optimistic hierarchy mutations from Planning DnD / adopt.
+  useEffect(() => {
+    if (!hierarchyAction || !hasLoadedOnce) return;
+    // Apply each action at most once per card (also guards Strict Mode double-invoke).
+    if (lastAppliedHierarchyKeyRef.current === hierarchyAction.key) return;
+    lastAppliedHierarchyKeyRef.current = hierarchyAction.key;
+
+    const {
+      type,
+      issueNumber,
+      parentNumber,
+      sourceMilestoneNumber,
+      targetMilestoneNumber,
+      issueSnapshot,
+    } = hierarchyAction;
+
+    if (type === 'unlink') {
+      if (sourceMilestoneNumber !== milestone.number) return;
+      setIssues((prev) => {
+        const { forest, removed } = removeIssueFromForest(prev, issueNumber);
+        if (!removed) return prev;
+        const asEpic = {
+          ...removed,
+          parent_number: null,
+          external_parent: null,
+          hierarchy_depth: 0,
+        };
+        return reannotateDepths([...forest, asEpic]);
+      });
+      return;
+    }
+
+    if (type === 'relink') {
+      const touchesSource = sourceMilestoneNumber === milestone.number;
+      const touchesTarget = targetMilestoneNumber === milestone.number;
+      if (!touchesSource && !touchesTarget) return;
+
+      setIssues((prev) => {
+        let forest = prev;
+        let removed = issueSnapshot || null;
+        if (touchesSource) {
+          const result = removeIssueFromForest(forest, issueNumber);
+          forest = result.forest;
+          removed = result.removed || removed;
+        }
+        if (touchesTarget && removed) {
+          // Idempotent against fresh server data: drop any existing copy first
+          // so a stale hierarchyAction cannot append a duplicate.
+          const deduped = removeIssueFromForest(forest, issueNumber);
+          forest = deduped.forest;
+          const toInsert = deduped.removed || removed;
+          forest = insertIssueInForest(forest, toInsert, parentNumber);
+          forest = reannotateDepths(forest);
+          setExpandedHierarchy((exp) => new Set(exp).add(parentNumber));
+        }
+        return forest;
+      });
+    }
+  }, [hierarchyAction, hasLoadedOnce, milestone.number]);
 
   const formatDueDate = (dueOn) => {
     if (!dueOn) return 'No due date';
@@ -103,11 +221,13 @@ const MilestoneCard = ({
     });
   };
 
-  const getToggleText = () => {
-    const baseText = isExpanded ? 'Hide' : 'Show';
+  const getIssuesToggleText = () => {
+    const baseText = isIssuesExpanded ? 'Hide' : 'Show';
 
     if (hasLoadedOnce) {
-      const count = issues.length;
+      const countVisible = (nodes) =>
+        (nodes || []).reduce((sum, n) => sum + 1 + countVisible(n.children), 0);
+      const count = countVisible(issues);
       const issueText = count === 1 ? 'issue' : 'issues';
       return `${baseText} ${count} ${issueText}`;
     }
@@ -115,10 +235,223 @@ const MilestoneCard = ({
     return `${baseText} Issues`;
   };
 
+  const getPrsToggleText = () => {
+    const baseText = isPrsExpanded ? 'Hide' : 'Show';
+    const count = pullRequests.length;
+    const prText = count === 1 ? 'PR' : 'PRs';
+    return `${baseText} ${count} ${prText}`;
+  };
+
+  const updateItemInForest = (setter) => (updatedIssue) => {
+    setter((prev) => {
+      const mapNodes = (nodes) =>
+        (nodes || []).map((item) => {
+          if (item.id === updatedIssue.id) {
+            return {
+              ...item,
+              ...updatedIssue,
+              children: updatedIssue.children ?? item.children,
+            };
+          }
+          return {
+            ...item,
+            children: mapNodes(item.children),
+          };
+        });
+      return mapNodes(prev);
+    });
+  };
+
+  const toggleHierarchy = (issueNumber) => {
+    setExpandedHierarchy((prev) => {
+      const next = new Set(prev);
+      if (next.has(issueNumber)) next.delete(issueNumber);
+      else next.add(issueNumber);
+      return next;
+    });
+  };
+
+  // Link a newly created issue into the local forest from the POST body so it
+  // appears immediately (milestone list GET can lag behind GitHub create).
+  const insertCreatedIssue = (created, parentNumber = null) => {
+    if (created?.number == null) return;
+    setIssues((prev) => {
+      const { forest } = removeIssueFromForest(prev, created.number);
+      const node = {
+        ...created,
+        children: [],
+        child_count: 0,
+      };
+      return reannotateDepths(insertIssueInForest(forest, node, parentNumber));
+    });
+  };
+
+  // When creating before the issues list has ever been fetched, load it first
+  // so pre-existing issues are not permanently hidden behind hasLoadedOnce.
+  const showCreatedIssue = async (created, parentNumber = null) => {
+    setIsIssuesExpanded(true);
+    if (parentNumber != null) {
+      setExpandedHierarchy((prev) => new Set(prev).add(parentNumber));
+    }
+    if (hasLoadedOnce) {
+      insertCreatedIssue(created, parentNumber);
+      return;
+    }
+    // Mark loading before paint so the expand effect does not double-fetch.
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await fetchIssues(milestone.number, sortOrder);
+      applyFetchedData(data);
+      setHasLoadedOnce(true);
+      insertCreatedIssue(created, parentNumber);
+    } catch (err) {
+      setError(err.message);
+      setHasLoadedOnce(true);
+      insertCreatedIssue(created, parentNumber);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCreateEpic = async (payload) => {
+    const created = await createIssue({
+      ...payload,
+      milestone: milestone.number === 0 ? undefined : milestone.number,
+    });
+    await showCreatedIssue(created, null);
+  };
+
+  const handleIssueCreated = async ({ issue: created, parentNumber }) => {
+    if (created) {
+      await showCreatedIssue(created, parentNumber ?? null);
+    }
+  };
+
+  const handleIssueClosed = async ({ issueNumber }) => {
+    if (!hasLoadedOnce) return;
+    setIssues((prev) => {
+      const { forest, removed } = removeClosedIssueFromForest(
+        prev,
+        issueNumber
+      );
+      if (!removed) return prev;
+      return reannotateDepths(forest);
+    });
+  };
+
+  const renderIssueTable = () => {
+    const visible = flattenVisibleIssues(issues, expandedHierarchy);
+    return (
+      <table
+        style={{
+          width: '100%',
+          marginTop: '0.75rem',
+          borderCollapse: 'collapse',
+          border: '1px solid #d2d2d2',
+        }}
+      >
+        {itemTableHeader(true)}
+        <tbody>
+          {visible.map((issue) => (
+            <IssueCard
+              key={issue.id}
+              issue={issue}
+              enableHierarchy
+              columnCount={8}
+              milestoneNumber={milestone.number}
+              isHierarchyExpanded={expandedHierarchy.has(issue.number)}
+              onToggleHierarchy={() => toggleHierarchy(issue.number)}
+              isDropTarget={
+                dnd?.hoverParent?.issue?.number === issue.number &&
+                dnd?.hoverParent?.milestoneNumber === milestone.number
+              }
+              isDragging={dnd?.dragged?.issue?.number === issue.number}
+              onDragStartIssue={(e) => {
+                dnd?.beginDrag(e, {
+                  issue,
+                  sourceMilestoneNumber: milestone.number,
+                  descendantNumbers: collectSubtreeNumbers(issue),
+                });
+              }}
+              onDragOverIssue={(e) => {
+                e.preventDefault();
+                dnd?.pointerOverParent(issue, milestone.number);
+              }}
+              onDragEndIssue={() => {
+                dnd?.finishDrag();
+              }}
+              onMilestoneChange={(detail) => {
+                onIssueMilestoneMoved?.(detail);
+              }}
+              onLabelsChange={(detail) => {
+                onIssueLabelsChanged?.(detail);
+              }}
+              onIssueUpdate={updateItemInForest(setIssues)}
+              onAdoptParentMilestone={(detail) => {
+                onIssueMilestoneMoved?.(detail);
+              }}
+              onIssueCreated={handleIssueCreated}
+              onIssueClosed={handleIssueClosed}
+            />
+          ))}
+        </tbody>
+      </table>
+    );
+  };
+
+  const renderPrTable = () => (
+    <table
+      style={{
+        width: '100%',
+        marginTop: '0.75rem',
+        borderCollapse: 'collapse',
+        border: '1px solid #d2d2d2',
+      }}
+    >
+      {itemTableHeader(false)}
+      <tbody>
+        {pullRequests.map((issue) => (
+          <IssueCard
+            key={issue.id}
+            issue={issue}
+            enableHierarchy={false}
+            columnCount={7}
+            onMilestoneChange={(detail) => {
+              onIssueMilestoneMoved?.(detail);
+            }}
+            onLabelsChange={(detail) => {
+              onIssueLabelsChanged?.(detail);
+            }}
+            onIssueUpdate={updateItemInForest(setPullRequests)}
+          />
+        ))}
+      </tbody>
+    </table>
+  );
+
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{milestone.title}</CardTitle>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            width: '100%',
+            gap: '1rem',
+            flexWrap: 'wrap',
+          }}
+        >
+          <CardTitle>{milestone.title}</CardTitle>
+          <Button
+            variant="secondary"
+            onClick={() => setIsCreateIssueOpen(true)}
+            style={{ padding: '0.25rem 0.75rem', fontSize: '0.875rem' }}
+          >
+            Add Issue
+          </Button>
+        </div>
       </CardHeader>
       <CardBody>
         <div style={{ marginBottom: '1rem' }}>
@@ -131,9 +464,9 @@ const MilestoneCard = ({
         </div>
 
         <ExpandableSection
-          toggleText={getToggleText()}
-          onToggle={() => setIsExpanded(!isExpanded)}
-          isExpanded={isExpanded}
+          toggleText={getIssuesToggleText()}
+          onToggle={() => setIsIssuesExpanded(!isIssuesExpanded)}
+          isExpanded={isIssuesExpanded}
         >
           {loading && (
             <div style={{ textAlign: 'center', padding: '2rem' }}>
@@ -147,135 +480,34 @@ const MilestoneCard = ({
             </Alert>
           )}
 
-          {!loading && !error && issues.length > 0 && (
-            <table
-              style={{
-                width: '100%',
-                marginTop: '0.75rem',
-                borderCollapse: 'collapse',
-                border: '1px solid #d2d2d2',
-              }}
-            >
-              <thead>
-                <tr style={{ borderBottom: '2px solid #0066cc' }}>
-                  <th
-                    style={{
-                      padding: '0.5rem',
-                      textAlign: 'left',
-                      fontSize: '0.75rem',
-                      fontWeight: '600',
-                      color: '#6a6e73',
-                      textTransform: 'uppercase',
-                      width: '2rem',
-                    }}
-                  />
-                  <th
-                    style={{
-                      padding: '0.5rem',
-                      textAlign: 'left',
-                      fontSize: '0.75rem',
-                      fontWeight: '600',
-                      color: '#6a6e73',
-                      textTransform: 'uppercase',
-                    }}
-                  >
-                    Number
-                  </th>
-                  <th
-                    style={{
-                      padding: '0.5rem',
-                      textAlign: 'left',
-                      fontSize: '0.75rem',
-                      fontWeight: '600',
-                      color: '#6a6e73',
-                      textTransform: 'uppercase',
-                    }}
-                  >
-                    Author
-                  </th>
-                  <th
-                    style={{
-                      padding: '0.5rem',
-                      textAlign: 'left',
-                      fontSize: '0.75rem',
-                      fontWeight: '600',
-                      color: '#6a6e73',
-                      textTransform: 'uppercase',
-                    }}
-                  >
-                    PR
-                  </th>
-                  <th
-                    style={{
-                      padding: '0.5rem',
-                      textAlign: 'left',
-                      fontSize: '0.75rem',
-                      fontWeight: '600',
-                      color: '#6a6e73',
-                      textTransform: 'uppercase',
-                    }}
-                  >
-                    Milestone
-                  </th>
-                  <th
-                    style={{
-                      padding: '0.5rem',
-                      textAlign: 'left',
-                      fontSize: '0.75rem',
-                      fontWeight: '600',
-                      color: '#6a6e73',
-                      textTransform: 'uppercase',
-                    }}
-                  >
-                    Labels
-                  </th>
-                  <th
-                    style={{
-                      padding: '0.5rem',
-                      textAlign: 'left',
-                      fontSize: '0.75rem',
-                      fontWeight: '600',
-                      color: '#6a6e73',
-                      textTransform: 'uppercase',
-                    }}
-                  >
-                    Title
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {issues.map((issue) => (
-                  <IssueCard
-                    key={issue.id}
-                    issue={issue}
-                    onMilestoneChange={(detail) => {
-                      onIssueMilestoneMoved?.(detail);
-                    }}
-                    onIssueUpdate={(updatedIssue) => {
-                      // Update the issue in the issues array
-                      setIssues((prevIssues) =>
-                        prevIssues.map((i) =>
-                          i.id === updatedIssue.id ? updatedIssue : i
-                        )
-                      );
-                    }}
-                  />
-                ))}
-              </tbody>
-            </table>
+          {!loading && !error && issues.length === 0 && hasLoadedOnce && (
+            <p style={{ color: '#6a6e73', fontStyle: 'italic' }}>
+              No issues found for this milestone.
+            </p>
           )}
 
-          {!loading &&
-            !error &&
-            issues.length === 0 &&
-            isExpanded &&
-            hasLoadedOnce && (
-              <p style={{ color: '#6a6e73', fontStyle: 'italic' }}>
-                No issues found for this milestone.
-              </p>
-            )}
+          {!loading && !error && issues.length > 0 && renderIssueTable()}
         </ExpandableSection>
+
+        {hasLoadedOnce && pullRequests.length > 0 && (
+          <ExpandableSection
+            toggleText={getPrsToggleText()}
+            onToggle={() => setIsPrsExpanded(!isPrsExpanded)}
+            isExpanded={isPrsExpanded}
+            style={{ marginTop: '0.75rem' }}
+          >
+            {renderPrTable()}
+          </ExpandableSection>
+        )}
       </CardBody>
+      <MarkdownInputModal
+        isOpen={isCreateIssueOpen}
+        onClose={() => setIsCreateIssueOpen(false)}
+        mode="issue"
+        title={`Add issue to ${milestone.title}`}
+        submitLabel="Create Issue"
+        onSubmit={handleCreateEpic}
+      />
     </Card>
   );
 };

@@ -1,4 +1,5 @@
 // Generated-by: Cursor
+// Assisted-by: Cursor
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   ExpandableSection,
@@ -17,6 +18,11 @@ import {
   CodeBranchIcon,
   CaretDownIcon,
   CaretRightIcon,
+  LayerGroupIcon,
+  CatalogIcon,
+  TaskIcon,
+  ExclamationTriangleIcon,
+  PlusIcon,
 } from '@patternfly/react-icons';
 import { getDaysSince, formatDate } from '../utils/dateUtils';
 import {
@@ -31,10 +37,15 @@ import {
   fetchAssignees,
   setIssueAssignees,
   removeIssueAssignees,
+  adoptParentMilestone,
+  createComment,
+  closeIssueWithComment,
+  createIssue,
 } from '../services/api';
 import CommentCard from './CommentCard';
 import Reactions from './Reactions';
 import UserAvatar from './UserAvatar';
+import MarkdownInputModal from './MarkdownInputModal';
 import labelsCache, { clearLabelsCache } from '../utils/labelsCache';
 import milestonesCache from '../utils/milestonesCache';
 import assigneesCache from '../utils/assigneesCache';
@@ -77,13 +88,35 @@ const getTypeContrastColor = (colorName) => {
   return darkColors.includes(colorName.toLowerCase()) ? '#ffffff' : '#000000';
 };
 
-const IssueCard = ({ issue, onMilestoneChange, onIssueUpdate }) => {
+const IssueCard = ({
+  issue,
+  onMilestoneChange,
+  onLabelsChange,
+  onIssueUpdate,
+  enableHierarchy = false,
+  columnCount = 7,
+  isHierarchyExpanded = false,
+  onToggleHierarchy,
+  isDropTarget = false,
+  isDragging = false,
+  onDragStartIssue,
+  onDragOverIssue,
+  onDragEndIssue,
+  onAdoptParentMilestone,
+  onIssueClosed,
+  onIssueCreated,
+  milestoneNumber = null,
+}) => {
   const daysSince = getDaysSince(issue.created_at);
   const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false);
   const [isCommentsExpanded, setIsCommentsExpanded] = useState(false);
   const [comments, setComments] = useState([]);
   const [commentsLoading, setCommentsLoading] = useState(false);
   const [commentsError, setCommentsError] = useState(null);
+  // Track whether the comments list has been fetched. Do not use
+  // comments.length === 0 alone: adding a comment before expand leaves
+  // length > 0 and would skip loading pre-existing comments.
+  const [commentsLoaded, setCommentsLoaded] = useState(false);
   const [currentLabels, setCurrentLabels] = useState(issue.labels || []);
   const [availableLabels, setAvailableLabels] = useState([]);
   const [isLabelMenuOpen, setIsLabelMenuOpen] = useState(false);
@@ -117,13 +150,16 @@ const IssueCard = ({ issue, onMilestoneChange, onIssueUpdate }) => {
   const [pendingAssignees, setPendingAssignees] = useState([]); // Temporary selection while dropdown is open
   const assigneesMenuRef = useRef(null);
   const assigneesToggleRef = useRef(null);
+  const [isCommentModalOpen, setIsCommentModalOpen] = useState(false);
+  const [isCreateSubIssueOpen, setIsCreateSubIssueOpen] = useState(false);
+  const [commentCount, setCommentCount] = useState(issue.comments || 0);
 
   useEffect(() => {
     if (
       isCommentsExpanded &&
-      comments.length === 0 &&
+      !commentsLoaded &&
       !commentsLoading &&
-      issue.comments > 0
+      commentCount > 0
     ) {
       setCommentsLoading(true);
       setCommentsError(null);
@@ -131,19 +167,25 @@ const IssueCard = ({ issue, onMilestoneChange, onIssueUpdate }) => {
         .then((data) => {
           setComments(data);
           setCommentsLoading(false);
+          setCommentsLoaded(true);
         })
         .catch((err) => {
           setCommentsError(err.message);
           setCommentsLoading(false);
+          setCommentsLoaded(true);
         });
     }
   }, [
     isCommentsExpanded,
     issue.number,
-    issue.comments,
-    comments.length,
+    commentCount,
+    commentsLoaded,
     commentsLoading,
   ]);
+
+  useEffect(() => {
+    setCommentCount(issue.comments || 0);
+  }, [issue.comments]);
 
   // Collapse comments when description is collapsed
   useEffect(() => {
@@ -525,12 +567,20 @@ const IssueCard = ({ issue, onMilestoneChange, onIssueUpdate }) => {
     handleApplyAssignees,
   ]);
 
+  const notifyLabelsChanged = () => {
+    if (!onLabelsChange) return;
+    const milestoneNumber =
+      currentMilestone?.number ?? issue.milestone?.number ?? 0;
+    onLabelsChange({ milestoneNumber });
+  };
+
   const handleRemoveLabel = async (labelName) => {
     try {
       await removeLabel(issue.number, labelName);
       setCurrentLabels(
         currentLabels.filter((label) => label.name !== labelName)
       );
+      notifyLabelsChanged();
     } catch (err) {
       console.error('Failed to remove label:', err);
       setLabelsError(err.message);
@@ -551,6 +601,7 @@ const IssueCard = ({ issue, onMilestoneChange, onIssueUpdate }) => {
           currentLabels.filter((label) => label.name !== labelName)
         );
       }
+      notifyLabelsChanged();
     } catch (err) {
       console.error('Failed to toggle label:', err);
       setLabelsError(err.message);
@@ -715,8 +766,49 @@ const IssueCard = ({ issue, onMilestoneChange, onIssueUpdate }) => {
 
   const getCommentsToggleText = () => {
     return isCommentsExpanded
-      ? `Hide Comments (${issue.comments})`
-      : `Show Comments (${issue.comments})`;
+      ? `Hide Comments (${commentCount})`
+      : `Show Comments (${commentCount})`;
+  };
+
+  const handleAddComment = async (body) => {
+    const created = await createComment(issue.number, body);
+    setComments((prev) => [...prev, created]);
+    setCommentCount((prev) => prev + 1);
+    setIsCommentsExpanded(true);
+    // If comments were never fetched but some already exist, leave
+    // commentsLoaded false so the expand effect loads the full list.
+    if (commentsLoaded || commentCount === 0) {
+      setCommentsLoaded(true);
+    }
+    if (onIssueUpdate) {
+      onIssueUpdate({ ...issue, comments: (commentCount || 0) + 1 });
+    }
+  };
+
+  const handleCloseWithComment = async (body) => {
+    await closeIssueWithComment(issue.number, body);
+    onIssueClosed?.({ issueNumber: issue.number });
+  };
+
+  const handleCreateSubIssue = async (payload) => {
+    const created = await createIssue({
+      ...payload,
+      milestone:
+        milestoneNumber ??
+        currentMilestone?.number ??
+        issue.milestone?.number ??
+        undefined,
+      parent_number: issue.number,
+    });
+    onIssueCreated?.({
+      issue: created,
+      parentNumber: issue.number,
+      milestoneNumber:
+        milestoneNumber ??
+        currentMilestone?.number ??
+        issue.milestone?.number ??
+        0,
+    });
   };
 
   // Column 4: PR icon, "closed by #<pr>", or blank
@@ -768,32 +860,164 @@ const IssueCard = ({ issue, onMilestoneChange, onIssueUpdate }) => {
     borderBottom: '1px solid #d2d2d2',
   };
 
-  return (
-    <>
-      <tr>
-        {/* Column 1: Expansion icon */}
-        <td style={{ ...cellStyle, width: '2rem' }}>
-          {issue.body_html ? (
+  const depth = issue.hierarchy_depth || 0;
+  const childCount = issue.child_count ?? (issue.children || []).length;
+  const indentPx = enableHierarchy ? depth * 16 : 0;
+
+  const handleAdoptParentMilestone = async () => {
+    try {
+      const result = await adoptParentMilestone(issue.number);
+      onAdoptParentMilestone?.({
+        fromMilestoneNumber: result.from_milestone ?? currentMilestone?.number,
+        toMilestoneNumber: result.to_milestone,
+      });
+    } catch (err) {
+      console.error('Failed to adopt parent milestone:', err);
+    }
+  };
+
+  const renderHierarchyType = () => {
+    if (!enableHierarchy) return null;
+    let Icon = LayerGroupIcon;
+    let label = 'Epic';
+    if (depth === 1) {
+      Icon = CatalogIcon;
+      label = 'Story';
+    } else if (depth >= 2) {
+      Icon = TaskIcon;
+      label = 'Sub-story';
+    }
+    return (
+      <td style={cellStyle}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.35rem',
+            flexWrap: 'wrap',
+          }}
+        >
+          {childCount > 0 && (
             <Button
               variant="plain"
-              onClick={() => setIsDescriptionExpanded(!isDescriptionExpanded)}
+              onClick={onToggleHierarchy}
               style={{ padding: '0.125rem' }}
-              aria-expanded={isDescriptionExpanded}
+              aria-expanded={isHierarchyExpanded}
               aria-label={
-                isDescriptionExpanded ? 'Hide description' : 'Show description'
+                isHierarchyExpanded ? 'Hide sub-issues' : 'Show sub-issues'
               }
             >
-              {isDescriptionExpanded ? (
-                <CaretDownIcon style={{ fontSize: '1rem' }} />
+              {isHierarchyExpanded ? (
+                <CaretDownIcon style={{ fontSize: '0.875rem' }} />
               ) : (
-                <CaretRightIcon style={{ fontSize: '1rem' }} />
+                <CaretRightIcon style={{ fontSize: '0.875rem' }} />
               )}
             </Button>
-          ) : null}
+          )}
+          <Tooltip content={label}>
+            <span
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.25rem',
+              }}
+              aria-label={label}
+            >
+              <Icon style={{ fontSize: '1rem' }} />
+              {depth === 0 && childCount > 0 && (
+                <span style={{ fontSize: '0.75rem', color: '#6a6e73' }}>
+                  {childCount}
+                </span>
+              )}
+            </span>
+          </Tooltip>
+          <Tooltip content="Add sub-issue">
+            <Button
+              variant="plain"
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsCreateSubIssueOpen(true);
+              }}
+              style={{ padding: '0.125rem' }}
+              aria-label="Add sub-issue"
+            >
+              <PlusIcon style={{ fontSize: '0.75rem' }} />
+            </Button>
+          </Tooltip>
+          {issue.external_parent && (
+            <Tooltip
+              content={`Linked under #${issue.external_parent.number}${
+                issue.external_parent.milestone
+                  ? ` (${issue.external_parent.milestone.title || `milestone #${issue.external_parent.milestone.number}`})`
+                  : ''
+              } outside this milestone`}
+            >
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.25rem',
+                }}
+              >
+                <ExclamationTriangleIcon
+                  style={{ color: '#f0ab00', fontSize: '0.875rem' }}
+                  aria-label="External parent"
+                />
+                <Button
+                  variant="link"
+                  isInline
+                  onClick={handleAdoptParentMilestone}
+                  style={{ fontSize: '0.75rem', padding: 0 }}
+                >
+                  Match parent milestone
+                </Button>
+              </span>
+            </Tooltip>
+          )}
+        </div>
+      </td>
+    );
+  };
+
+  const rowStyle = {
+    backgroundColor: isDropTarget
+      ? '#e7f1fa'
+      : isDragging
+        ? '#f0f0f0'
+        : undefined,
+    opacity: isDragging ? 0.6 : 1,
+  };
+
+  return (
+    <>
+      <tr
+        style={rowStyle}
+        draggable={enableHierarchy}
+        onDragStart={enableHierarchy ? onDragStartIssue : undefined}
+        onDragOver={enableHierarchy ? onDragOverIssue : undefined}
+        onDragEnd={enableHierarchy ? onDragEndIssue : undefined}
+      >
+        {/* Column 1: Expansion icon */}
+        <td style={{ ...cellStyle, width: '2rem' }}>
+          <Button
+            variant="plain"
+            onClick={() => setIsDescriptionExpanded(!isDescriptionExpanded)}
+            style={{ padding: '0.125rem' }}
+            aria-expanded={isDescriptionExpanded}
+            aria-label={
+              isDescriptionExpanded ? 'Hide description' : 'Show description'
+            }
+          >
+            {isDescriptionExpanded ? (
+              <CaretDownIcon style={{ fontSize: '1rem' }} />
+            ) : (
+              <CaretRightIcon style={{ fontSize: '1rem' }} />
+            )}
+          </Button>
         </td>
 
         {/* Column 2: Issue number link */}
-        <td style={cellStyle}>
+        <td style={{ ...cellStyle, paddingLeft: `${0.5 + indentPx / 16}rem` }}>
           <a
             href={issue.html_url}
             target="_blank"
@@ -809,7 +1033,9 @@ const IssueCard = ({ issue, onMilestoneChange, onIssueUpdate }) => {
           </a>
         </td>
 
-        {/* Column 3: Owner avatar, creation date, assigned chiclet stacked */}
+        {renderHierarchyType()}
+
+        {/* Column: Owner avatar, creation date, assigned chiclet stacked */}
         <td style={cellStyle}>
           <div
             style={{
@@ -1479,59 +1705,82 @@ const IssueCard = ({ issue, onMilestoneChange, onIssueUpdate }) => {
       </tr>
 
       {/* Expanded description and comments - only shown when expanded */}
-      {issue.body_html && isDescriptionExpanded && (
+      {isDescriptionExpanded && (
         <tr>
           <td
-            colSpan={7}
+            colSpan={columnCount}
             style={{
               padding: '0.75rem',
               borderBottom: '1px solid #d2d2d2',
               backgroundColor: '#fafafa',
             }}
           >
-            <div
-              style={{ paddingTop: '0.5rem' }}
-              dangerouslySetInnerHTML={{ __html: issue.body_html }}
-            />
-            {issue.comments > 0 && (
-              <div style={{ marginTop: issue.body_html ? '1rem' : '0rem' }}>
-                <ExpandableSection
-                  toggleText={getCommentsToggleText()}
-                  onToggle={() => setIsCommentsExpanded(!isCommentsExpanded)}
-                  isExpanded={isCommentsExpanded}
-                >
-                  <div style={{ paddingTop: '0.5rem' }}>
-                    {commentsLoading && (
-                      <div style={{ textAlign: 'center', padding: '1rem' }}>
-                        <Spinner size="md" />
+            {issue.body_html ? (
+              <div
+                className="markdown-body"
+                dangerouslySetInnerHTML={{ __html: issue.body_html }}
+              />
+            ) : (
+              <p style={{ color: '#6a6e73', fontStyle: 'italic' }}>
+                No description.
+              </p>
+            )}
+            <div style={{ marginTop: issue.body_html ? '1rem' : '0.5rem' }}>
+              <ExpandableSection
+                toggleText={getCommentsToggleText()}
+                onToggle={() => setIsCommentsExpanded(!isCommentsExpanded)}
+                isExpanded={isCommentsExpanded}
+              >
+                <div style={{ paddingTop: '0.5rem' }}>
+                  {commentsLoading && (
+                    <div style={{ textAlign: 'center', padding: '1rem' }}>
+                      <Spinner size="md" />
+                    </div>
+                  )}
+                  {commentsError && (
+                    <Alert variant="danger" title="Error loading comments">
+                      {commentsError}
+                    </Alert>
+                  )}
+                  {!commentsLoading &&
+                    !commentsError &&
+                    comments.length > 0 && (
+                      <div>
+                        {comments.map((comment) => (
+                          <CommentCard key={comment.id} comment={comment} />
+                        ))}
                       </div>
                     )}
-                    {commentsError && (
-                      <Alert variant="danger" title="Error loading comments">
-                        {commentsError}
-                      </Alert>
+                  {!commentsLoading &&
+                    !commentsError &&
+                    comments.length === 0 &&
+                    isCommentsExpanded && (
+                      <p style={{ color: '#6a6e73', fontStyle: 'italic' }}>
+                        No comments found.
+                      </p>
                     )}
-                    {!commentsLoading &&
-                      !commentsError &&
-                      comments.length > 0 && (
-                        <div>
-                          {comments.map((comment) => (
-                            <CommentCard key={comment.id} comment={comment} />
-                          ))}
-                        </div>
-                      )}
-                    {!commentsLoading &&
-                      !commentsError &&
-                      comments.length === 0 &&
-                      isCommentsExpanded && (
-                        <p style={{ color: '#6a6e73', fontStyle: 'italic' }}>
-                          No comments found.
-                        </p>
-                      )}
-                  </div>
-                </ExpandableSection>
+                </div>
+              </ExpandableSection>
+              <div
+                style={{
+                  marginTop: '0.5rem',
+                  display: 'flex',
+                  gap: '0.5rem',
+                  flexWrap: 'wrap',
+                }}
+              >
+                <Button
+                  variant="secondary"
+                  onClick={() => setIsCommentModalOpen(true)}
+                  style={{
+                    padding: '0.25rem 0.75rem',
+                    fontSize: '0.75rem',
+                  }}
+                >
+                  Add Comment
+                </Button>
               </div>
-            )}
+            </div>
             {issue.reactions?.total_count > 0 && (
               <div style={{ marginTop: '0.75rem' }}>
                 {reactionsLoading && (
@@ -1556,6 +1805,24 @@ const IssueCard = ({ issue, onMilestoneChange, onIssueUpdate }) => {
           </td>
         </tr>
       )}
+      <MarkdownInputModal
+        isOpen={isCommentModalOpen}
+        onClose={() => setIsCommentModalOpen(false)}
+        mode="comment"
+        title={`Comment on #${issue.number}`}
+        submitLabel="Submit"
+        showCloseWithComment
+        onSubmit={handleAddComment}
+        onCloseWithComment={handleCloseWithComment}
+      />
+      <MarkdownInputModal
+        isOpen={isCreateSubIssueOpen}
+        onClose={() => setIsCreateSubIssueOpen(false)}
+        mode="issue"
+        title={`Add sub-issue under #${issue.number}`}
+        submitLabel="Create Issue"
+        onSubmit={handleCreateSubIssue}
+      />
       <Modal
         title="Create New Label"
         isOpen={isCreateLabelDialogOpen}

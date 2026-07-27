@@ -30,6 +30,67 @@ export const fetchComments = async (issueNumber) => {
   return response.json();
 };
 
+export const createComment = async (issueNumber, body) => {
+  const response = await fetch(`${API_BASE}/comments/${issueNumber}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ body }),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to create comment: ${response.statusText}`);
+  }
+  return response.json();
+};
+
+export const closeIssueWithComment = async (issueNumber, body) => {
+  const response = await fetch(
+    `${API_BASE}/issues/${issueNumber}/close-with-comment`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ body }),
+    }
+  );
+  if (!response.ok) {
+    throw new Error(
+      `Failed to close issue with comment: ${response.statusText}`
+    );
+  }
+  return response.json();
+};
+
+export const renderMarkdown = async (text) => {
+  const response = await fetch(`${API_BASE}/markdown`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ text }),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to render markdown: ${response.statusText}`);
+  }
+  return response.json();
+};
+
+export const createIssue = async (issueData) => {
+  const response = await fetch(`${API_BASE}/issues`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(issueData),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to create issue: ${response.statusText}`);
+  }
+  return response.json();
+};
+
 export const fetchProject = async () => {
   const response = await fetch(`${API_BASE}/project`);
   if (!response.ok) {
@@ -142,6 +203,43 @@ export const removeIssueMilestone = async (issueNumber, milestoneNumber) => {
   );
   if (!response.ok) {
     throw new Error(`Failed to remove milestone: ${response.statusText}`);
+  }
+  return response.json();
+};
+
+export const setIssueParent = async (issueNumber, parentNumber) => {
+  const response = await fetch(`${API_BASE}/issues/${issueNumber}/parent`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ parent_number: parentNumber }),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to set parent: ${response.statusText}`);
+  }
+  return response.json();
+};
+
+export const clearIssueParent = async (issueNumber) => {
+  const response = await fetch(`${API_BASE}/issues/${issueNumber}/parent`, {
+    method: 'DELETE',
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to clear parent: ${response.statusText}`);
+  }
+  return response.json();
+};
+
+export const adoptParentMilestone = async (issueNumber) => {
+  const response = await fetch(
+    `${API_BASE}/issues/${issueNumber}/adopt-parent-milestone`,
+    {
+      method: 'POST',
+    }
+  );
+  if (!response.ok) {
+    throw new Error(`Failed to adopt parent milestone: ${response.statusText}`);
   }
   return response.json();
 };
