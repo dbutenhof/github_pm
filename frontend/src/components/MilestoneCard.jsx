@@ -66,6 +66,7 @@ const MilestoneCard = ({
   const [expandedHierarchy, setExpandedHierarchy] = useState(() => new Set());
   const [isCreateIssueOpen, setIsCreateIssueOpen] = useState(false);
   const prevMilestoneNumberRef = useRef(milestone.number);
+  const lastAppliedHierarchyKeyRef = useRef(null);
   const dnd = usePlanningDnD();
 
   const applyFetchedData = useCallback((data) => {
@@ -98,6 +99,7 @@ const MilestoneCard = ({
       setLoading(false);
       setIsPrsExpanded(false);
       setExpandedHierarchy(new Set());
+      lastAppliedHierarchyKeyRef.current = null;
     }
   }, [milestone.number]);
 
@@ -152,6 +154,10 @@ const MilestoneCard = ({
   // Apply optimistic hierarchy mutations from Planning DnD / adopt.
   useEffect(() => {
     if (!hierarchyAction || !hasLoadedOnce) return;
+    // Apply each action at most once per card (also guards Strict Mode double-invoke).
+    if (lastAppliedHierarchyKeyRef.current === hierarchyAction.key) return;
+    lastAppliedHierarchyKeyRef.current = hierarchyAction.key;
+
     const {
       type,
       issueNumber,
@@ -191,7 +197,12 @@ const MilestoneCard = ({
           removed = result.removed || removed;
         }
         if (touchesTarget && removed) {
-          forest = insertIssueInForest(forest, removed, parentNumber);
+          // Idempotent against fresh server data: drop any existing copy first
+          // so a stale hierarchyAction cannot append a duplicate.
+          const deduped = removeIssueFromForest(forest, issueNumber);
+          forest = deduped.forest;
+          const toInsert = deduped.removed || removed;
+          forest = insertIssueInForest(forest, toInsert, parentNumber);
           forest = reannotateDepths(forest);
           setExpandedHierarchy((exp) => new Set(exp).add(parentNumber));
         }

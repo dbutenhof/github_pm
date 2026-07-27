@@ -104,6 +104,14 @@ const App = () => {
     }
   };
 
+  // MilestoneCards apply hierarchyAction in their effects (children run first).
+  // Clear afterward so a remount / later hasLoadedOnce transition cannot
+  // re-apply a stale optimistic mutation and duplicate issues.
+  useEffect(() => {
+    if (hierarchyAction == null) return;
+    setHierarchyAction(null);
+  }, [hierarchyAction]);
+
   useEffect(() => {
     fetchProject()
       .then((data) => {
@@ -223,6 +231,9 @@ const App = () => {
       localStorage.setItem(MAIN_VIEW_TAB_STORAGE_KEY, activeViewTab);
     } catch (error) {
       console.error('Failed to save main view tab to localStorage:', error);
+    }
+    if (activeViewTab !== 'planning') {
+      setHierarchyAction(null);
     }
   }, [activeViewTab]);
 

@@ -367,4 +367,90 @@ describe('MilestoneCard', () => {
     });
     expect(screen.getByText('Type')).toBeInTheDocument();
   });
+
+  it('does not duplicate an issue when a stale cross-milestone relink action re-applies', async () => {
+    const user = userEvent.setup();
+    const parent = {
+      id: 10,
+      number: 10,
+      title: 'Parent Epic',
+      html_url: 'https://github.com/test/issue/10',
+      user: { login: 'testuser', avatar_url: 'https://avatar.url' },
+      created_at: '2025-01-01T00:00:00Z',
+      labels: [],
+      comments: 0,
+      hierarchy_depth: 0,
+      child_count: 1,
+      children: [
+        {
+          id: 20,
+          number: 20,
+          title: 'Relinked Child',
+          html_url: 'https://github.com/test/issue/20',
+          user: { login: 'testuser', avatar_url: 'https://avatar.url' },
+          created_at: '2025-01-01T00:00:00Z',
+          labels: [],
+          comments: 0,
+          parent_number: 10,
+          hierarchy_depth: 1,
+          child_count: 0,
+          children: [],
+        },
+      ],
+    };
+    // Fresh fetch already reflects the completed relink.
+    api.fetchIssues.mockResolvedValue({
+      issues: [parent],
+      pull_requests: [],
+    });
+
+    const staleRelink = {
+      key: 12345,
+      type: 'relink',
+      issueNumber: 20,
+      parentNumber: 10,
+      sourceMilestoneNumber: 99,
+      targetMilestoneNumber: mockMilestone.number,
+      issueSnapshot: {
+        id: 20,
+        number: 20,
+        title: 'Relinked Child',
+        children: [],
+        child_count: 0,
+      },
+    };
+
+    const { rerender } = await act(async () =>
+      render(
+        <MilestoneCard
+          milestone={mockMilestone}
+          hierarchyAction={null}
+        />
+      )
+    );
+
+    await user.click(screen.getByRole('button', { name: /show issues/i }));
+    await waitFor(() => {
+      expect(screen.getByText(/Parent Epic/)).toBeInTheDocument();
+    });
+    await user.click(screen.getByRole('button', { name: 'Show sub-issues' }));
+    await waitFor(() => {
+      expect(screen.getByText(/Relinked Child/)).toBeInTheDocument();
+    });
+    expect(screen.getAllByText(/Relinked Child/)).toHaveLength(1);
+
+    // Simulate remount/load completing while App still held a stale action.
+    await act(async () => {
+      rerender(
+        <MilestoneCard
+          milestone={mockMilestone}
+          hierarchyAction={staleRelink}
+        />
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getAllByText(/Relinked Child/)).toHaveLength(1);
+    });
+  });
 });
