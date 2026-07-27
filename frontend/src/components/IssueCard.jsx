@@ -113,6 +113,10 @@ const IssueCard = ({
   const [comments, setComments] = useState([]);
   const [commentsLoading, setCommentsLoading] = useState(false);
   const [commentsError, setCommentsError] = useState(null);
+  // Track whether the comments list has been fetched. Do not use
+  // comments.length === 0 alone: adding a comment before expand leaves
+  // length > 0 and would skip loading pre-existing comments.
+  const [commentsLoaded, setCommentsLoaded] = useState(false);
   const [currentLabels, setCurrentLabels] = useState(issue.labels || []);
   const [availableLabels, setAvailableLabels] = useState([]);
   const [isLabelMenuOpen, setIsLabelMenuOpen] = useState(false);
@@ -153,7 +157,7 @@ const IssueCard = ({
   useEffect(() => {
     if (
       isCommentsExpanded &&
-      comments.length === 0 &&
+      !commentsLoaded &&
       !commentsLoading &&
       commentCount > 0
     ) {
@@ -163,17 +167,19 @@ const IssueCard = ({
         .then((data) => {
           setComments(data);
           setCommentsLoading(false);
+          setCommentsLoaded(true);
         })
         .catch((err) => {
           setCommentsError(err.message);
           setCommentsLoading(false);
+          setCommentsLoaded(true);
         });
     }
   }, [
     isCommentsExpanded,
     issue.number,
     commentCount,
-    comments.length,
+    commentsLoaded,
     commentsLoading,
   ]);
 
@@ -769,6 +775,11 @@ const IssueCard = ({
     setComments((prev) => [...prev, created]);
     setCommentCount((prev) => prev + 1);
     setIsCommentsExpanded(true);
+    // If comments were never fetched but some already exist, leave
+    // commentsLoaded false so the expand effect loads the full list.
+    if (commentsLoaded || commentCount === 0) {
+      setCommentsLoaded(true);
+    }
     if (onIssueUpdate) {
       onIssueUpdate({ ...issue, comments: (commentCount || 0) + 1 });
     }

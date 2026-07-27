@@ -286,24 +286,45 @@ const MilestoneCard = ({
     });
   };
 
+  // When creating before the issues list has ever been fetched, load it first
+  // so pre-existing issues are not permanently hidden behind hasLoadedOnce.
+  const showCreatedIssue = async (created, parentNumber = null) => {
+    setIsIssuesExpanded(true);
+    if (parentNumber != null) {
+      setExpandedHierarchy((prev) => new Set(prev).add(parentNumber));
+    }
+    if (hasLoadedOnce) {
+      insertCreatedIssue(created, parentNumber);
+      return;
+    }
+    // Mark loading before paint so the expand effect does not double-fetch.
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await fetchIssues(milestone.number, sortOrder);
+      applyFetchedData(data);
+      setHasLoadedOnce(true);
+      insertCreatedIssue(created, parentNumber);
+    } catch (err) {
+      setError(err.message);
+      setHasLoadedOnce(true);
+      insertCreatedIssue(created, parentNumber);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleCreateEpic = async (payload) => {
     const created = await createIssue({
       ...payload,
       milestone: milestone.number === 0 ? undefined : milestone.number,
     });
-    setIsIssuesExpanded(true);
-    setHasLoadedOnce(true);
-    insertCreatedIssue(created, null);
+    await showCreatedIssue(created, null);
   };
 
-  const handleIssueCreated = ({ issue: created, parentNumber }) => {
-    if (parentNumber != null) {
-      setExpandedHierarchy((prev) => new Set(prev).add(parentNumber));
-    }
+  const handleIssueCreated = async ({ issue: created, parentNumber }) => {
     if (created) {
-      setIsIssuesExpanded(true);
-      setHasLoadedOnce(true);
-      insertCreatedIssue(created, parentNumber ?? null);
+      await showCreatedIssue(created, parentNumber ?? null);
     }
   };
 

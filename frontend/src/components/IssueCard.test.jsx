@@ -540,6 +540,52 @@ describe('IssueCard', () => {
     ).toBeInTheDocument();
   });
 
+  it('loads existing comments when adding a comment before expanding', async () => {
+    const user = userEvent.setup();
+    const existingComment = {
+      id: 1,
+      body: 'Pre-existing comment',
+      body_html: '<p>Pre-existing comment</p>',
+      user: {
+        login: 'alice',
+        avatar_url: 'https://avatar.url/alice',
+      },
+      created_at: '2025-01-01T00:00:00Z',
+    };
+    const createdComment = {
+      id: 2,
+      body: 'Brand new comment',
+      body_html: '<p>Brand new comment</p>',
+      user: {
+        login: 'bob',
+        avatar_url: 'https://avatar.url/bob',
+      },
+      created_at: '2025-01-02T00:00:00Z',
+    };
+    api.createComment.mockResolvedValue(createdComment);
+    api.fetchComments.mockResolvedValue([existingComment, createdComment]);
+
+    const issueWithComments = { ...mockIssue, comments: 1 };
+    await act(async () => {
+      render(<IssueCard issue={issueWithComments} />);
+    });
+
+    await user.click(screen.getByRole('button', { name: /show description/i }));
+    await user.click(screen.getByRole('button', { name: 'Add Comment' }));
+    await user.type(
+      screen.getByPlaceholderText('Write markdown…'),
+      'Brand new comment'
+    );
+    await user.click(screen.getByRole('button', { name: 'Submit' }));
+
+    await waitFor(() => {
+      expect(api.createComment).toHaveBeenCalledWith(459, 'Brand new comment');
+      expect(api.fetchComments).toHaveBeenCalledWith(459);
+      expect(screen.getByText('Pre-existing comment')).toBeInTheDocument();
+      expect(screen.getByText('Brand new comment')).toBeInTheDocument();
+    });
+  });
+
   it('shows Story and Sub-story icons by depth', async () => {
     await act(async () => {
       render(

@@ -406,8 +406,48 @@ describe('MilestoneCard', () => {
     await waitFor(() => {
       expect(screen.getByText(/Brand New Epic/)).toBeInTheDocument();
     });
-    // Visibility must not depend on a follow-up list fetch.
-    expect(api.fetchIssues).not.toHaveBeenCalled();
+    // Creating before expand still loads the list (then inserts from POST).
+    expect(api.fetchIssues).toHaveBeenCalledWith(6, []);
+  });
+
+  it('loads existing issues when creating before the list is expanded', async () => {
+    const user = userEvent.setup();
+    const existing = {
+      ...mockIssue,
+      title: 'Already Open Issue',
+    };
+    const created = {
+      id: 900,
+      number: 900,
+      title: 'Brand New Epic',
+      html_url: 'https://github.com/test/issue/900',
+      user: { login: 'testuser', avatar_url: 'https://avatar.url' },
+      created_at: '2025-01-01T00:00:00Z',
+      labels: [],
+      comments: 0,
+    };
+    api.createIssue.mockResolvedValue(created);
+    api.fetchIssues.mockResolvedValue({
+      issues: [existing],
+      pull_requests: [],
+    });
+
+    await act(async () => {
+      render(<MilestoneCard milestone={mockMilestone} />);
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Add Issue' }));
+    await user.type(
+      screen.getByPlaceholderText('Issue title'),
+      'Brand New Epic'
+    );
+    await user.click(screen.getByRole('button', { name: 'Create Issue' }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Brand New Epic/)).toBeInTheDocument();
+      expect(screen.getByText(/Already Open Issue/)).toBeInTheDocument();
+    });
+    expect(api.fetchIssues).toHaveBeenCalledWith(6, []);
   });
 
   it('shows a newly created sub-issue under its parent immediately', async () => {
