@@ -527,6 +527,62 @@ describe('IssueCard', () => {
     ).toBeInTheDocument();
   });
 
+  it('shows edit description icon when expanded and opens editor', async () => {
+    const user = userEvent.setup();
+    await act(async () => {
+      render(<IssueCard issue={mockIssue} />);
+    });
+    expect(
+      screen.queryByRole('button', { name: 'Edit description' })
+    ).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /show description/i }));
+    await user.click(screen.getByRole('button', { name: 'Edit description' }));
+
+    expect(screen.getByText('Edit description for #459')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Write markdown…')).toHaveValue(
+      mockIssue.body
+    );
+    expect(screen.getByRole('button', { name: 'OK' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
+    expect(screen.getByText('Preview')).toBeInTheDocument();
+  });
+
+  it('updates issue description on OK', async () => {
+    const user = userEvent.setup();
+    const onIssueUpdate = vi.fn();
+    api.updateIssueBody.mockResolvedValue({
+      ...mockIssue,
+      body: 'Updated description',
+      body_html: '<p>Updated description</p>',
+    });
+
+    await act(async () => {
+      render(<IssueCard issue={mockIssue} onIssueUpdate={onIssueUpdate} />);
+    });
+    await user.click(screen.getByRole('button', { name: /show description/i }));
+    await user.click(screen.getByRole('button', { name: 'Edit description' }));
+
+    const textarea = screen.getByPlaceholderText('Write markdown…');
+    await user.clear(textarea);
+    await user.type(textarea, 'Updated description');
+    await user.click(screen.getByRole('button', { name: 'OK' }));
+
+    await waitFor(() => {
+      expect(api.updateIssueBody).toHaveBeenCalledWith(
+        459,
+        'Updated description'
+      );
+      expect(onIssueUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          body: 'Updated description',
+          body_html: '<p>Updated description</p>',
+        })
+      );
+      expect(screen.getByText('Updated description')).toBeInTheDocument();
+    });
+  });
+
   it('opens comment modal from Add Comment', async () => {
     const user = userEvent.setup();
     await act(async () => {

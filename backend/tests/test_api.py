@@ -43,6 +43,10 @@ from github_pm.api import (
     RenderMarkdown,
     set_issue_parent,
     SetIssueParent,
+    update_comment,
+    update_issue_body,
+    UpdateComment,
+    UpdateIssueBody,
 )
 from github_pm.app import app
 
@@ -1658,7 +1662,84 @@ class TestCreateComment:
         mock_gitctx.post.assert_called_once_with(
             "/repos/test/repo/issues/42/comments",
             data={"body": "Hello"},
-            headers={"Accept": "application/vnd.github.html+json"},
+            headers={"Accept": "application/vnd.github.full+json"},
+        )
+
+
+class TestUpdateComment:
+    """Test the update_comment endpoint.
+
+    Generated-by: Cursor
+    """
+
+    @pytest.mark.asyncio
+    async def test_update_comment_success(self):
+        mock_comment = {
+            "id": 99,
+            "body": "Updated",
+            "body_html": "<p>Updated</p>",
+        }
+        mock_gitctx = Mock(spec=Connector)
+        mock_gitctx.patch = Mock(return_value=mock_comment)
+
+        with patch("github_pm.api.context") as mock_context:
+            mock_context.github_repo = "test/repo"
+            result = await update_comment(
+                mock_gitctx, 99, UpdateComment(body="Updated")
+            )
+
+        assert result == mock_comment
+        mock_gitctx.patch.assert_called_once_with(
+            "/repos/test/repo/issues/comments/99",
+            data={"body": "Updated"},
+            headers={"Accept": "application/vnd.github.full+json"},
+        )
+
+
+class TestUpdateIssueBody:
+    """Test the update_issue_body endpoint.
+
+    Generated-by: Cursor
+    """
+
+    @pytest.mark.asyncio
+    async def test_update_issue_body_success(self):
+        mock_issue = {
+            "number": 42,
+            "body": "New description",
+            "body_html": "<p>New description</p>",
+        }
+        mock_gitctx = Mock(spec=Connector)
+        mock_gitctx.patch = Mock(return_value=mock_issue)
+
+        with patch("github_pm.api.context") as mock_context:
+            mock_context.github_repo = "test/repo"
+            result = await update_issue_body(
+                mock_gitctx, 42, UpdateIssueBody(body="New description")
+            )
+
+        assert result == mock_issue
+        mock_gitctx.patch.assert_called_once_with(
+            "/repos/test/repo/issues/42",
+            data={"body": "New description"},
+            headers={"Accept": "application/vnd.github.full+json"},
+        )
+
+    @pytest.mark.asyncio
+    async def test_update_issue_body_allows_empty(self):
+        mock_issue = {"number": 42, "body": "", "body_html": ""}
+        mock_gitctx = Mock(spec=Connector)
+        mock_gitctx.patch = Mock(return_value=mock_issue)
+
+        with patch("github_pm.api.context") as mock_context:
+            mock_context.github_repo = "test/repo"
+            result = await update_issue_body(mock_gitctx, 42, UpdateIssueBody(body=""))
+
+        assert result == mock_issue
+        mock_gitctx.patch.assert_called_once_with(
+            "/repos/test/repo/issues/42",
+            data={"body": ""},
+            headers={"Accept": "application/vnd.github.full+json"},
         )
 
 
@@ -1687,7 +1768,7 @@ class TestCloseIssueWithComment:
         mock_gitctx.patch.assert_called_once_with(
             "/repos/test/repo/issues/42",
             data={"state": "closed"},
-            headers={"Accept": "application/vnd.github.html+json"},
+            headers={"Accept": "application/vnd.github.full+json"},
         )
 
 
