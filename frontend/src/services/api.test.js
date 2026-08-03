@@ -12,6 +12,10 @@ import {
   setIssueParent,
   clearIssueParent,
   adoptParentMilestone,
+  addBlockedBy,
+  removeBlockedBy,
+  addBlocking,
+  removeBlocking,
   createComment,
   closeIssueWithComment,
   renderMarkdown,
@@ -265,6 +269,64 @@ describe('api', () => {
       expect(global.fetch).toHaveBeenCalledWith(
         '/api/v1/issues/20/adopt-parent-milestone',
         { method: 'POST' }
+      );
+    });
+  });
+
+  describe('dependency APIs', () => {
+    it('addBlockedBy POSTs issue_number', async () => {
+      global.fetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({ relationship: 'blocked_by' }),
+      });
+      await addBlockedBy(1, 17);
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/v1/issues/1/dependencies/blocked_by',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ issue_number: 17 }),
+        }
+      );
+    });
+
+    it('removeBlockedBy DELETEs by blocking issue number', async () => {
+      global.fetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({ message: 'blocked_by removed' }),
+      });
+      await removeBlockedBy(1, 17);
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/v1/issues/1/dependencies/blocked_by/17',
+        { method: 'DELETE' }
+      );
+    });
+
+    it('addBlocking POSTs issue_number', async () => {
+      global.fetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({ relationship: 'blocking' }),
+      });
+      await addBlocking(1, 88);
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/v1/issues/1/dependencies/blocking',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ issue_number: 88 }),
+        }
+      );
+    });
+
+    it('removeBlocking DELETEs by blocked issue number', async () => {
+      global.fetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({ message: 'blocking removed' }),
+      });
+      await removeBlocking(1, 88);
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/v1/issues/1/dependencies/blocking/88',
+        { method: 'DELETE' }
       );
     });
   });

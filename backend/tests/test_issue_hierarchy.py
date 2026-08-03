@@ -6,6 +6,7 @@ Generated-by: Cursor
 from github_pm.api import _sort_items_by_labels
 from github_pm.issue_hierarchy import (
     apply_graphql_hierarchy,
+    apply_graphql_links,
     build_issue_forest,
     collect_descendant_numbers,
     is_ancestor,
@@ -145,6 +146,86 @@ class TestApplyGraphqlHierarchy:
         assert issue["_parent_info"]["number"] == 2
         assert issue["sub_issues_summary"]["total"] == 4
         assert issue["sub_issues_summary"]["percent_completed"] == 25
+
+
+class TestApplyGraphqlLinks:
+    def test_applies_closed_by_and_dependencies(self):
+        issue = {"number": 1}
+        apply_graphql_links(
+            issue,
+            {
+                "closedByPullRequestsReferences": {
+                    "nodes": [
+                        {
+                            "number": 9,
+                            "title": "PR",
+                            "url": "https://example.com/pull/9",
+                        }
+                    ]
+                },
+                "blockedBy": {
+                    "nodes": [
+                        {
+                            "databaseId": 100,
+                            "number": 2,
+                            "title": "Blocker",
+                            "url": "https://example.com/issues/2",
+                            "state": "OPEN",
+                        }
+                    ]
+                },
+                "blocking": {
+                    "nodes": [
+                        {
+                            "databaseId": 200,
+                            "number": 3,
+                            "title": "Blocked",
+                            "url": "https://example.com/issues/3",
+                            "state": "CLOSED",
+                        }
+                    ]
+                },
+            },
+        )
+        assert issue["closed_by"] == [
+            {
+                "number": 9,
+                "title": "PR",
+                "url": "https://example.com/pull/9",
+            }
+        ]
+        assert issue["blocked_by"] == [
+            {
+                "id": 100,
+                "number": 2,
+                "title": "Blocker",
+                "url": "https://example.com/issues/2",
+                "state": "OPEN",
+            }
+        ]
+        assert issue["blocking"] == [
+            {
+                "id": 200,
+                "number": 3,
+                "title": "Blocked",
+                "url": "https://example.com/issues/3",
+                "state": "CLOSED",
+            }
+        ]
+
+    def test_omits_empty_link_collections(self):
+        issue = {"number": 1}
+        apply_graphql_links(
+            issue,
+            {
+                "closedByPullRequestsReferences": {"nodes": []},
+                "blockedBy": {"nodes": []},
+                "blocking": None,
+            },
+        )
+        assert "closed_by" not in issue
+        assert "blocked_by" not in issue
+        assert "blocking" not in issue
 
 
 class TestCollectDescendants:

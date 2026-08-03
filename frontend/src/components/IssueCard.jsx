@@ -24,6 +24,8 @@ import {
   ExclamationTriangleIcon,
   PlusIcon,
   PencilAltIcon,
+  LockIcon,
+  ArrowRightIcon,
 } from '@patternfly/react-icons';
 import { getDaysSince, formatDate } from '../utils/dateUtils';
 import {
@@ -43,6 +45,10 @@ import {
   closeIssueWithComment,
   createIssue,
   updateIssueBody,
+  addBlockedBy,
+  removeBlockedBy,
+  addBlocking,
+  removeBlocking,
 } from '../services/api';
 import CommentCard from './CommentCard';
 import Reactions from './Reactions';
@@ -158,6 +164,18 @@ const IssueCard = ({
   const [commentCount, setCommentCount] = useState(issue.comments || 0);
   const [descriptionBody, setDescriptionBody] = useState(issue.body || '');
   const [descriptionHtml, setDescriptionHtml] = useState(issue.body_html || '');
+  const [currentBlockedBy, setCurrentBlockedBy] = useState(
+    issue.blocked_by || []
+  );
+  const [currentBlocking, setCurrentBlocking] = useState(issue.blocking || []);
+  const [isLinkMenuOpen, setIsLinkMenuOpen] = useState(false);
+  const [linkRelation, setLinkRelation] = useState('blocked_by');
+  const [linkIssueNumber, setLinkIssueNumber] = useState('');
+  const [linkError, setLinkError] = useState(null);
+  const [linkBusy, setLinkBusy] = useState(false);
+  const [removingLinkKey, setRemovingLinkKey] = useState(null);
+  const linkMenuRef = useRef(null);
+  const linkToggleRef = useRef(null);
 
   useEffect(() => {
     setDescriptionBody(issue.body || '');
@@ -218,6 +236,14 @@ const IssueCard = ({
   useEffect(() => {
     setCurrentAssignees(Array.isArray(issue.assignees) ? issue.assignees : []);
   }, [issue.assignees]);
+
+  useEffect(() => {
+    setCurrentBlockedBy(issue.blocked_by || []);
+  }, [issue.blocked_by]);
+
+  useEffect(() => {
+    setCurrentBlocking(issue.blocking || []);
+  }, [issue.blocking]);
 
   // Fetch reactions if total_count > 0
   useEffect(() => {
@@ -562,9 +588,25 @@ const IssueCard = ({
         // Clicking outside - apply changes before closing
         handleApplyAssignees();
       }
+      if (
+        isLinkMenuOpen &&
+        linkToggleRef.current &&
+        !linkToggleRef.current.contains(event.target) &&
+        linkMenuRef.current &&
+        !linkMenuRef.current.contains(event.target)
+      ) {
+        setIsLinkMenuOpen(false);
+        setLinkError(null);
+        setLinkIssueNumber('');
+      }
     };
 
-    if (isLabelMenuOpen || isMilestoneMenuOpen || isAssigneesMenuOpen) {
+    if (
+      isLabelMenuOpen ||
+      isMilestoneMenuOpen ||
+      isAssigneesMenuOpen ||
+      isLinkMenuOpen
+    ) {
       document.addEventListener('mousedown', handleClickOutside);
       return () => {
         document.removeEventListener('mousedown', handleClickOutside);
@@ -574,6 +616,7 @@ const IssueCard = ({
     isLabelMenuOpen,
     isMilestoneMenuOpen,
     isAssigneesMenuOpen,
+    isLinkMenuOpen,
     handleApplyAssignees,
   ]);
 
@@ -840,8 +883,191 @@ const IssueCard = ({
     });
   };
 
-  // Column 4: PR icon, "closed by #<pr>", or blank
-  const renderPrColumn = () => {
+  // Column 4: Links — closed-by PRs, blocked-by / blocking issues, or PR branch icon
+  const linkChicletStyle = (opts = {}) => ({
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '0.25rem',
+    padding: '0.125rem 0.25rem 0.125rem 0.375rem',
+    fontSize: '0.75rem',
+    fontWeight: '500',
+    borderRadius: '0.25rem',
+    whiteSpace: 'nowrap',
+    maxWidth: '100%',
+    backgroundColor: opts.backgroundColor || '#f0f0f0',
+    color: opts.color || '#151515',
+    opacity: opts.dimmed ? 0.65 : 1,
+    textDecoration: opts.dimmed ? 'line-through' : 'none',
+  });
+
+  const notifyLinksChanged = (blockedBy, blocking) => {
+    if (onIssueUpdate) {
+      onIssueUpdate({
+        ...issue,
+        blocked_by: blockedBy,
+        blocking,
+      });
+    }
+  };
+
+  const handleRemoveBlockedBy = async (depNumber) => {
+    const key = `blocked-by-${depNumber}`;
+    setRemovingLinkKey(key);
+    setLinkError(null);
+    try {
+      await removeBlockedBy(issue.number, depNumber);
+      const next = currentBlockedBy.filter((d) => d.number !== depNumber);
+      setCurrentBlockedBy(next);
+      notifyLinksChanged(next, currentBlocking);
+    } catch (err) {
+      console.error('Failed to remove blocked-by link:', err);
+      setLinkError(err.message);
+    } finally {
+      setRemovingLinkKey(null);
+    }
+  };
+
+  const handleRemoveBlocking = async (depNumber) => {
+    const key = `blocking-${depNumber}`;
+    setRemovingLinkKey(key);
+    setLinkError(null);
+    try {
+      await removeBlocking(issue.number, depNumber);
+      const next = currentBlocking.filter((d) => d.number !== depNumber);
+      setCurrentBlocking(next);
+      notifyLinksChanged(currentBlockedBy, next);
+    } catch (err) {
+      console.error('Failed to remove blocking link:', err);
+      setLinkError(err.message);
+    } finally {
+      setRemovingLinkKey(null);
+    }
+  };
+
+  const handleAddLink = async () => {
+    const parsed = parseInt(String(linkIssueNumber).trim(), 10);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      setLinkError('Enter a valid issue number');
+      return;
+    }
+    if (parsed === issue.number) {
+      setLinkError('An issue cannot link to itself');
+      return;
+    }
+    const existing =
+      linkRelation === 'blocked_by' ? currentBlockedBy : currentBlocking;
+    if (existing.some((d) => d.number === parsed)) {
+      setLinkError(`#${parsed} is already linked`);
+      return;
+    }
+
+    setLinkBusy(true);
+    setLinkError(null);
+    try {
+      const result =
+        linkRelation === 'blocked_by'
+          ? await addBlockedBy(issue.number, parsed)
+          : await addBlocking(issue.number, parsed);
+      const linked = result.linked_issue;
+      if (linkRelation === 'blocked_by') {
+        const next = [...currentBlockedBy, linked];
+        setCurrentBlockedBy(next);
+        notifyLinksChanged(next, currentBlocking);
+      } else {
+        const next = [...currentBlocking, linked];
+        setCurrentBlocking(next);
+        notifyLinksChanged(currentBlockedBy, next);
+      }
+      setLinkIssueNumber('');
+      setIsLinkMenuOpen(false);
+    } catch (err) {
+      console.error('Failed to add link:', err);
+      setLinkError(err.message);
+    } finally {
+      setLinkBusy(false);
+    }
+  };
+
+  const renderLinkChiclet = ({
+    key,
+    href,
+    number,
+    title,
+    relationshipLabel,
+    Icon,
+    iconColor,
+    backgroundColor,
+    dimmed,
+    onRemove,
+    removeLabel,
+    removing,
+  }) => (
+    <Tooltip
+      key={key}
+      content={`${relationshipLabel}${title ? `: ${title}` : ''}`}
+    >
+      <span
+        style={{
+          ...linkChicletStyle({ backgroundColor, dimmed }),
+          textDecoration: 'none',
+        }}
+      >
+        <a
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '0.25rem',
+            color: '#151515',
+            textDecoration: dimmed ? 'line-through' : 'none',
+            opacity: dimmed ? 0.65 : 1,
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <Icon
+            style={{
+              color: iconColor,
+              fontSize: '0.75rem',
+              flexShrink: 0,
+            }}
+          />
+          #{number}
+        </a>
+        {onRemove && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (!removing) onRemove();
+            }}
+            disabled={removing}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: '#151515',
+              cursor: removing ? 'wait' : 'pointer',
+              padding: '0',
+              fontSize: '0.875rem',
+              lineHeight: '1',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: '16px',
+              height: '16px',
+              opacity: removing ? 0.5 : 1,
+            }}
+            aria-label={removeLabel}
+          >
+            ×
+          </button>
+        )}
+      </span>
+    </Tooltip>
+  );
+
+  const renderLinksColumn = () => {
     if (issue.pull_request) {
       return (
         <Tooltip content="Pull Request">
@@ -855,32 +1081,174 @@ const IssueCard = ({
         </Tooltip>
       );
     }
-    if (issue.closed_by && issue.closed_by.length > 0) {
-      return (
-        <span style={{ fontSize: '0.875rem', color: '#6a6e73' }}>
-          closed by{' '}
-          {issue.closed_by.map((pr, index) => (
-            <React.Fragment key={pr.number}>
-              {index > 0 && ', '}
-              <Tooltip content={pr.title || ''}>
-                <a
-                  href={pr.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
+
+    const closedBy = issue.closed_by || [];
+
+    return (
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'flex-start',
+          gap: '0.25rem',
+          position: 'relative',
+        }}
+      >
+        {closedBy.map((pr) =>
+          renderLinkChiclet({
+            key: `closed-${pr.number}`,
+            href: pr.url,
+            number: pr.number,
+            title: pr.title,
+            relationshipLabel: 'Closed by',
+            Icon: CodeBranchIcon,
+            iconColor: '#0066cc',
+            backgroundColor: '#e7f1fa',
+          })
+        )}
+        {currentBlockedBy.map((dep) =>
+          renderLinkChiclet({
+            key: `blocked-by-${dep.number}`,
+            href: dep.url,
+            number: dep.number,
+            title: dep.title,
+            relationshipLabel: 'Blocked by',
+            Icon: LockIcon,
+            iconColor: '#f0ab00',
+            backgroundColor: '#fdf7e7',
+            dimmed: dep.state === 'CLOSED',
+            onRemove: () => handleRemoveBlockedBy(dep.number),
+            removeLabel: `Remove blocked-by #${dep.number}`,
+            removing: removingLinkKey === `blocked-by-${dep.number}`,
+          })
+        )}
+        {currentBlocking.map((dep) =>
+          renderLinkChiclet({
+            key: `blocking-${dep.number}`,
+            href: dep.url,
+            number: dep.number,
+            title: dep.title,
+            relationshipLabel: 'Blocking',
+            Icon: ArrowRightIcon,
+            iconColor: '#0066cc',
+            backgroundColor: '#e7f1fa',
+            dimmed: dep.state === 'CLOSED',
+            onRemove: () => handleRemoveBlocking(dep.number),
+            removeLabel: `Remove blocking #${dep.number}`,
+            removing: removingLinkKey === `blocking-${dep.number}`,
+          })
+        )}
+        <div style={{ position: 'relative' }}>
+          <Tooltip content="Add link">
+            <Button
+              ref={linkToggleRef}
+              variant="plain"
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsLinkMenuOpen(!isLinkMenuOpen);
+                if (isLinkMenuOpen) {
+                  setLinkError(null);
+                  setLinkIssueNumber('');
+                }
+              }}
+              style={{ padding: '0.125rem' }}
+              aria-label="Add link"
+              aria-expanded={isLinkMenuOpen}
+            >
+              <PlusIcon style={{ fontSize: '0.75rem' }} />
+            </Button>
+          </Tooltip>
+          {isLinkMenuOpen && (
+            <div
+              ref={linkMenuRef}
+              style={{
+                position: 'absolute',
+                top: '100%',
+                left: 0,
+                zIndex: 1000,
+                backgroundColor: 'white',
+                border: '1px solid #d2d2d2',
+                borderRadius: '0.25rem',
+                boxShadow: '0 0.25rem 0.5rem rgba(0,0,0,0.15)',
+                padding: '0.5rem',
+                minWidth: '220px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.5rem',
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  gap: '0.25rem',
+                }}
+              >
+                <Button
+                  variant={
+                    linkRelation === 'blocked_by' ? 'primary' : 'secondary'
+                  }
+                  onClick={() => setLinkRelation('blocked_by')}
                   style={{
-                    textDecoration: 'none',
-                    color: '#0066cc',
+                    padding: '0.25rem 0.5rem',
+                    fontSize: '0.75rem',
+                    flex: 1,
                   }}
                 >
-                  #{pr.number}
-                </a>
-              </Tooltip>
-            </React.Fragment>
-          ))}
-        </span>
-      );
-    }
-    return null;
+                  Blocked by
+                </Button>
+                <Button
+                  variant={
+                    linkRelation === 'blocking' ? 'primary' : 'secondary'
+                  }
+                  onClick={() => setLinkRelation('blocking')}
+                  style={{
+                    padding: '0.25rem 0.5rem',
+                    fontSize: '0.75rem',
+                    flex: 1,
+                  }}
+                >
+                  Blocking
+                </Button>
+              </div>
+              <TextInput
+                value={linkIssueNumber}
+                onChange={(value) => {
+                  const stringValue =
+                    typeof value === 'string'
+                      ? value
+                      : value?.target?.value || '';
+                  setLinkIssueNumber(stringValue);
+                }}
+                placeholder="Issue number"
+                aria-label="Related issue number"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleAddLink();
+                  }
+                }}
+              />
+              {linkError && (
+                <Alert variant="danger" title={linkError} isInline />
+              )}
+              <Button
+                variant="primary"
+                onClick={handleAddLink}
+                isDisabled={linkBusy}
+                isLoading={linkBusy}
+                style={{ fontSize: '0.75rem' }}
+              >
+                Add
+              </Button>
+            </div>
+          )}
+        </div>
+        {linkError && !isLinkMenuOpen && (
+          <Alert variant="danger" title={linkError} isInline />
+        )}
+      </div>
+    );
   };
 
   const cellStyle = {
@@ -1331,8 +1699,8 @@ const IssueCard = ({
           </span>
         </td>
 
-        {/* Column 4: PR icon or closed by #pr or blank */}
-        <td style={cellStyle}>{renderPrColumn()}</td>
+        {/* Column 4: Links (closed-by PRs, blocked-by / blocking) */}
+        <td style={cellStyle}>{renderLinksColumn()}</td>
 
         {/* Column 5: Milestone control */}
         <td style={cellStyle}>
