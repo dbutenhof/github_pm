@@ -160,6 +160,176 @@ describe('IssueCard', () => {
     });
   });
 
+  it('renders Links column closed-by and dependency chiclets', async () => {
+    const issueWithLinks = {
+      ...mockIssue,
+      closed_by: [
+        {
+          number: 123,
+          title: 'Fix it',
+          url: 'https://github.com/test/repo/pull/123',
+        },
+      ],
+      blocked_by: [
+        {
+          id: 17,
+          number: 17,
+          title: 'Blocker',
+          url: 'https://github.com/test/repo/issues/17',
+          state: 'OPEN',
+        },
+      ],
+      blocking: [
+        {
+          id: 88,
+          number: 88,
+          title: 'Waiting',
+          url: 'https://github.com/test/repo/issues/88',
+          state: 'CLOSED',
+        },
+      ],
+    };
+    await act(async () => {
+      render(
+        <table>
+          <tbody>
+            <IssueCard issue={issueWithLinks} />
+          </tbody>
+        </table>
+      );
+    });
+    await waitFor(() => {
+      const closedBy = screen.getByRole('link', { name: '#123' });
+      expect(closedBy).toHaveAttribute(
+        'href',
+        'https://github.com/test/repo/pull/123'
+      );
+      const blockedBy = screen.getByRole('link', { name: '#17' });
+      expect(blockedBy).toHaveAttribute(
+        'href',
+        'https://github.com/test/repo/issues/17'
+      );
+      const blocking = screen.getByRole('link', { name: '#88' });
+      expect(blocking).toHaveAttribute(
+        'href',
+        'https://github.com/test/repo/issues/88'
+      );
+    });
+    expect(
+      screen.getByRole('button', { name: 'Remove blocked-by #17' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Remove blocking #88' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Add link' })
+    ).toBeInTheDocument();
+  });
+
+  it('removes a blocked-by link when × is clicked', async () => {
+    const user = userEvent.setup();
+    const onIssueUpdate = vi.fn();
+    api.removeBlockedBy.mockResolvedValue({
+      issue_number: 459,
+      relationship: 'blocked_by',
+      blocking_issue_number: 17,
+    });
+    const issueWithLinks = {
+      ...mockIssue,
+      blocked_by: [
+        {
+          id: 17,
+          number: 17,
+          title: 'Blocker',
+          url: 'https://github.com/test/repo/issues/17',
+          state: 'OPEN',
+        },
+      ],
+    };
+    await act(async () => {
+      render(
+        <table>
+          <tbody>
+            <IssueCard issue={issueWithLinks} onIssueUpdate={onIssueUpdate} />
+          </tbody>
+        </table>
+      );
+    });
+    await user.click(
+      screen.getByRole('button', { name: 'Remove blocked-by #17' })
+    );
+    await waitFor(() => {
+      expect(api.removeBlockedBy).toHaveBeenCalledWith(459, 17);
+    });
+    expect(screen.queryByRole('link', { name: '#17' })).not.toBeInTheDocument();
+    expect(onIssueUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ blocked_by: [] })
+    );
+  });
+
+  it('adds a blocking link from the Links popover', async () => {
+    const user = userEvent.setup();
+    const onIssueUpdate = vi.fn();
+    api.addBlocking.mockResolvedValue({
+      issue_number: 459,
+      relationship: 'blocking',
+      linked_issue: {
+        id: 88,
+        number: 88,
+        title: 'Waiting',
+        url: 'https://github.com/test/repo/issues/88',
+        state: 'OPEN',
+      },
+    });
+    await act(async () => {
+      render(
+        <table>
+          <tbody>
+            <IssueCard issue={mockIssue} onIssueUpdate={onIssueUpdate} />
+          </tbody>
+        </table>
+      );
+    });
+    await user.click(screen.getByRole('button', { name: 'Add link' }));
+    await user.click(screen.getByRole('button', { name: 'Blocking' }));
+    await user.type(
+      screen.getByRole('textbox', { name: 'Related issue number' }),
+      '88'
+    );
+    await user.click(screen.getByRole('button', { name: 'Add' }));
+    await waitFor(() => {
+      expect(api.addBlocking).toHaveBeenCalledWith(459, 88);
+    });
+    expect(screen.getByRole('link', { name: '#88' })).toBeInTheDocument();
+    expect(onIssueUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        blocking: [expect.objectContaining({ number: 88, title: 'Waiting' })],
+      })
+    );
+  });
+
+  it('renders branch icon in Links column for pull request rows', async () => {
+    const prIssue = {
+      ...mockIssue,
+      pull_request: {},
+      title: 'My PR',
+    };
+    await act(async () => {
+      render(
+        <table>
+          <tbody>
+            <IssueCard issue={prIssue} />
+          </tbody>
+        </table>
+      );
+    });
+    await waitFor(() => {
+      expect(screen.getByText('#459')).toBeInTheDocument();
+    });
+    // PatternFly CodeBranchIcon renders an svg; tooltip content is "Pull Request"
+    expect(document.querySelector('svg')).toBeTruthy();
+  });
+
   it('renders labels when present', async () => {
     await act(async () => {
       render(<IssueCard issue={mockIssue} />);

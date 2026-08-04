@@ -3,7 +3,7 @@ from collections.abc import Callable
 from datetime import datetime
 import re
 import time
-from typing import Annotated, Any, AsyncGenerator
+from typing import Annotated, Any, AsyncGenerator, NoReturn
 from urllib.parse import quote_plus
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query
@@ -13,6 +13,7 @@ import requests
 from github_pm.context import context
 from github_pm.issue_hierarchy import (
     apply_graphql_hierarchy,
+    apply_graphql_links,
     build_issue_forest,
     collect_descendant_numbers,
     is_ancestor,
@@ -153,7 +154,7 @@ class Connector:
                 f"{self.base_url}{path}", json=data, headers=headers
             )
         )
-        return response.json()
+        return response.json() if response.content else {}
 
     def post_text(
         self, path: str, text: str, headers: dict[str, str] | None = None
@@ -188,6 +189,41 @@ class Connector:
         return response.json() if response.content else {}
 
 
+def _github_http_error_detail(exc: requests.HTTPError) -> str:
+    """Best-effort message from a GitHub REST error response.
+
+    Generated-by: Cursor
+    """
+    response = exc.response
+    if response is None:
+        return str(exc)
+    try:
+        payload = response.json()
+    except ValueError:
+        return (response.text or str(exc)).strip() or str(exc)
+    if isinstance(payload, dict):
+        message = payload.get("message")
+        errors = payload.get("errors")
+        if message and errors:
+            return f"{message}: {errors}"
+        if message:
+            return str(message)
+    return (response.text or str(exc)).strip() or str(exc)
+
+
+def _raise_github_http_error(exc: requests.HTTPError) -> NoReturn:
+    """Convert ``requests.HTTPError`` into an ``HTTPException`` with GitHub's status.
+
+    Generated-by: Cursor
+    """
+    status = 502
+    if exc.response is not None:
+        status = exc.response.status_code or status
+    raise HTTPException(
+        status_code=status, detail=_github_http_error_detail(exc)
+    ) from exc
+
+
 async def connection() -> AsyncGenerator[Connector]:
     """FastAPI Dependency to open & close Github connections"""
     connector = None
@@ -202,6 +238,11 @@ async def connection() -> AsyncGenerator[Connector]:
         start = time.time()
         yield connector
         logger.debug(f"Elapsed time: {time.time() - start:.3f} seconds")
+    except HTTPException:
+        raise
+    except requests.HTTPError as e:
+        logger.exception(f"GitHub HTTP error: {str(e)!r}")
+        _raise_github_http_error(e)
     except Exception as e:
         logger.exception(f"GitHub error: {str(e)!r}")
         raise HTTPException(
@@ -282,17 +323,7 @@ async def get_issues(
             )
             data = response["data"]
             issue_node = data["repository"]["issue"]
-            closed_refs = issue_node.get("closedByPullRequestsReferences") or {}
-            closed = closed_refs.get("nodes") or []
-            if len(closed) > 0:
-                i["closed_by"] = [
-                    {
-                        "number": linked["number"],
-                        "title": linked["title"],
-                        "url": linked["url"],
-                    }
-                    for linked in closed
-                ]
+            apply_graphql_links(i, issue_node)
             apply_graphql_hierarchy(i, issue_node)
         except Exception as e:
             logger.exception(
@@ -322,25 +353,11 @@ async def get_issue(
         headers=_GITHUB_BODY_ACCEPT,
     )
     if "pull_request" not in issue:
-        query = """query($owner: String!, $repo: String!, $issue: Int!) {
-            repository(owner: $owner, name: $repo, followRenames: true) {
-                issue(number: $issue) {
-                    closedByPullRequestsReferences(first: 100, includeClosedPrs: true) {
-                        nodes {
-                            number
-                            title
-                            url
-                        }
-                    }
-                }
-            }
-        }
-        """
         try:
             response = gitctx.post(
                 "/graphql",
                 data={
-                    "query": query,
+                    "query": ISSUE_HIERARCHY_GRAPHQL,
                     "variables": {
                         "owner": gitctx.owner,
                         "repo": gitctx.repo,
@@ -350,19 +367,10 @@ async def get_issue(
             )
             data = response["data"]
             issue_node = data["repository"]["issue"]
-            closed = issue_node["closedByPullRequestsReferences"]["nodes"]
-            if len(closed) > 0:
-                issue["closed_by"] = [
-                    {
-                        "number": linked["number"],
-                        "title": linked["title"],
-                        "url": linked["url"],
-                    }
-                    for linked in closed
-                ]
+            apply_graphql_links(issue, issue_node)
         except Exception as e:
             logger.exception(
-                f"Error finding linked PRs for issue {issue['number']}: {e!r}"
+                f"Error finding linked PRs/dependencies for issue {issue['number']}: {e!r}"
             )
     return issue
 
@@ -878,6 +886,184 @@ async def adopt_parent_milestone(
         "from_milestone": from_milestone,
         "to_milestone": to_milestone,
         "updated_issue_numbers": updated,
+    }
+
+
+# """Issue dependencies (blocked by / blocking)"""
+
+
+class AddDependency(BaseModel):
+    issue_number: int = Field(title="Related Issue Number")
+
+
+def _dependency_link_payload(issue: dict) -> dict:
+    """Normalize a GitHub REST issue into the Planning dependency shape.
+
+    Generated-by: Cursor
+    """
+    state = issue.get("state") or ""
+    if isinstance(state, str):
+        state = state.upper()
+    return {
+        "id": issue["id"],
+        "number": issue["number"],
+        "title": issue.get("title"),
+        "url": issue.get("html_url") or issue.get("url"),
+        "state": state,
+    }
+
+
+def _get_issue_for_dependency(gitctx: Connector, issue_number: int) -> dict:
+    """Fetch an issue and reject pull requests / missing targets.
+
+    Generated-by: Cursor
+    """
+    try:
+        issue = gitctx.get(f"/repos/{context.github_repo}/issues/{issue_number}")
+    except requests.HTTPError as exc:
+        status = getattr(exc.response, "status_code", None)
+        if status == 404:
+            raise HTTPException(
+                status_code=404, detail=f"Issue #{issue_number} not found"
+            ) from exc
+        raise
+    if "pull_request" in issue:
+        raise HTTPException(
+            status_code=422,
+            detail=f"#{issue_number} is a pull request; dependencies require issues",
+        )
+    return issue
+
+
+def _dependency_already_exists(exc: requests.HTTPError) -> bool:
+    """True when GitHub rejects a duplicate blocked-by edge.
+
+    Generated-by: Cursor
+    """
+    if exc.response is None or exc.response.status_code != 422:
+        return False
+    detail = _github_http_error_detail(exc).lower()
+    return "already been taken" in detail or "already exists" in detail
+
+
+def _post_blocked_by_dependency(
+    gitctx: Connector, blocked_issue_number: int, blocking_issue_id: int
+) -> dict:
+    """POST a blocked-by edge; return GitHub's body (possibly empty).
+
+    Generated-by: Cursor
+    """
+    try:
+        return gitctx.post(
+            f"/repos/{context.github_repo}/issues/{blocked_issue_number}/"
+            "dependencies/blocked_by",
+            data={"issue_id": blocking_issue_id},
+        )
+    except requests.HTTPError as exc:
+        if _dependency_already_exists(exc):
+            return {}
+        _raise_github_http_error(exc)
+
+
+@api_router.post("/issues/{issue_number}/dependencies/blocked_by")
+async def add_blocked_by(
+    gitctx: Annotated[Connector, Depends(connection)],
+    issue_number: Annotated[int, Path(title="Issue")],
+    body: Annotated[AddDependency, Body(title="Dependency")],
+):
+    """Mark this issue as blocked by another issue.
+
+    Generated-by: Cursor
+    """
+    if body.issue_number == issue_number:
+        raise HTTPException(
+            status_code=422, detail="An issue cannot be blocked by itself"
+        )
+    _get_issue_for_dependency(gitctx, issue_number)
+    blocker = _get_issue_for_dependency(gitctx, body.issue_number)
+    linked = _post_blocked_by_dependency(gitctx, issue_number, blocker["id"])
+    return {
+        "issue_number": issue_number,
+        "relationship": "blocked_by",
+        "linked_issue": _dependency_link_payload(linked or blocker),
+    }
+
+
+@api_router.delete(
+    "/issues/{issue_number}/dependencies/blocked_by/{blocking_issue_number}"
+)
+async def remove_blocked_by(
+    gitctx: Annotated[Connector, Depends(connection)],
+    issue_number: Annotated[int, Path(title="Issue")],
+    blocking_issue_number: Annotated[int, Path(title="Blocking Issue Number")],
+):
+    """Remove a blocked-by dependency from this issue.
+
+    Generated-by: Cursor
+    """
+    blocker = _get_issue_for_dependency(gitctx, blocking_issue_number)
+    try:
+        gitctx.delete(
+            f"/repos/{context.github_repo}/issues/{issue_number}/dependencies/"
+            f"blocked_by/{blocker['id']}"
+        )
+    except requests.HTTPError as exc:
+        _raise_github_http_error(exc)
+    return {
+        "issue_number": issue_number,
+        "relationship": "blocked_by",
+        "blocking_issue_number": blocking_issue_number,
+        "message": "blocked_by removed",
+    }
+
+
+@api_router.post("/issues/{issue_number}/dependencies/blocking")
+async def add_blocking(
+    gitctx: Annotated[Connector, Depends(connection)],
+    issue_number: Annotated[int, Path(title="Issue")],
+    body: Annotated[AddDependency, Body(title="Dependency")],
+):
+    """Mark this issue as blocking another issue.
+
+    Generated-by: Cursor
+    """
+    if body.issue_number == issue_number:
+        raise HTTPException(status_code=422, detail="An issue cannot block itself")
+    current = _get_issue_for_dependency(gitctx, issue_number)
+    blocked = _get_issue_for_dependency(gitctx, body.issue_number)
+    _post_blocked_by_dependency(gitctx, body.issue_number, current["id"])
+    return {
+        "issue_number": issue_number,
+        "relationship": "blocking",
+        "linked_issue": _dependency_link_payload(blocked),
+    }
+
+
+@api_router.delete(
+    "/issues/{issue_number}/dependencies/blocking/{blocked_issue_number}"
+)
+async def remove_blocking(
+    gitctx: Annotated[Connector, Depends(connection)],
+    issue_number: Annotated[int, Path(title="Issue")],
+    blocked_issue_number: Annotated[int, Path(title="Blocked Issue Number")],
+):
+    """Stop this issue from blocking another issue.
+
+    Generated-by: Cursor
+    """
+    current = _get_issue_for_dependency(gitctx, issue_number)
+    try:
+        gitctx.delete(
+            f"/repos/{context.github_repo}/issues/{blocked_issue_number}/dependencies/"
+            f"blocked_by/{current['id']}"
+        )
+    except requests.HTTPError as exc:
+        _raise_github_http_error(exc)
+    return {
+        "issue_number": issue_number,
+        "relationship": "blocking",
+        "blocked_issue_number": blocked_issue_number,
+        "message": "blocking removed",
     }
 
 

@@ -148,6 +148,51 @@ def apply_graphql_hierarchy(issue: dict, issue_node: dict | None) -> None:
         }
 
 
+def _dependency_nodes(connection: dict | None) -> list[dict]:
+    """Map GraphQL blockedBy/blocking connection nodes to API payloads.
+
+    Generated-by: Cursor
+    """
+    nodes = (connection or {}).get("nodes") or []
+    return [
+        {
+            "id": linked.get("databaseId"),
+            "number": linked["number"],
+            "title": linked.get("title"),
+            "url": linked.get("url"),
+            "state": linked.get("state"),
+        }
+        for linked in nodes
+        if linked.get("number") is not None
+    ]
+
+
+def apply_graphql_links(issue: dict, issue_node: dict | None) -> None:
+    """Attach closed-by PRs and blocked-by / blocking issue links from GraphQL.
+
+    Generated-by: Cursor
+    """
+    if not issue_node:
+        return
+    closed_refs = issue_node.get("closedByPullRequestsReferences") or {}
+    closed = closed_refs.get("nodes") or []
+    if closed:
+        issue["closed_by"] = [
+            {
+                "number": linked["number"],
+                "title": linked.get("title"),
+                "url": linked.get("url"),
+            }
+            for linked in closed
+        ]
+    blocked_by = _dependency_nodes(issue_node.get("blockedBy"))
+    if blocked_by:
+        issue["blocked_by"] = blocked_by
+    blocking = _dependency_nodes(issue_node.get("blocking"))
+    if blocking:
+        issue["blocking"] = blocking
+
+
 ISSUE_HIERARCHY_GRAPHQL = """
 query($owner: String!, $repo: String!, $issue: Int!) {
     repository(owner: $owner, name: $repo, followRenames: true) {
@@ -157,6 +202,24 @@ query($owner: String!, $repo: String!, $issue: Int!) {
                     number
                     title
                     url
+                }
+            }
+            blockedBy(first: 50) {
+                nodes {
+                    databaseId
+                    number
+                    title
+                    url
+                    state
+                }
+            }
+            blocking(first: 50) {
+                nodes {
+                    databaseId
+                    number
+                    title
+                    url
+                    state
                 }
             }
             parent {

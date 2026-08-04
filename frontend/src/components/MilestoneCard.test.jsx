@@ -209,6 +209,9 @@ describe('MilestoneCard', () => {
     const prToggle = screen.getByRole('button', { name: /show 1 pr/i });
     expect(prToggle).toBeInTheDocument();
     expect(prToggle).toHaveAttribute('aria-expanded', 'false');
+    expect(
+      screen.getByRole('columnheader', { name: 'Links' })
+    ).toBeInTheDocument();
 
     await user.click(prToggle);
 

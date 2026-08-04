@@ -40,7 +40,7 @@ const itemTableHeader = (includeType) => (
       <th style={thStyle}>Number</th>
       {includeType && <th style={thStyle}>Type</th>}
       <th style={thStyle}>Author</th>
-      <th style={thStyle}>PR</th>
+      <th style={thStyle}>Links</th>
       <th style={thStyle}>Milestone</th>
       <th style={thStyle}>Labels</th>
       <th style={thStyle}>Title</th>

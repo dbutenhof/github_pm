@@ -1,6 +1,32 @@
 // Generated-by: Cursor
 const API_BASE = '/api/v1';
 
+const readErrorDetail = async (response) => {
+  try {
+    const body = await response.json();
+    if (typeof body?.detail === 'string' && body.detail.trim()) {
+      return body.detail;
+    }
+    if (body?.detail != null) {
+      return JSON.stringify(body.detail);
+    }
+    if (typeof body?.message === 'string' && body.message.trim()) {
+      return body.message;
+    }
+  } catch {
+    // Ignore non-JSON error bodies.
+  }
+  return response.statusText || `HTTP ${response.status}`;
+};
+
+const raiseForResponse = async (response, fallback) => {
+  if (response.ok) {
+    return;
+  }
+  const detail = await readErrorDetail(response);
+  throw new Error(`${fallback}: ${detail}`);
+};
+
 export const fetchMilestones = async () => {
   const response = await fetch(`${API_BASE}/milestones`);
   if (!response.ok) {
@@ -269,6 +295,58 @@ export const adoptParentMilestone = async (issueNumber) => {
   if (!response.ok) {
     throw new Error(`Failed to adopt parent milestone: ${response.statusText}`);
   }
+  return response.json();
+};
+
+export const addBlockedBy = async (issueNumber, relatedIssueNumber) => {
+  const response = await fetch(
+    `${API_BASE}/issues/${issueNumber}/dependencies/blocked_by`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ issue_number: relatedIssueNumber }),
+    }
+  );
+  await raiseForResponse(response, 'Failed to add blocked-by link');
+  return response.json();
+};
+
+export const removeBlockedBy = async (issueNumber, blockingIssueNumber) => {
+  const response = await fetch(
+    `${API_BASE}/issues/${issueNumber}/dependencies/blocked_by/${blockingIssueNumber}`,
+    {
+      method: 'DELETE',
+    }
+  );
+  await raiseForResponse(response, 'Failed to remove blocked-by link');
+  return response.json();
+};
+
+export const addBlocking = async (issueNumber, relatedIssueNumber) => {
+  const response = await fetch(
+    `${API_BASE}/issues/${issueNumber}/dependencies/blocking`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ issue_number: relatedIssueNumber }),
+    }
+  );
+  await raiseForResponse(response, 'Failed to add blocking link');
+  return response.json();
+};
+
+export const removeBlocking = async (issueNumber, blockedIssueNumber) => {
+  const response = await fetch(
+    `${API_BASE}/issues/${issueNumber}/dependencies/blocking/${blockedIssueNumber}`,
+    {
+      method: 'DELETE',
+    }
+  );
+  await raiseForResponse(response, 'Failed to remove blocking link');
   return response.json();
 };
 

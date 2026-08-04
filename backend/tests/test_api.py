@@ -11,8 +11,11 @@ import pytest
 import requests
 
 from github_pm.api import (
+    add_blocked_by,
+    add_blocking,
     add_label_to_issue,
     add_milestone_to_issue,
+    AddDependency,
     adopt_parent_milestone,
     api_router,
     clear_issue_parent,
@@ -37,6 +40,8 @@ from github_pm.api import (
     get_labels,
     get_milestones,
     get_project,
+    remove_blocked_by,
+    remove_blocking,
     remove_label_from_issue,
     remove_milestone_from_issue,
     render_markdown,
@@ -348,6 +353,67 @@ class TestGetIssues:
             )
             assert result["issues"][0]["closed_by"][1]["number"] == 456
             mock_gitctx.post.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_get_issues_with_dependencies(self):
+        """Test getting issues with blocked_by / blocking from GraphQL."""
+        mock_issues = [
+            {
+                "id": 1,
+                "number": 1,
+                "title": "Issue 1",
+                "labels": [],
+            }
+        ]
+
+        mock_gitctx = Mock(spec=Connector)
+        mock_gitctx.get_paged = Mock(return_value=mock_issues)
+        mock_gitctx.post = Mock(
+            return_value={
+                "data": {
+                    "repository": {
+                        "issue": {
+                            "closedByPullRequestsReferences": {"nodes": []},
+                            "blockedBy": {
+                                "nodes": [
+                                    {
+                                        "databaseId": 17,
+                                        "number": 17,
+                                        "title": "Blocker",
+                                        "url": "https://github.com/test/repo/issues/17",
+                                        "state": "OPEN",
+                                    }
+                                ]
+                            },
+                            "blocking": {
+                                "nodes": [
+                                    {
+                                        "databaseId": 88,
+                                        "number": 88,
+                                        "title": "Waiting",
+                                        "url": "https://github.com/test/repo/issues/88",
+                                        "state": "OPEN",
+                                    }
+                                ]
+                            },
+                        }
+                    }
+                }
+            }
+        )
+        mock_gitctx.owner = "test"
+        mock_gitctx.repo = "repo"
+
+        with patch("github_pm.api.context") as mock_context:
+            mock_context.github_repo = "test/repo"
+            result = await get_issues(mock_gitctx, milestone_number=1)
+
+        assert len(result["issues"]) == 1
+        issue = result["issues"][0]
+        assert issue["blocked_by"][0]["number"] == 17
+        assert issue["blocked_by"][0]["id"] == 17
+        assert issue["blocking"][0]["number"] == 88
+        assert "closed_by" not in issue
 
     @pytest.mark.asyncio
     async def test_get_issues_with_no_milestone(self):
@@ -1116,6 +1182,175 @@ class TestClearIssueParent:
         with pytest.raises(HTTPException) as exc:
             await clear_issue_parent(mock_gitctx, 20)
         assert exc.value.status_code == 404
+
+
+class TestIssueDependencies:
+    """Test blocked_by / blocking dependency endpoints."""
+
+    @pytest.mark.asyncio
+    async def test_add_blocked_by(self):
+        mock_gitctx = Mock(spec=Connector)
+        mock_gitctx.get = Mock(
+            side_effect=[
+                {"id": 1, "number": 1, "title": "Blocked"},
+                {
+                    "id": 17,
+                    "number": 17,
+                    "title": "Blocker",
+                    "html_url": "https://github.com/test/repo/issues/17",
+                    "state": "open",
+                },
+            ]
+        )
+        mock_gitctx.post = Mock(
+            return_value={
+                "id": 17,
+                "number": 17,
+                "title": "Blocker",
+                "html_url": "https://github.com/test/repo/issues/17",
+                "state": "open",
+            }
+        )
+
+        with patch("github_pm.api.context") as mock_context:
+            mock_context.github_repo = "test/repo"
+            result = await add_blocked_by(
+                mock_gitctx, 1, AddDependency(issue_number=17)
+            )
+
+        assert result["relationship"] == "blocked_by"
+        assert result["linked_issue"]["number"] == 17
+        assert result["linked_issue"]["state"] == "OPEN"
+        mock_gitctx.post.assert_called_once_with(
+            "/repos/test/repo/issues/1/dependencies/blocked_by",
+            data={"issue_id": 17},
+        )
+
+    @pytest.mark.asyncio
+    async def test_add_blocked_by_idempotent_when_already_linked(self):
+        mock_gitctx = Mock(spec=Connector)
+        mock_gitctx.get = Mock(
+            side_effect=[
+                {"id": 1, "number": 1, "title": "Blocked"},
+                {
+                    "id": 17,
+                    "number": 17,
+                    "title": "Blocker",
+                    "html_url": "https://github.com/test/repo/issues/17",
+                    "state": "open",
+                },
+            ]
+        )
+        response = Mock()
+        response.status_code = 422
+        response.json.return_value = {
+            "message": (
+                "An error occurred while adding the blocking issue to the issue. "
+                "Validation failed: Target issue has already been taken"
+            )
+        }
+        response.text = "Validation failed"
+        mock_gitctx.post = Mock(side_effect=requests.HTTPError(response=response))
+
+        with patch("github_pm.api.context") as mock_context:
+            mock_context.github_repo = "test/repo"
+            result = await add_blocked_by(
+                mock_gitctx, 1, AddDependency(issue_number=17)
+            )
+
+        assert result["linked_issue"]["number"] == 17
+        assert result["relationship"] == "blocked_by"
+
+    @pytest.mark.asyncio
+    async def test_add_blocked_by_rejects_self(self):
+        mock_gitctx = Mock(spec=Connector)
+        with pytest.raises(HTTPException) as exc:
+            await add_blocked_by(mock_gitctx, 5, AddDependency(issue_number=5))
+        assert exc.value.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_add_blocked_by_rejects_pull_request(self):
+        mock_gitctx = Mock(spec=Connector)
+        mock_gitctx.get = Mock(
+            side_effect=[
+                {"id": 1, "number": 1, "title": "Issue"},
+                {"id": 9, "number": 9, "title": "PR", "pull_request": {}},
+            ]
+        )
+        with patch("github_pm.api.context") as mock_context:
+            mock_context.github_repo = "test/repo"
+            with pytest.raises(HTTPException) as exc:
+                await add_blocked_by(mock_gitctx, 1, AddDependency(issue_number=9))
+        assert exc.value.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_remove_blocked_by(self):
+        mock_gitctx = Mock(spec=Connector)
+        mock_gitctx.get = Mock(
+            return_value={"id": 17, "number": 17, "title": "Blocker"}
+        )
+        mock_gitctx.delete = Mock(return_value={})
+
+        with patch("github_pm.api.context") as mock_context:
+            mock_context.github_repo = "test/repo"
+            result = await remove_blocked_by(mock_gitctx, 1, 17)
+
+        assert result["blocking_issue_number"] == 17
+        mock_gitctx.delete.assert_called_once_with(
+            "/repos/test/repo/issues/1/dependencies/blocked_by/17"
+        )
+
+    @pytest.mark.asyncio
+    async def test_add_blocking(self):
+        mock_gitctx = Mock(spec=Connector)
+        mock_gitctx.get = Mock(
+            side_effect=[
+                {"id": 1, "number": 1, "title": "Blocker"},
+                {
+                    "id": 88,
+                    "number": 88,
+                    "title": "Waiting",
+                    "html_url": "https://github.com/test/repo/issues/88",
+                    "state": "open",
+                },
+            ]
+        )
+        mock_gitctx.post = Mock(
+            return_value={
+                "id": 1,
+                "number": 1,
+                "title": "Blocker",
+                "html_url": "https://github.com/test/repo/issues/1",
+                "state": "open",
+            }
+        )
+
+        with patch("github_pm.api.context") as mock_context:
+            mock_context.github_repo = "test/repo"
+            result = await add_blocking(mock_gitctx, 1, AddDependency(issue_number=88))
+
+        assert result["relationship"] == "blocking"
+        assert result["linked_issue"]["number"] == 88
+        assert result["linked_issue"]["title"] == "Waiting"
+        mock_gitctx.post.assert_called_once_with(
+            "/repos/test/repo/issues/88/dependencies/blocked_by",
+            data={"issue_id": 1},
+        )
+
+    @pytest.mark.asyncio
+    async def test_remove_blocking(self):
+        mock_gitctx = Mock(spec=Connector)
+        mock_gitctx.get = Mock(return_value={"id": 1, "number": 1, "title": "Blocker"})
+        mock_gitctx.delete = Mock(return_value={})
+
+        with patch("github_pm.api.context") as mock_context:
+            mock_context.github_repo = "test/repo"
+            result = await remove_blocking(mock_gitctx, 1, 88)
+
+        assert result["blocked_issue_number"] == 88
+        mock_gitctx.delete.assert_called_once_with(
+            "/repos/test/repo/issues/88/dependencies/blocked_by/1"
+        )
 
 
 class TestAdoptParentMilestone:
