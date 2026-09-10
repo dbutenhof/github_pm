@@ -36,24 +36,11 @@ describe('MarkdownInputModal', () => {
     expect(screen.getByText('Add Comment')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Submit' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Close with Comment' })
+    ).not.toBeInTheDocument();
     expect(screen.getByText('Edit')).toBeInTheDocument();
     expect(screen.getByText('Preview')).toBeInTheDocument();
-  });
-
-  it('shows Close with Comment when enabled', () => {
-    render(
-      <MarkdownInputModal
-        isOpen
-        onClose={vi.fn()}
-        mode="comment"
-        showCloseWithComment
-        onSubmit={vi.fn()}
-        onCloseWithComment={vi.fn()}
-      />
-    );
-    expect(
-      screen.getByRole('button', { name: 'Close with Comment' })
-    ).toBeInTheDocument();
   });
 
   it('submits comment body', async () => {

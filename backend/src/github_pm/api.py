@@ -3,7 +3,7 @@ from collections.abc import Callable
 from datetime import datetime
 import re
 import time
-from typing import Annotated, Any, AsyncGenerator, NoReturn
+from typing import Annotated, Any, AsyncGenerator, Literal, NoReturn
 from urllib.parse import quote_plus
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query
@@ -475,33 +475,38 @@ async def update_issue_body(
     return updated
 
 
-class CloseWithComment(BaseModel):
-    """Body for closing an issue with an optional comment.
+class CloseIssueRequest(BaseModel):
+    """Body for closing an issue with a reason and optional comment.
 
     Generated-by: Cursor
     """
 
-    body: str = Field(title="Comment Body", min_length=1)
+    reason: Literal["done", "obsolete"] = Field(title="Close Reason", default="done")
+    body: str | None = Field(title="Comment Body", default=None)
 
 
 @api_router.post("/issues/{issue_number}/close-with-comment")
 async def close_issue_with_comment(
     gitctx: Annotated[Connector, Depends(connection)],
     issue_number: Annotated[int, Path(title="Issue")],
-    comment: Annotated[CloseWithComment, Body(title="Comment")],
+    comment: Annotated[CloseIssueRequest, Body(title="Comment")],
 ):
     """Add a comment to an issue and mark it closed.
 
     Generated-by: Cursor
     """
+    resolved_body = (comment.body or "").strip() or (
+        "Obsolete" if comment.reason == "obsolete" else "Done"
+    )
+    state_reason = "not_planned" if comment.reason == "obsolete" else "completed"
     created_comment = gitctx.post(
         f"/repos/{context.github_repo}/issues/{issue_number}/comments",
-        data={"body": comment.body},
+        data={"body": resolved_body},
         headers=_GITHUB_BODY_ACCEPT,
     )
     closed_issue = gitctx.patch(
         f"/repos/{context.github_repo}/issues/{issue_number}",
-        data={"state": "closed"},
+        data={"state": "closed", "state_reason": state_reason},
         headers=_GITHUB_BODY_ACCEPT,
     )
     logger.info("Closed issue #%s with comment", issue_number)
