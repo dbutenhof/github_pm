@@ -20,7 +20,7 @@ from github_pm.api import (
     api_router,
     clear_issue_parent,
     close_issue_with_comment,
-    CloseWithComment,
+    CloseIssueRequest,
     connection,
     Connector,
     create_comment,
@@ -1995,14 +1995,46 @@ class TestCloseIssueWithComment:
         with patch("github_pm.api.context") as mock_context:
             mock_context.github_repo = "test/repo"
             result = await close_issue_with_comment(
-                mock_gitctx, 42, CloseWithComment(body="Done")
+                mock_gitctx, 42, CloseIssueRequest(reason="done", body="Done")
             )
 
         assert result == {"comment": mock_comment, "issue": mock_issue}
-        mock_gitctx.post.assert_called_once()
+        mock_gitctx.post.assert_called_once_with(
+            "/repos/test/repo/issues/42/comments",
+            data={"body": "Done"},
+            headers={"Accept": "application/vnd.github.full+json"},
+        )
         mock_gitctx.patch.assert_called_once_with(
             "/repos/test/repo/issues/42",
-            data={"state": "closed"},
+            data={"state": "closed", "state_reason": "completed"},
+            headers={"Accept": "application/vnd.github.full+json"},
+        )
+
+    @pytest.mark.asyncio
+    async def test_close_with_obsolete_default_comment(self):
+        mock_comment = {"id": 1, "body": "Obsolete"}
+        mock_issue = {"number": 42, "state": "closed"}
+        mock_gitctx = Mock(spec=Connector)
+        mock_gitctx.post = Mock(return_value=mock_comment)
+        mock_gitctx.patch = Mock(return_value=mock_issue)
+
+        with patch("github_pm.api.context") as mock_context:
+            mock_context.github_repo = "test/repo"
+            result = await close_issue_with_comment(
+                mock_gitctx,
+                42,
+                CloseIssueRequest(reason="obsolete", body="   "),
+            )
+
+        assert result == {"comment": mock_comment, "issue": mock_issue}
+        mock_gitctx.post.assert_called_once_with(
+            "/repos/test/repo/issues/42/comments",
+            data={"body": "Obsolete"},
+            headers={"Accept": "application/vnd.github.full+json"},
+        )
+        mock_gitctx.patch.assert_called_once_with(
+            "/repos/test/repo/issues/42",
+            data={"state": "closed", "state_reason": "not_planned"},
             headers={"Accept": "application/vnd.github.full+json"},
         )
 

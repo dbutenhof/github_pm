@@ -39,6 +39,9 @@ describe('IssueCard', () => {
     api.fetchLabels.mockResolvedValue([]);
     // Mock fetchAssignees to return an empty array by default
     api.fetchAssignees.mockResolvedValue([]);
+    api.renderMarkdown.mockResolvedValue({
+      html: '<p><strong>Previewed close note</strong></p>',
+    });
     // Clear assignees cache before each test
     assigneesCache.data = [];
     assigneesCache.loading = false;
@@ -762,8 +765,88 @@ describe('IssueCard', () => {
     await user.click(screen.getByRole('button', { name: 'Add Comment' }));
     expect(screen.getByText('Comment on #459')).toBeInTheDocument();
     expect(
-      screen.getByRole('button', { name: 'Close with Comment' })
-    ).toBeInTheDocument();
+      screen.queryByRole('button', { name: 'Close with Comment' })
+    ).not.toBeInTheDocument();
+  });
+
+  it('opens close menu and closes issue with selected reason', async () => {
+    const user = userEvent.setup();
+    const onIssueClosed = vi.fn();
+    const onIssueUpdate = vi.fn();
+    api.closeIssue.mockResolvedValue({
+      comment: { id: 1, body: 'Obsolete' },
+      issue: { ...mockIssue, state: 'closed' },
+    });
+
+    await act(async () => {
+      render(
+        <table>
+          <tbody>
+            <IssueCard
+              issue={mockIssue}
+              onIssueClosed={onIssueClosed}
+              onIssueUpdate={onIssueUpdate}
+            />
+          </tbody>
+        </table>
+      );
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Close issue #459' }));
+    expect(screen.getByLabelText('Done')).toBeChecked();
+    expect(screen.getByLabelText('Obsolete')).not.toBeChecked();
+    expect(screen.getByText('Edit')).toBeInTheDocument();
+    expect(screen.getByText('Preview')).toBeInTheDocument();
+
+    await user.click(screen.getByLabelText('Obsolete'));
+    await user.type(
+      screen.getByLabelText('Closing comment'),
+      'No longer needed'
+    );
+    await user.click(screen.getByText('Preview'));
+
+    await waitFor(() => {
+      expect(api.renderMarkdown).toHaveBeenCalledWith('No longer needed');
+      expect(screen.getByText('Previewed close note')).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByText('Edit'));
+    await user.click(screen.getByRole('button', { name: 'Proceed' }));
+
+    await waitFor(() => {
+      expect(api.closeIssue).toHaveBeenCalledWith(459, {
+        reason: 'obsolete',
+        body: 'No longer needed',
+      });
+      expect(onIssueUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({ state: 'closed' })
+      );
+      expect(onIssueClosed).toHaveBeenCalledWith({ issueNumber: 459 });
+    });
+  });
+
+  it('cancels close menu without calling the API', async () => {
+    const user = userEvent.setup();
+    await act(async () => {
+      render(
+        <table>
+          <tbody>
+            <IssueCard issue={mockIssue} />
+          </tbody>
+        </table>
+      );
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Close issue #459' }));
+    expect(screen.getByLabelText('Closing comment')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByLabelText('Closing comment')
+      ).not.toBeInTheDocument();
+    });
+    expect(api.closeIssue).not.toHaveBeenCalled();
   });
 
   it('loads existing comments when adding a comment before expanding', async () => {

@@ -26,7 +26,7 @@ const ISSUE_TYPES = ['Bug', 'Feature'];
  * Popup input window with Edit / Preview markdown tabs.
  *
  * Modes:
- * - comment: body only; actions Submit + optional Close with Comment + Cancel
+ * - comment: body only; actions Submit + Cancel
  * - issue: title, type, labels, assignees + body; action Submit + Cancel
  *
  * Generated-by: Cursor
@@ -39,8 +39,6 @@ const MarkdownInputModal = ({
   title = 'Add Comment',
   submitLabel = 'Submit',
   onSubmit,
-  showCloseWithComment = false,
-  onCloseWithComment,
   initialBody = '',
   bodyRequired,
   bodyLabel,
@@ -185,23 +183,6 @@ const MarkdownInputModal = ({
     }
   };
 
-  const handleCloseWithComment = async () => {
-    if (!body.trim()) {
-      setSubmitError('Comment body is required');
-      return;
-    }
-    setIsSubmitting(true);
-    setSubmitError(null);
-    try {
-      await onCloseWithComment?.(body);
-      onClose?.();
-    } catch (err) {
-      setSubmitError(err.message || 'Close with comment failed');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
   const toggleLabel = (name, checked) => {
     setSelectedLabels((prev) =>
       checked ? [...prev, name] : prev.filter((n) => n !== name)
@@ -228,20 +209,6 @@ const MarkdownInputModal = ({
       {submitLabel}
     </Button>,
   ];
-
-  if (showCloseWithComment && mode === 'comment') {
-    actions.push(
-      <Button
-        key="close-comment"
-        variant="secondary"
-        onClick={handleCloseWithComment}
-        isLoading={isSubmitting}
-        isDisabled={isSubmitting || !body.trim()}
-      >
-        Close with Comment
-      </Button>
-    );
-  }
 
   actions.push(
     <Button

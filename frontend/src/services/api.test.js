@@ -17,7 +17,7 @@ import {
   addBlocking,
   removeBlocking,
   createComment,
-  closeIssueWithComment,
+  closeIssue,
   renderMarkdown,
   createIssue,
   updateComment,
@@ -371,18 +371,18 @@ describe('api', () => {
       });
     });
 
-    it('closeIssueWithComment POSTs body', async () => {
+    it('closeIssue POSTs reason and body', async () => {
       global.fetch.mockResolvedValue({
         ok: true,
         json: async () => ({ comment: {}, issue: { state: 'closed' } }),
       });
-      await closeIssueWithComment(42, 'Done');
+      await closeIssue(42, { reason: 'done', body: 'Done' });
       expect(global.fetch).toHaveBeenCalledWith(
         '/api/v1/issues/42/close-with-comment',
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ body: 'Done' }),
+          body: JSON.stringify({ reason: 'done', body: 'Done' }),
         }
       );
     });

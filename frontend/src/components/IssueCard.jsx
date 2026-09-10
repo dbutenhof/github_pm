@@ -9,10 +9,14 @@ import {
   Button,
   Checkbox,
   Modal,
+  Tabs,
+  Tab,
+  TabTitleText,
   TextInput,
   TextArea,
   Form,
   FormGroup,
+  Radio,
 } from '@patternfly/react-core';
 import {
   CodeBranchIcon,
@@ -42,8 +46,9 @@ import {
   removeIssueAssignees,
   adoptParentMilestone,
   createComment,
-  closeIssueWithComment,
+  closeIssue,
   createIssue,
+  renderMarkdown,
   updateIssueBody,
   addBlockedBy,
   removeBlockedBy,
@@ -176,6 +181,18 @@ const IssueCard = ({
   const [removingLinkKey, setRemovingLinkKey] = useState(null);
   const linkMenuRef = useRef(null);
   const linkToggleRef = useRef(null);
+  const [isCloseMenuOpen, setIsCloseMenuOpen] = useState(false);
+  const [closeReason, setCloseReason] = useState('done');
+  const [closeComment, setCloseComment] = useState('');
+  const [closeError, setCloseError] = useState(null);
+  const [closeBusy, setCloseBusy] = useState(false);
+  const [closeActiveTab, setCloseActiveTab] = useState(0);
+  const [closePreviewHtml, setClosePreviewHtml] = useState('');
+  const [closePreviewLoading, setClosePreviewLoading] = useState(false);
+  const [closePreviewError, setClosePreviewError] = useState(null);
+  const closeMenuRef = useRef(null);
+  const closeToggleRef = useRef(null);
+  const closePreviewRequestId = useRef(0);
 
   useEffect(() => {
     setDescriptionBody(issue.body || '');
@@ -244,6 +261,26 @@ const IssueCard = ({
   useEffect(() => {
     setCurrentBlocking(issue.blocking || []);
   }, [issue.blocking]);
+
+  useEffect(() => {
+    if (!isCloseMenuOpen || closeActiveTab !== 1) return;
+
+    const requestId = ++closePreviewRequestId.current;
+    setClosePreviewLoading(true);
+    setClosePreviewError(null);
+
+    renderMarkdown(closeComment || '')
+      .then((data) => {
+        if (closePreviewRequestId.current !== requestId) return;
+        setClosePreviewHtml(data.html || '');
+        setClosePreviewLoading(false);
+      })
+      .catch((err) => {
+        if (closePreviewRequestId.current !== requestId) return;
+        setClosePreviewError(err.message);
+        setClosePreviewLoading(false);
+      });
+  }, [isCloseMenuOpen, closeActiveTab, closeComment]);
 
   // Fetch reactions if total_count > 0
   useEffect(() => {
@@ -599,13 +636,23 @@ const IssueCard = ({
         setLinkError(null);
         setLinkIssueNumber('');
       }
+      if (
+        isCloseMenuOpen &&
+        closeToggleRef.current &&
+        !closeToggleRef.current.contains(event.target) &&
+        closeMenuRef.current &&
+        !closeMenuRef.current.contains(event.target)
+      ) {
+        resetCloseMenu();
+      }
     };
 
     if (
       isLabelMenuOpen ||
       isMilestoneMenuOpen ||
       isAssigneesMenuOpen ||
-      isLinkMenuOpen
+      isLinkMenuOpen ||
+      isCloseMenuOpen
     ) {
       document.addEventListener('mousedown', handleClickOutside);
       return () => {
@@ -617,7 +664,9 @@ const IssueCard = ({
     isMilestoneMenuOpen,
     isAssigneesMenuOpen,
     isLinkMenuOpen,
+    isCloseMenuOpen,
     handleApplyAssignees,
+    resetCloseMenu,
   ]);
 
   const notifyLabelsChanged = () => {
@@ -857,9 +906,37 @@ const IssueCard = ({
     );
   };
 
-  const handleCloseWithComment = async (body) => {
-    await closeIssueWithComment(issue.number, body);
-    onIssueClosed?.({ issueNumber: issue.number });
+  function resetCloseMenu() {
+    setIsCloseMenuOpen(false);
+    setCloseReason('done');
+    setCloseComment('');
+    setCloseError(null);
+    setCloseBusy(false);
+    setCloseActiveTab(0);
+    setClosePreviewHtml('');
+    setClosePreviewLoading(false);
+    setClosePreviewError(null);
+  }
+
+  const handleCloseIssue = async () => {
+    setCloseBusy(true);
+    setCloseError(null);
+    try {
+      const result = await closeIssue(issue.number, {
+        reason: closeReason,
+        body: closeComment,
+      });
+      resetCloseMenu();
+      onIssueUpdate?.({
+        ...issue,
+        ...result?.issue,
+      });
+      onIssueClosed?.({ issueNumber: issue.number });
+    } catch (err) {
+      console.error('Failed to close issue:', err);
+      setCloseError(err.message);
+      setCloseBusy(false);
+    }
   };
 
   const handleCreateSubIssue = async (payload) => {
@@ -1260,6 +1337,8 @@ const IssueCard = ({
   const depth = issue.hierarchy_depth || 0;
   const childCount = issue.child_count ?? (issue.children || []).length;
   const indentPx = enableHierarchy ? depth * 16 : 0;
+  const issueState = String(issue.state || 'open').toLowerCase();
+  const isClosableIssue = !issue.pull_request && issueState !== 'closed';
 
   const handleAdoptParentMilestone = async () => {
     try {
@@ -2077,27 +2156,223 @@ const IssueCard = ({
             overflowWrap: 'break-word',
           }}
         >
-          {issue.type && (
-            <Tooltip content={issue.type.description || ''}>
-              <span
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'flex-start',
+              justifyContent: 'space-between',
+              gap: '0.75rem',
+              flexWrap: 'wrap',
+            }}
+          >
+            <div style={{ minWidth: 0, flex: 1 }}>
+              {issue.type && (
+                <Tooltip content={issue.type.description || ''}>
+                  <span
+                    style={{
+                      display: 'inline-block',
+                      marginRight: '0.5rem',
+                      padding: '0.125rem 0.5rem',
+                      fontSize: '0.75rem',
+                      fontWeight: '500',
+                      borderRadius: '0.25rem',
+                      backgroundColor: issue.type.color,
+                      color: getTypeContrastColor(issue.type.color),
+                      whiteSpace: 'nowrap',
+                      cursor: issue.type.description ? 'help' : 'default',
+                    }}
+                  >
+                    {issue.type.name}
+                  </span>
+                </Tooltip>
+              )}
+              <span style={{ fontWeight: '500' }}>{issue.title}</span>
+            </div>
+            {isClosableIssue && (
+              <div
+                ref={closeToggleRef}
                 style={{
-                  display: 'inline-block',
-                  marginRight: '0.5rem',
-                  padding: '0.125rem 0.5rem',
-                  fontSize: '0.75rem',
-                  fontWeight: '500',
-                  borderRadius: '0.25rem',
-                  backgroundColor: issue.type.color,
-                  color: getTypeContrastColor(issue.type.color),
-                  whiteSpace: 'nowrap',
-                  cursor: issue.type.description ? 'help' : 'default',
+                  position: 'relative',
+                  display: 'inline-flex',
+                  alignItems: 'flex-start',
                 }}
               >
-                {issue.type.name}
-              </span>
-            </Tooltip>
-          )}
-          <span style={{ fontWeight: '500' }}>{issue.title}</span>
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    if (isCloseMenuOpen) {
+                      resetCloseMenu();
+                    } else {
+                      setIsCloseMenuOpen(true);
+                      setCloseReason('done');
+                      setCloseComment('');
+                      setCloseError(null);
+                    }
+                  }}
+                  style={{
+                    padding: '0.25rem 0.75rem',
+                    fontSize: '0.75rem',
+                    fontWeight: '600',
+                  }}
+                  aria-expanded={isCloseMenuOpen}
+                  aria-label={`Close issue #${issue.number}`}
+                >
+                  CLOSE
+                </Button>
+                {isCloseMenuOpen && (
+                  <div
+                    ref={closeMenuRef}
+                    style={{
+                      position: 'absolute',
+                      top: '100%',
+                      right: 0,
+                      marginTop: '0.25rem',
+                      zIndex: 1000,
+                      backgroundColor: '#fff',
+                      border: '1px solid #d2d2d2',
+                      borderRadius: '0.25rem',
+                      boxShadow: '0 0.25rem 0.5rem rgba(0,0,0,0.15)',
+                      padding: '0.75rem',
+                      minWidth: '280px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '0.75rem',
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <Form>
+                      <FormGroup
+                        label="Close reason"
+                        fieldId={`close-reason-${issue.number}`}
+                      >
+                        <div
+                          style={{
+                            display: 'flex',
+                            gap: '1rem',
+                            flexWrap: 'wrap',
+                          }}
+                        >
+                          <Radio
+                            id={`close-reason-done-${issue.number}`}
+                            name={`close-reason-${issue.number}`}
+                            label="Done"
+                            isChecked={closeReason === 'done'}
+                            onChange={() => setCloseReason('done')}
+                          />
+                          <Radio
+                            id={`close-reason-obsolete-${issue.number}`}
+                            name={`close-reason-${issue.number}`}
+                            label="Obsolete"
+                            isChecked={closeReason === 'obsolete'}
+                            onChange={() => setCloseReason('obsolete')}
+                          />
+                        </div>
+                      </FormGroup>
+                      <FormGroup
+                        label="Closing comment"
+                        fieldId={`close-comment-${issue.number}`}
+                      >
+                        <Tabs
+                          activeKey={closeActiveTab}
+                          onSelect={(_event, key) =>
+                            setCloseActiveTab(Number(key))
+                          }
+                          aria-label={`Close comment editor for issue #${issue.number}`}
+                        >
+                          <Tab
+                            eventKey={0}
+                            title={<TabTitleText>Edit</TabTitleText>}
+                          >
+                            <div style={{ paddingTop: '0.75rem' }}>
+                              <TextArea
+                                id={`close-comment-${issue.number}`}
+                                value={closeComment}
+                                onChange={(value) => {
+                                  const stringValue =
+                                    typeof value === 'string'
+                                      ? value
+                                      : value?.target?.value || '';
+                                  setCloseComment(stringValue);
+                                }}
+                                placeholder={`Leave empty to post "${
+                                  closeReason === 'obsolete'
+                                    ? 'Obsolete'
+                                    : 'Done'
+                                }".`}
+                                resizeOrientation="vertical"
+                              />
+                            </div>
+                          </Tab>
+                          <Tab
+                            eventKey={1}
+                            title={<TabTitleText>Preview</TabTitleText>}
+                          >
+                            <div style={{ paddingTop: '0.75rem' }}>
+                              {closePreviewLoading && (
+                                <div
+                                  style={{
+                                    textAlign: 'center',
+                                    padding: '1rem',
+                                  }}
+                                >
+                                  <Spinner size="md" />
+                                </div>
+                              )}
+                              {closePreviewError && (
+                                <Alert
+                                  variant="danger"
+                                  title="Error rendering preview"
+                                  isInline
+                                >
+                                  {closePreviewError}
+                                </Alert>
+                              )}
+                              {!closePreviewLoading && !closePreviewError && (
+                                <div
+                                  className="markdown-body"
+                                  dangerouslySetInnerHTML={{
+                                    __html:
+                                      closePreviewHtml ||
+                                      '<p><em>No comment preview.</em></p>',
+                                  }}
+                                />
+                              )}
+                            </div>
+                          </Tab>
+                        </Tabs>
+                      </FormGroup>
+                    </Form>
+                    {closeError && (
+                      <Alert variant="danger" title={closeError} isInline />
+                    )}
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'flex-end',
+                        gap: '0.5rem',
+                      }}
+                    >
+                      <Button
+                        variant="link"
+                        onClick={resetCloseMenu}
+                        isDisabled={closeBusy}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        variant="primary"
+                        onClick={handleCloseIssue}
+                        isLoading={closeBusy}
+                        isDisabled={closeBusy}
+                      >
+                        Proceed
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </td>
       </tr>
 
@@ -2232,9 +2507,7 @@ const IssueCard = ({
         mode="comment"
         title={`Comment on #${issue.number}`}
         submitLabel="Submit"
-        showCloseWithComment
         onSubmit={handleAddComment}
-        onCloseWithComment={handleCloseWithComment}
       />
       <MarkdownInputModal
         isOpen={isEditDescriptionOpen}

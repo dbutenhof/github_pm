@@ -98,7 +98,7 @@ export const updateIssueBody = async (issueNumber, body) => {
   return response.json();
 };
 
-export const closeIssueWithComment = async (issueNumber, body) => {
+export const closeIssue = async (issueNumber, { reason, body }) => {
   const response = await fetch(
     `${API_BASE}/issues/${issueNumber}/close-with-comment`,
     {
@@ -106,13 +106,11 @@ export const closeIssueWithComment = async (issueNumber, body) => {
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ body }),
+      body: JSON.stringify({ reason, body }),
     }
   );
   if (!response.ok) {
-    throw new Error(
-      `Failed to close issue with comment: ${response.statusText}`
-    );
+    throw new Error(`Failed to close issue: ${response.statusText}`);
   }
   return response.json();
 };

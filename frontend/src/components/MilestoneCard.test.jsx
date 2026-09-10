@@ -511,6 +511,38 @@ describe('MilestoneCard', () => {
     expect(api.fetchIssues.mock.calls.length).toBe(fetchCountAfterLoad);
   });
 
+  it('removes a closed issue from the milestone view immediately', async () => {
+    const user = userEvent.setup();
+    api.fetchIssues.mockResolvedValue({
+      issues: [mockIssue],
+      pull_requests: [],
+    });
+    api.closeIssue.mockResolvedValue({
+      comment: { id: 1, body: 'Done' },
+      issue: { ...mockIssue, state: 'closed' },
+    });
+
+    await act(async () => {
+      render(<MilestoneCard milestone={mockMilestone} />);
+    });
+
+    await user.click(screen.getByRole('button', { name: /show issues/i }));
+    await waitFor(() => {
+      expect(screen.getByText(/Test Issue/)).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Close issue #459' }));
+    await user.click(screen.getByRole('button', { name: 'Proceed' }));
+
+    await waitFor(() => {
+      expect(api.closeIssue).toHaveBeenCalledWith(459, {
+        reason: 'done',
+        body: '',
+      });
+      expect(screen.queryByText(/Test Issue/)).not.toBeInTheDocument();
+    });
+  });
+
   it('does not duplicate an issue when a stale cross-milestone relink action re-applies', async () => {
     const user = userEvent.setup();
     const parent = {
