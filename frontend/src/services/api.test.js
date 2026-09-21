@@ -22,6 +22,7 @@ import {
   createIssue,
   updateComment,
   updateIssueBody,
+  updateIssueTitle,
 } from './api';
 
 describe('api', () => {
@@ -368,6 +369,19 @@ describe('api', () => {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ body: 'New desc' }),
+      });
+    });
+
+    it('updateIssueTitle PATCHes title', async () => {
+      global.fetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({ number: 42, title: 'New title' }),
+      });
+      await updateIssueTitle(42, 'New title');
+      expect(global.fetch).toHaveBeenCalledWith('/api/v1/issues/42/title', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: 'New title' }),
       });
     });
 
