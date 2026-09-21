@@ -756,6 +756,80 @@ describe('IssueCard', () => {
     });
   });
 
+  it('opens inline title editor on double click', async () => {
+    const user = userEvent.setup();
+
+    await act(async () => {
+      render(<IssueCard issue={mockIssue} />);
+    });
+
+    await user.dblClick(screen.getByText(mockIssue.title));
+
+    expect(
+      screen.getByRole('textbox', { name: 'Edit title for issue #459' })
+    ).toHaveValue(mockIssue.title);
+    expect(screen.getByRole('button', { name: 'OK' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
+  });
+
+  it('updates issue title on OK', async () => {
+    const user = userEvent.setup();
+    const onIssueUpdate = vi.fn();
+    api.updateIssueTitle.mockResolvedValue({
+      ...mockIssue,
+      title: 'Updated issue title',
+    });
+
+    await act(async () => {
+      render(<IssueCard issue={mockIssue} onIssueUpdate={onIssueUpdate} />);
+    });
+
+    await user.dblClick(screen.getByText(mockIssue.title));
+    const input = screen.getByRole('textbox', {
+      name: 'Edit title for issue #459',
+    });
+    await user.clear(input);
+    await user.type(input, 'Updated issue title');
+    await user.click(screen.getByRole('button', { name: 'OK' }));
+
+    await waitFor(() => {
+      expect(api.updateIssueTitle).toHaveBeenCalledWith(
+        459,
+        'Updated issue title'
+      );
+      expect(onIssueUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Updated issue title',
+        })
+      );
+      expect(screen.getByText('Updated issue title')).toBeInTheDocument();
+    });
+  });
+
+  it('cancels inline title editing without updating', async () => {
+    const user = userEvent.setup();
+
+    await act(async () => {
+      render(<IssueCard issue={mockIssue} />);
+    });
+
+    await user.dblClick(screen.getByText(mockIssue.title));
+    const input = screen.getByRole('textbox', {
+      name: 'Edit title for issue #459',
+    });
+    await user.clear(input);
+    await user.type(input, 'Discarded title');
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole('textbox', { name: 'Edit title for issue #459' })
+      ).not.toBeInTheDocument();
+    });
+    expect(api.updateIssueTitle).not.toHaveBeenCalled();
+    expect(screen.getByText(mockIssue.title)).toBeInTheDocument();
+  });
+
   it('opens comment modal from Add Comment', async () => {
     const user = userEvent.setup();
     await act(async () => {

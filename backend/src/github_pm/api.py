@@ -475,6 +475,34 @@ async def update_issue_body(
     return updated
 
 
+class UpdateIssueTitle(BaseModel):
+    """Body for updating an issue title.
+
+    Assisted-by: openai-code-assist
+    """
+
+    title: str = Field(title="Issue Title", min_length=1)
+
+
+@api_router.patch("/issues/{issue_number}/title")
+async def update_issue_title(
+    gitctx: Annotated[Connector, Depends(connection)],
+    issue_number: Annotated[int, Path(title="Issue")],
+    payload: Annotated[UpdateIssueTitle, Body(title="Issue Title")],
+):
+    """Update an issue's title.
+
+    Assisted-by: openai-code-assist
+    """
+    updated = gitctx.patch(
+        f"/repos/{context.github_repo}/issues/{issue_number}",
+        data={"title": payload.title},
+        headers=_GITHUB_BODY_ACCEPT,
+    )
+    logger.info("Updated title for issue #%s", issue_number)
+    return updated
+
+
 class CloseIssueRequest(BaseModel):
     """Body for closing an issue with a reason and optional comment.
 

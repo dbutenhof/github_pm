@@ -50,6 +50,7 @@ import {
   createIssue,
   renderMarkdown,
   updateIssueBody,
+  updateIssueTitle,
   addBlockedBy,
   removeBlockedBy,
   addBlocking,
@@ -165,6 +166,10 @@ const IssueCard = ({
   const assigneesToggleRef = useRef(null);
   const [isCommentModalOpen, setIsCommentModalOpen] = useState(false);
   const [isEditDescriptionOpen, setIsEditDescriptionOpen] = useState(false);
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState(issue.title || '');
+  const [titleError, setTitleError] = useState(null);
+  const [titleBusy, setTitleBusy] = useState(false);
   const [isCreateSubIssueOpen, setIsCreateSubIssueOpen] = useState(false);
   const [commentCount, setCommentCount] = useState(issue.comments || 0);
   const [descriptionBody, setDescriptionBody] = useState(issue.body || '');
@@ -193,11 +198,25 @@ const IssueCard = ({
   const closeMenuRef = useRef(null);
   const closeToggleRef = useRef(null);
   const closePreviewRequestId = useRef(0);
+  const titleInputRef = useRef(null);
 
   useEffect(() => {
     setDescriptionBody(issue.body || '');
     setDescriptionHtml(issue.body_html || '');
   }, [issue.body, issue.body_html, issue.id]);
+
+  useEffect(() => {
+    setTitleDraft(issue.title || '');
+    setIsEditingTitle(false);
+    setTitleError(null);
+    setTitleBusy(false);
+  }, [issue.title, issue.id]);
+
+  useEffect(() => {
+    if (!isEditingTitle || !titleInputRef.current) return;
+    titleInputRef.current.focus();
+    titleInputRef.current.select?.();
+  }, [isEditingTitle]);
 
   useEffect(() => {
     if (
@@ -897,6 +916,50 @@ const IssueCard = ({
         body: updated.body,
         body_html: updated.body_html,
       });
+    }
+  };
+
+  const beginTitleEdit = () => {
+    if (issue.pull_request) return;
+    setTitleDraft(issue.title || '');
+    setTitleError(null);
+    setIsEditingTitle(true);
+  };
+
+  const cancelTitleEdit = () => {
+    setTitleDraft(issue.title || '');
+    setTitleError(null);
+    setTitleBusy(false);
+    setIsEditingTitle(false);
+  };
+
+  const handleUpdateTitle = async () => {
+    const trimmedTitle = String(titleDraft || '').trim();
+    if (!trimmedTitle) {
+      setTitleError('Title is required');
+      return;
+    }
+    if (trimmedTitle === issue.title) {
+      cancelTitleEdit();
+      return;
+    }
+
+    setTitleBusy(true);
+    setTitleError(null);
+    try {
+      const updated = await updateIssueTitle(issue.number, trimmedTitle);
+      setTitleDraft(updated.title || trimmedTitle);
+      setIsEditingTitle(false);
+      if (onIssueUpdate) {
+        onIssueUpdate({
+          ...issue,
+          title: updated.title || trimmedTitle,
+        });
+      }
+    } catch (err) {
+      setTitleError(err.message);
+    } finally {
+      setTitleBusy(false);
     }
   };
 
@@ -2186,7 +2249,109 @@ const IssueCard = ({
                   </span>
                 </Tooltip>
               )}
-              <span style={{ fontWeight: '500' }}>{issue.title}</span>
+              {isEditingTitle ? (
+                <div
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '0.5rem',
+                    maxWidth: '100%',
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <TextInput
+                    ref={titleInputRef}
+                    aria-label={`Edit title for issue #${issue.number}`}
+                    value={titleDraft}
+                    onChange={(value) => {
+                      const stringValue =
+                        typeof value === 'string'
+                          ? value
+                          : value?.target?.value || '';
+                      setTitleDraft(stringValue);
+                      if (titleError) {
+                        setTitleError(null);
+                      }
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault();
+                        handleUpdateTitle();
+                      } else if (event.key === 'Escape') {
+                        event.preventDefault();
+                        cancelTitleEdit();
+                      }
+                    }}
+                    validated={titleError ? 'error' : 'default'}
+                  />
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                      flexWrap: 'wrap',
+                    }}
+                  >
+                    <Button
+                      variant="primary"
+                      onClick={handleUpdateTitle}
+                      isLoading={titleBusy}
+                      isDisabled={titleBusy}
+                    >
+                      OK
+                    </Button>
+                    <Button
+                      variant="link"
+                      onClick={cancelTitleEdit}
+                      isDisabled={titleBusy}
+                    >
+                      Cancel
+                    </Button>
+                    {titleError && (
+                      <span
+                        style={{
+                          color: '#c9190b',
+                          fontSize: '0.875rem',
+                        }}
+                      >
+                        {titleError}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <span
+                  style={{
+                    fontWeight: '500',
+                    cursor: issue.pull_request ? 'default' : 'text',
+                  }}
+                  onDoubleClick={beginTitleEdit}
+                  onKeyDown={(event) => {
+                    if (
+                      issue.pull_request ||
+                      (event.key !== 'Enter' && event.key !== ' ')
+                    ) {
+                      return;
+                    }
+                    event.preventDefault();
+                    beginTitleEdit();
+                  }}
+                  tabIndex={issue.pull_request ? undefined : 0}
+                  role={issue.pull_request ? undefined : 'button'}
+                  aria-label={
+                    issue.pull_request
+                      ? undefined
+                      : `Issue title for #${issue.number}. Double-click or press Enter to edit`
+                  }
+                  title={
+                    issue.pull_request
+                      ? undefined
+                      : 'Double-click to edit title'
+                  }
+                >
+                  {titleDraft || issue.title}
+                </span>
+              )}
             </div>
             {isClosableIssue && (
               <div

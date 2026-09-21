@@ -98,6 +98,20 @@ export const updateIssueBody = async (issueNumber, body) => {
   return response.json();
 };
 
+export const updateIssueTitle = async (issueNumber, title) => {
+  const response = await fetch(`${API_BASE}/issues/${issueNumber}/title`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ title }),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to update issue title: ${response.statusText}`);
+  }
+  return response.json();
+};
+
 export const closeIssue = async (issueNumber, { reason, body }) => {
   const response = await fetch(
     `${API_BASE}/issues/${issueNumber}/close-with-comment`,
