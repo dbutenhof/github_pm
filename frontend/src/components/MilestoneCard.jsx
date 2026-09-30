@@ -10,8 +10,14 @@ import {
   Alert,
   ExpandableSection,
   Button,
+  Modal,
+  Form,
+  FormGroup,
+  TextInput,
+  TextArea,
 } from '@patternfly/react-core';
-import { fetchIssues, createIssue } from '../services/api';
+import { fetchIssues, createIssue, updateMilestone } from '../services/api';
+import milestonesCache from '../utils/milestonesCache';
 import IssueCard from './IssueCard';
 import MarkdownInputModal from './MarkdownInputModal';
 import { usePlanningDnD } from './PlanningDnDContext';
@@ -55,6 +61,7 @@ const MilestoneCard = ({
   onIssueMilestoneMoved,
   onIssueLabelsChanged,
   hierarchyAction,
+  onMilestoneUpdated,
 }) => {
   const [isIssuesExpanded, setIsIssuesExpanded] = useState(false);
   const [isPrsExpanded, setIsPrsExpanded] = useState(false);
@@ -65,9 +72,56 @@ const MilestoneCard = ({
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [expandedHierarchy, setExpandedHierarchy] = useState(() => new Set());
   const [isCreateIssueOpen, setIsCreateIssueOpen] = useState(false);
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [editMilestone, setEditMilestone] = useState({
+    title: '',
+    description: '',
+    due_on: '',
+  });
+  const [editError, setEditError] = useState(null);
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
   const prevMilestoneNumberRef = useRef(milestone.number);
   const lastAppliedHierarchyKeyRef = useRef(null);
   const dnd = usePlanningDnD();
+
+  const openMilestoneEditor = () => {
+    setEditMilestone({
+      title: milestone.title || '',
+      description: milestone.description || '',
+      due_on: milestone.due_on ? milestone.due_on.slice(0, 10) : '',
+    });
+    setEditError(null);
+    setIsEditOpen(true);
+  };
+
+  const saveMilestoneEdit = async () => {
+    const title = editMilestone.title.trim();
+    if (!title) {
+      setEditError('Title is required');
+      return;
+    }
+    setIsSavingEdit(true);
+    setEditError(null);
+    try {
+      const updated = await updateMilestone(milestone.number, {
+        title,
+        description: editMilestone.description.trim() || null,
+        due_on: editMilestone.due_on
+          ? `${editMilestone.due_on}T00:00:00Z`
+          : null,
+      });
+      const nextMilestone = { ...milestone, ...updated };
+      milestonesCache.data = milestonesCache.data.map((item) =>
+        item.number === milestone.number ? nextMilestone : item
+      );
+      onMilestoneUpdated?.(nextMilestone);
+      setIsEditOpen(false);
+    } catch (err) {
+      setEditError(err.message);
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
 
   const applyFetchedData = useCallback((data) => {
     setIssues(data.issues || []);
@@ -443,7 +497,15 @@ const MilestoneCard = ({
             flexWrap: 'wrap',
           }}
         >
-          <CardTitle>{milestone.title}</CardTitle>
+          <CardTitle>
+            <span
+              onDoubleClick={openMilestoneEditor}
+              title="Double-click to edit milestone"
+              style={{ cursor: 'text' }}
+            >
+              {milestone.title}
+            </span>
+          </CardTitle>
           <Button
             variant="secondary"
             onClick={() => setIsCreateIssueOpen(true)}
@@ -500,6 +562,76 @@ const MilestoneCard = ({
           </ExpandableSection>
         )}
       </CardBody>
+      {isEditOpen && (
+        <Modal
+          title={`Edit milestone: ${milestone.title}`}
+          isOpen={isEditOpen}
+          onClose={() => setIsEditOpen(false)}
+          actions={[
+            <Button
+              key="save"
+              variant="primary"
+              onClick={saveMilestoneEdit}
+              isLoading={isSavingEdit}
+            >
+              Save
+            </Button>,
+            <Button
+              key="cancel"
+              variant="link"
+              onClick={() => setIsEditOpen(false)}
+            >
+              Cancel
+            </Button>,
+          ]}
+        >
+          <Form>
+            <FormGroup
+              label="Title"
+              isRequired
+              fieldId={`edit-title-${milestone.number}`}
+            >
+              <TextInput
+                id={`edit-title-${milestone.number}`}
+                value={editMilestone.title}
+                onChange={(_event, value) =>
+                  setEditMilestone((prev) => ({ ...prev, title: value }))
+                }
+              />
+            </FormGroup>
+            <FormGroup
+              label="Description"
+              fieldId={`edit-description-${milestone.number}`}
+            >
+              <TextArea
+                id={`edit-description-${milestone.number}`}
+                value={editMilestone.description}
+                onChange={(_event, value) =>
+                  setEditMilestone((prev) => ({ ...prev, description: value }))
+                }
+              />
+            </FormGroup>
+            <FormGroup
+              label="Target date"
+              fieldId={`edit-date-${milestone.number}`}
+            >
+              <TextInput
+                id={`edit-date-${milestone.number}`}
+                type="date"
+                value={editMilestone.due_on}
+                onChange={(_event, value) =>
+                  setEditMilestone((prev) => ({ ...prev, due_on: value }))
+                }
+              />
+            </FormGroup>
+            {editError && (
+              <Alert variant="danger" isInline title="Unable to save milestone">
+                {editError}
+              </Alert>
+            )}
+          </Form>
+        </Modal>
+      )}
       <MarkdownInputModal
         isOpen={isCreateIssueOpen}
         onClose={() => setIsCreateIssueOpen(false)}
