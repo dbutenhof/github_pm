@@ -292,6 +292,14 @@ const App = () => {
     // but we can add a callback if needed in the future
   };
 
+  const handleMilestoneUpdated = (updatedMilestone) => {
+    setMilestones((current) =>
+      current.map((item) =>
+        item.number === updatedMilestone.number ? updatedMilestone : item
+      )
+    );
+  };
+
   const renderPlanningContent = () => (
     <PlanningDnDProvider
       milestones={milestones}
@@ -326,6 +334,7 @@ const App = () => {
                 hierarchyAction={hierarchyAction}
                 onIssueMilestoneMoved={handleIssueMilestoneMoved}
                 onIssueLabelsChanged={handleIssueLabelsChanged}
+                onMilestoneUpdated={handleMilestoneUpdated}
               />
             ))}
         </PlanningBoard>

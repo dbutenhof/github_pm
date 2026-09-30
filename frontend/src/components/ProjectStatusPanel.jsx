@@ -283,8 +283,6 @@ const ProjectStatusPanel = () => {
               const start = addDaysToLocalDateISO(today, -7);
               setDraftStartDate(start);
               setDraftEndDate(today);
-              setStartDate(start);
-              setEndDate(today);
             }}
           >
             Today

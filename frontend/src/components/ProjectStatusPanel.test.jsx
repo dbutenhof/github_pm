@@ -5,6 +5,10 @@ import userEvent from '@testing-library/user-event';
 import ProjectStatusPanel from './ProjectStatusPanel';
 import * as api from '../services/api';
 import * as clipboard from '../utils/clipboard';
+import {
+  addDaysToLocalDateISO,
+  getLocalDateISOString,
+} from '../utils/dateUtils';
 
 vi.mock('../services/api');
 vi.mock('../utils/clipboard', () => ({
@@ -175,5 +179,48 @@ describe('ProjectStatusPanel', () => {
     });
     expect(localStorage.getItem(STORAGE_START_KEY)).toBe('2025-04-01');
     expect(localStorage.getItem(STORAGE_END_KEY)).toBe('2025-04-15');
+  });
+
+  it('updates Today pickers without fetching until Apply', async () => {
+    const user = userEvent.setup();
+    const today = getLocalDateISOString();
+    const start = addDaysToLocalDateISO(today, -7);
+
+    api.fetchProjectStatusReport.mockResolvedValue({
+      start_date: start,
+      end_date: today,
+      merged_pull_requests: [],
+      opened_pull_requests: [],
+      opened_issues: [],
+      recently_updated_pull_requests: [],
+      reviewer_attention_needed: [],
+      creator_attention_needed: [],
+      pr_backlog: [],
+    });
+
+    render(<ProjectStatusPanel />);
+
+    await waitFor(() => {
+      expect(api.fetchProjectStatusReport).toHaveBeenCalledTimes(1);
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Today' }));
+
+    expect(screen.getByLabelText('Starting')).toHaveValue(start);
+    expect(screen.getByLabelText('Ending')).toHaveValue(today);
+    expect(api.fetchProjectStatusReport).toHaveBeenCalledTimes(1);
+    expect(localStorage.getItem(STORAGE_START_KEY)).toBe('2025-04-03');
+    expect(localStorage.getItem(STORAGE_END_KEY)).toBe('2025-04-10');
+
+    await user.click(screen.getByRole('button', { name: 'Apply' }));
+
+    await waitFor(() => {
+      expect(api.fetchProjectStatusReport).toHaveBeenLastCalledWith(
+        start,
+        today
+      );
+    });
+    expect(localStorage.getItem(STORAGE_START_KEY)).toBe(start);
+    expect(localStorage.getItem(STORAGE_END_KEY)).toBe(today);
   });
 });

@@ -213,6 +213,21 @@ export const createMilestone = async (milestoneData) => {
   return response.json();
 };
 
+// Assisted-by: openai-code-assist
+export const updateMilestone = async (milestoneNumber, milestoneData) => {
+  const response = await fetch(`${API_BASE}/milestones/${milestoneNumber}`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(milestoneData),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to update milestone: ${response.statusText}`);
+  }
+  return response.json();
+};
+
 export const deleteMilestone = async (milestoneNumber) => {
   const response = await fetch(`${API_BASE}/milestones/${milestoneNumber}`, {
     method: 'DELETE',

@@ -696,6 +696,13 @@ class CreateMilestone(BaseModel):
     due_on: datetime | None = Field(default=None, title="Milestone Due Date")
 
 
+# Assisted-by: openai-code-assist
+class UpdateMilestone(BaseModel):
+    title: str = Field(title="Milestone Title")
+    description: str | None = Field(default=None, title="Milestone Description")
+    due_on: datetime | None = Field(default=None, title="Milestone Due Date")
+
+
 @api_router.post("/milestones")
 async def create_milestone(
     gitctx: Annotated[Connector, Depends(connection)],
@@ -713,6 +720,22 @@ async def create_milestone(
         data["due_on"] = milestone.due_on.isoformat()
     m = gitctx.post(f"/repos/{context.github_repo}/milestones", data=data)
     return m
+
+
+@api_router.patch("/milestones/{milestone_number}")
+async def update_milestone(
+    gitctx: Annotated[Connector, Depends(connection)],
+    milestone_number: Annotated[int, Path(title="Milestone")],
+    milestone: Annotated[UpdateMilestone, Body(title="Milestone")],
+):
+    data = {
+        "title": milestone.title,
+        "description": milestone.description,
+        "due_on": milestone.due_on.isoformat() if milestone.due_on else None,
+    }
+    return gitctx.patch(
+        f"/repos/{context.github_repo}/milestones/{milestone_number}", data=data
+    )
 
 
 @api_router.delete("/milestones/{milestone_number}")
