@@ -69,39 +69,12 @@ const App = () => {
     }
   });
 
-  const [issueMilestoneRefresh, setIssueMilestoneRefresh] = useState({
-    key: 0,
-    milestoneNumbers: [],
-  });
-  // Milestone numbers whose issue/PR lists may be stale after local edits.
-  const [dirtyMilestoneNumbers, setDirtyMilestoneNumbers] = useState([]);
+  // A refresh cycle is global so it also catches changes made outside this UI.
+  const [issueMilestoneRefresh, setIssueMilestoneRefresh] = useState(0);
   const [hierarchyAction, setHierarchyAction] = useState(null);
-
-  const markMilestonesDirty = (numbers) => {
-    const normalized = numbers
-      .map((n) => (n == null ? 0 : n))
-      .filter((n) => typeof n === 'number');
-    if (normalized.length === 0) return;
-    setDirtyMilestoneNumbers((prev) => [...new Set([...prev, ...normalized])]);
-  };
 
   const handleHierarchyChanged = (action) => {
     setHierarchyAction({ ...action, key: Date.now() });
-    if (action.type === 'relink') {
-      markMilestonesDirty([
-        action.sourceMilestoneNumber,
-        action.targetMilestoneNumber,
-        action.fromMilestone,
-        action.toMilestone,
-      ]);
-    } else if (action.type === 'unlink') {
-      markMilestonesDirty([action.sourceMilestoneNumber]);
-    } else if (action.type === 'error') {
-      markMilestonesDirty([
-        action.sourceMilestoneNumber,
-        action.targetMilestoneNumber,
-      ]);
-    }
   };
 
   // MilestoneCards apply hierarchyAction in their effects (children run first).
@@ -267,24 +240,8 @@ const App = () => {
     }
   };
 
-  const handleIssueMilestoneMoved = ({
-    fromMilestoneNumber,
-    toMilestoneNumber,
-  }) => {
-    markMilestonesDirty([fromMilestoneNumber, toMilestoneNumber]);
-  };
-
-  const handleIssueLabelsChanged = ({ milestoneNumber }) => {
-    markMilestonesDirty([milestoneNumber]);
-  };
-
-  const handleRefreshDirtyMilestones = () => {
-    if (dirtyMilestoneNumbers.length === 0) return;
-    setIssueMilestoneRefresh((s) => ({
-      key: s.key + 1,
-      milestoneNumbers: [...dirtyMilestoneNumbers],
-    }));
-    setDirtyMilestoneNumbers([]);
+  const handleRefresh = () => {
+    setIssueMilestoneRefresh((key) => key + 1);
   };
 
   const handleLabelChange = () => {
@@ -332,8 +289,6 @@ const App = () => {
                 sortOrder={sortOrder}
                 issueMilestoneRefresh={issueMilestoneRefresh}
                 hierarchyAction={hierarchyAction}
-                onIssueMilestoneMoved={handleIssueMilestoneMoved}
-                onIssueLabelsChanged={handleIssueLabelsChanged}
                 onMilestoneUpdated={handleMilestoneUpdated}
               />
             ))}
@@ -386,14 +341,8 @@ const App = () => {
             </Title>
           </div>
           <div style={{ display: 'flex', gap: '0.5rem' }}>
-            <Button
-              variant="secondary"
-              onClick={handleRefreshDirtyMilestones}
-              isDisabled={dirtyMilestoneNumbers.length === 0}
-            >
-              {dirtyMilestoneNumbers.length > 0
-                ? `Refresh (${dirtyMilestoneNumbers.length})`
-                : 'Refresh'}
+            <Button variant="secondary" onClick={handleRefresh}>
+              Refresh
             </Button>
             <Button
               variant="secondary"
