@@ -13,6 +13,7 @@ import {
 } from '@patternfly/react-core';
 import { fetchLabels, createLabel, deleteLabel } from '../services/api';
 import labelsCache, { clearLabelsCache } from '../utils/labelsCache';
+import LabelColorInput from './LabelColorInput';
 
 const ManageLabels = ({ isOpen, onClose, onLabelChange }) => {
   const [labels, setLabels] = useState([]);
@@ -355,17 +356,10 @@ const ManageLabels = ({ isOpen, onClose, onLabelChange }) => {
             />
           </FormGroup>
           <FormGroup label="Color" fieldId="label-color">
-            <TextInput
+            <LabelColorInput
               id="label-color"
               value={newLabel.color || ''}
-              onChange={(value) => {
-                const stringValue =
-                  typeof value === 'string'
-                    ? value
-                    : value?.target?.value || '';
-                setNewLabel((prev) => ({ ...prev, color: stringValue }));
-              }}
-              placeholder="Enter hex color (e.g., ffffff)"
+              onChange={(color) => setNewLabel((prev) => ({ ...prev, color }))}
             />
           </FormGroup>
           <FormGroup label="Description" fieldId="label-description">

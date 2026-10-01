@@ -60,6 +60,7 @@ import CommentCard from './CommentCard';
 import Reactions from './Reactions';
 import UserAvatar from './UserAvatar';
 import MarkdownInputModal from './MarkdownInputModal';
+import LabelColorInput from './LabelColorInput';
 import labelsCache, { clearLabelsCache } from '../utils/labelsCache';
 import milestonesCache from '../utils/milestonesCache';
 import assigneesCache from '../utils/assigneesCache';
@@ -2738,17 +2739,10 @@ const IssueCard = ({
             />
           </FormGroup>
           <FormGroup label="Color" fieldId="label-color">
-            <TextInput
+            <LabelColorInput
               id="label-color"
               value={newLabel.color || ''}
-              onChange={(value) => {
-                const stringValue =
-                  typeof value === 'string'
-                    ? value
-                    : value?.target?.value || '';
-                setNewLabel((prev) => ({ ...prev, color: stringValue }));
-              }}
-              placeholder="Enter hex color (e.g., ffffff)"
+              onChange={(color) => setNewLabel((prev) => ({ ...prev, color }))}
             />
           </FormGroup>
           <FormGroup label="Description" fieldId="label-description">
