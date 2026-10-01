@@ -57,9 +57,7 @@ const itemTableHeader = (includeType) => (
 const MilestoneCard = ({
   milestone,
   sortOrder = [],
-  issueMilestoneRefresh = { key: 0, milestoneNumbers: [] },
-  onIssueMilestoneMoved,
-  onIssueLabelsChanged,
+  issueMilestoneRefresh = 0,
   hierarchyAction,
   onMilestoneUpdated,
 }) => {
@@ -197,13 +195,13 @@ const MilestoneCard = ({
   }, [sortOrder]);
 
   useEffect(() => {
-    const { key, milestoneNumbers } = issueMilestoneRefresh;
-    if (key === 0) return;
-    if (!milestoneNumbers.includes(milestone.number)) return;
+    // Loaded cards own the visible issue data; unopened cards fetch current
+    // data when expanded instead of doing work that cannot be displayed yet.
+    if (issueMilestoneRefresh === 0) return;
     if (!hasLoadedOnce) return;
     refetchIssues();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [issueMilestoneRefresh.key]);
+  }, [issueMilestoneRefresh]);
 
   // Apply optimistic hierarchy mutations from Planning DnD / adopt.
   useEffect(() => {
@@ -435,16 +433,7 @@ const MilestoneCard = ({
               onDragEndIssue={() => {
                 dnd?.finishDrag();
               }}
-              onMilestoneChange={(detail) => {
-                onIssueMilestoneMoved?.(detail);
-              }}
-              onLabelsChange={(detail) => {
-                onIssueLabelsChanged?.(detail);
-              }}
               onIssueUpdate={updateItemInForest(setIssues)}
-              onAdoptParentMilestone={(detail) => {
-                onIssueMilestoneMoved?.(detail);
-              }}
               onIssueCreated={handleIssueCreated}
               onIssueClosed={handleIssueClosed}
             />
@@ -471,12 +460,6 @@ const MilestoneCard = ({
             issue={issue}
             enableHierarchy={false}
             columnCount={7}
-            onMilestoneChange={(detail) => {
-              onIssueMilestoneMoved?.(detail);
-            }}
-            onLabelsChange={(detail) => {
-              onIssueLabelsChanged?.(detail);
-            }}
             onIssueUpdate={updateItemInForest(setPullRequests)}
           />
         ))}

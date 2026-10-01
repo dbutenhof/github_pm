@@ -28,6 +28,21 @@ api_router = APIRouter()
 # We sort "semver" style milestones first, then others alphabetically
 VERSION_MATCH = re.compile(r"^v\d+\.\d+\.\d+$")
 
+
+# Assisted-by: openai-code-assist
+def _milestone_sort_key(milestone: dict[str, Any]) -> tuple:
+    """Sort version milestones numerically before other milestones."""
+    title = milestone.get("title") or ""
+    version_match = VERSION_MATCH.fullmatch(title)
+    if version_match:
+        return (
+            0,
+            tuple(int(part) for part in version_match.group(0)[1:].split(".")),
+            "",
+        )
+    return (1, (), title)
+
+
 # Bounded retries for transient GitHub gateway timeouts (504).
 _GITHUB_504_MAX_ATTEMPTS = 5
 _GITHUB_504_BACKOFF_SEC = 1.5
@@ -664,29 +679,27 @@ async def get_comment_reactions(
 
 
 @api_router.get("/milestones")
-async def get_milestones(gitctx: Annotated[Connector, Depends(connection)]):
+async def get_milestones(
+    gitctx: Annotated[Connector, Depends(connection)],
+    state: Annotated[
+        Literal["open", "closed"],
+        Query(title="Milestone State"),
+    ] = "open",
+):
     milestones = gitctx.get_paged(
-        f"/repos/{context.github_repo}/milestones",
+        f"/repos/{context.github_repo}/milestones?state={state}",
         headers=_GITHUB_BODY_ACCEPT,
     )
-    versions = []
-    others = []
-    for m in milestones:
-        if VERSION_MATCH.match(m["title"]):
-            versions.append(m)
-        else:
-            others.append(m)
-    milestones = sorted(versions, key=lambda x: x["title"]) + sorted(
-        others, key=lambda x: x["title"]
-    )
-    milestones.append(
-        {
-            "title": "none",
-            "number": 0,
-            "description": "No milestone",
-            "due_on": None,
-        }
-    )
+    milestones = sorted(milestones, key=_milestone_sort_key)
+    if state == "open":
+        milestones.append(
+            {
+                "title": "none",
+                "number": 0,
+                "description": "No milestone",
+                "due_on": None,
+            }
+        )
     return milestones
 
 
@@ -701,6 +714,11 @@ class UpdateMilestone(BaseModel):
     title: str = Field(title="Milestone Title")
     description: str | None = Field(default=None, title="Milestone Description")
     due_on: datetime | None = Field(default=None, title="Milestone Due Date")
+
+
+# Assisted-by: openai-code-assist
+class UpdateMilestoneState(BaseModel):
+    state: Literal["open", "closed"] = Field(title="Milestone State")
 
 
 @api_router.post("/milestones")
@@ -735,6 +753,38 @@ async def update_milestone(
     }
     return gitctx.patch(
         f"/repos/{context.github_repo}/milestones/{milestone_number}", data=data
+    )
+
+
+# Assisted-by: openai-code-assist
+@api_router.get("/milestones/{milestone_number}/open-counts")
+async def get_milestone_open_counts(
+    gitctx: Annotated[Connector, Depends(connection)],
+    milestone_number: Annotated[int, Path(title="Milestone")],
+):
+    """Return open issue and pull-request counts for a milestone."""
+    items = gitctx.get_paged(
+        f"/repos/{context.github_repo}/issues?milestone={milestone_number}&state=open",
+        headers=_GITHUB_BODY_ACCEPT,
+    )
+    open_pull_requests = sum("pull_request" in item for item in items)
+    return {
+        "open_issues": len(items) - open_pull_requests,
+        "open_pull_requests": open_pull_requests,
+    }
+
+
+# Assisted-by: openai-code-assist
+@api_router.patch("/milestones/{milestone_number}/state")
+async def update_milestone_state(
+    gitctx: Annotated[Connector, Depends(connection)],
+    milestone_number: Annotated[int, Path(title="Milestone")],
+    milestone: Annotated[UpdateMilestoneState, Body(title="Milestone State")],
+):
+    """Open or close a milestone without modifying its other fields."""
+    return gitctx.patch(
+        f"/repos/{context.github_repo}/milestones/{milestone_number}",
+        data={"state": milestone.state},
     )
 
 
@@ -1141,6 +1191,17 @@ class CreateLabel(BaseModel):
     description: str | None = Field(default=None, title="Label Description")
 
 
+class UpdateLabel(BaseModel):
+    """Body for updating a repository label.
+
+    Assisted-by: openai-code-assist
+    """
+
+    name: str = Field(title="Label Name")
+    color: str | None = Field(default=None, title="Label Color")
+    description: str | None = Field(default=None, title="Label Description")
+
+
 @api_router.post("/labels")
 async def create_label(
     gitctx: Annotated[Connector, Depends(connection)],
@@ -1150,6 +1211,28 @@ async def create_label(
         f"/repos/{context.github_repo}/labels",
         data={
             "name": label.name,
+            "color": label.color,
+            "description": label.description,
+        },
+    )
+    return response
+
+
+@api_router.patch("/labels/{label_name}")
+async def update_label(
+    gitctx: Annotated[Connector, Depends(connection)],
+    label_name: str,
+    label: Annotated[UpdateLabel, Body(title="Label")],
+):
+    """Update a repository label, including its name, color, or description.
+
+    Assisted-by: openai-code-assist
+    """
+
+    response = gitctx.patch(
+        f"/repos/{context.github_repo}/labels/{label_name}",
+        data={
+            "new_name": label.name,
             "color": label.color,
             "description": label.description,
         },

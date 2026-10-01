@@ -344,7 +344,7 @@ describe('App', () => {
     });
   });
 
-  it('disables Refresh until milestones are marked dirty, then refreshes on click', async () => {
+  it('refreshes every loaded milestone when Refresh is clicked', async () => {
     const user = userEvent.setup();
     const mockMilestones = [
       {
@@ -375,11 +375,20 @@ describe('App', () => {
     };
 
     api.fetchMilestones.mockResolvedValue(mockMilestones);
-    api.fetchIssues.mockResolvedValue({
-      issues: [mockIssue],
-      pull_requests: [],
-    });
-    api.setIssueMilestone.mockResolvedValue({});
+    api.fetchIssues.mockImplementation((milestoneNumber) =>
+      Promise.resolve({
+        issues: [
+          {
+            ...mockIssue,
+            milestone: {
+              number: milestoneNumber,
+              title: milestoneNumber === 6 ? 'v0.6.0' : 'Next release',
+            },
+          },
+        ],
+        pull_requests: [],
+      })
+    );
 
     await act(async () => {
       render(<App />);
@@ -390,7 +399,7 @@ describe('App', () => {
     });
 
     const refreshButton = screen.getByRole('button', { name: /^Refresh$/i });
-    expect(refreshButton).toBeDisabled();
+    expect(refreshButton).toBeEnabled();
 
     const showIssuesButtons = screen.getAllByRole('button', {
       name: /show issues/i,
@@ -401,33 +410,22 @@ describe('App', () => {
     });
     expect(api.fetchIssues).toHaveBeenCalledTimes(1);
 
-    await user.click(screen.getByRole('button', { name: 'v0.6.0' }));
-    const nextReleaseChoices = screen.getAllByText('Next release');
-    // Menu item appears before the destination milestone card title in interaction order
-    await user.click(nextReleaseChoices[0]);
-
-    await waitFor(() => {
-      expect(api.setIssueMilestone).toHaveBeenCalledWith(459, 10);
-    });
-
-    // Milestone moves mark dirty but do not auto-refetch
-    expect(api.fetchIssues).toHaveBeenCalledTimes(1);
-
-    const dirtyRefresh = screen.getByRole('button', {
-      name: /Refresh \(2\)/i,
-    });
-    expect(dirtyRefresh).toBeEnabled();
-
-    await user.click(dirtyRefresh);
-
+    await user.click(screen.getByRole('button', { name: /show issues/i }));
     await waitFor(() => {
       expect(api.fetchIssues).toHaveBeenCalledTimes(2);
     });
-    expect(api.fetchIssues).toHaveBeenLastCalledWith(6, []);
+
+    await user.click(refreshButton);
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /^Refresh$/i })).toBeDisabled();
+      expect(api.fetchIssues).toHaveBeenCalledTimes(4);
     });
+    expect(api.fetchIssues.mock.calls).toEqual([
+      [6, []],
+      [10, []],
+      [6, []],
+      [10, []],
+    ]);
   });
 
   it('keeps the header chrome sticky while view content scrolls independently', async () => {

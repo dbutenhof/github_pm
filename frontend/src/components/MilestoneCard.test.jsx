@@ -246,23 +246,16 @@ describe('MilestoneCard', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('refetches issues when issueMilestoneRefresh targets this milestone', async () => {
+  it('refetches issues when the planning refresh cycle changes', async () => {
     const user = userEvent.setup();
     api.fetchIssues.mockResolvedValue({
       issues: [mockIssue],
       pull_requests: [],
     });
 
-    const onIssueMilestoneMoved = vi.fn();
-    const initialRefresh = { key: 0, milestoneNumbers: [] };
-
     const { rerender } = await act(async () =>
       render(
-        <MilestoneCard
-          milestone={mockMilestone}
-          issueMilestoneRefresh={initialRefresh}
-          onIssueMilestoneMoved={onIssueMilestoneMoved}
-        />
+        <MilestoneCard milestone={mockMilestone} issueMilestoneRefresh={0} />
       )
     );
 
@@ -275,11 +268,7 @@ describe('MilestoneCard', () => {
 
     await act(async () => {
       rerender(
-        <MilestoneCard
-          milestone={mockMilestone}
-          issueMilestoneRefresh={{ key: 1, milestoneNumbers: [6] }}
-          onIssueMilestoneMoved={onIssueMilestoneMoved}
-        />
+        <MilestoneCard milestone={mockMilestone} issueMilestoneRefresh={1} />
       );
     });
 
@@ -298,10 +287,7 @@ describe('MilestoneCard', () => {
 
     const { rerender } = await act(async () =>
       render(
-        <MilestoneCard
-          milestone={mockMilestone}
-          issueMilestoneRefresh={{ key: 0, milestoneNumbers: [] }}
-        />
+        <MilestoneCard milestone={mockMilestone} issueMilestoneRefresh={0} />
       )
     );
 
@@ -315,10 +301,7 @@ describe('MilestoneCard', () => {
 
     await act(async () => {
       rerender(
-        <MilestoneCard
-          milestone={mockMilestone}
-          issueMilestoneRefresh={{ key: 1, milestoneNumbers: [6] }}
-        />
+        <MilestoneCard milestone={mockMilestone} issueMilestoneRefresh={1} />
       );
     });
 

@@ -38,6 +38,7 @@ from github_pm.api import (
     get_issue_reactions,
     get_issues,
     get_labels,
+    get_milestone_open_counts,
     get_milestones,
     get_project,
     remove_blocked_by,
@@ -51,9 +52,13 @@ from github_pm.api import (
     update_comment,
     update_issue_body,
     update_issue_title,
+    update_label,
+    update_milestone_state,
     UpdateComment,
     UpdateIssueBody,
     UpdateIssueTitle,
+    UpdateLabel,
+    UpdateMilestoneState,
 )
 from github_pm.app import app
 
@@ -893,6 +898,45 @@ class TestGetMilestones:
         assert result[2]["due_on"] is None
         mock_gitctx.get_paged.assert_called_once()
 
+    @pytest.mark.asyncio
+    async def test_get_milestones_sorts_versions_numerically_before_other_milestones(
+        self,
+    ):
+        mock_milestones = [
+            {"title": "v0.9.0", "number": 9},
+            {"title": "Backlog", "number": 1},
+            {"title": "v0.10.0", "number": 10},
+            {"title": "v0.8.1", "number": 8},
+        ]
+        mock_gitctx = Mock(spec=Connector)
+        mock_gitctx.get_paged = Mock(return_value=mock_milestones)
+
+        result = await get_milestones(mock_gitctx)
+
+        assert [milestone["title"] for milestone in result] == [
+            "v0.8.1",
+            "v0.9.0",
+            "v0.10.0",
+            "Backlog",
+            "none",
+        ]
+
+    @pytest.mark.asyncio
+    async def test_get_closed_milestones_omits_none_placeholder(self):
+        mock_milestones = [{"title": "Completed", "number": 3}]
+        mock_gitctx = Mock(spec=Connector)
+        mock_gitctx.get_paged = Mock(return_value=mock_milestones)
+
+        with patch("github_pm.api.context") as mock_context:
+            mock_context.github_repo = "test/repo"
+            result = await get_milestones(mock_gitctx, state="closed")
+
+        assert result == mock_milestones
+        mock_gitctx.get_paged.assert_called_once_with(
+            "/repos/test/repo/milestones?state=closed",
+            headers={"Accept": "application/vnd.github.full+json"},
+        )
+
 
 class TestCreateMilestone:
     """Test the create_milestone endpoint."""
@@ -955,6 +999,52 @@ class TestCreateMilestone:
             assert call_args[1]["data"]["state"] == "open"
             assert call_args[1]["data"]["description"] is None
             assert "due_on" not in call_args[1]["data"]
+
+
+class TestMilestoneState:
+    """Test milestone state and open-work endpoints."""
+
+    @pytest.mark.asyncio
+    async def test_get_milestone_open_counts(self):
+        mock_gitctx = Mock(spec=Connector)
+        mock_gitctx.get_paged = Mock(
+            return_value=[
+                {"number": 1},
+                {"number": 2, "pull_request": {"url": "https://example.test/pr/2"}},
+                {"number": 3},
+            ]
+        )
+
+        with patch("github_pm.api.context") as mock_context:
+            mock_context.github_repo = "test/repo"
+
+            result = await get_milestone_open_counts(mock_gitctx, milestone_number=7)
+
+        assert result == {"open_issues": 2, "open_pull_requests": 1}
+        mock_gitctx.get_paged.assert_called_once_with(
+            "/repos/test/repo/issues?milestone=7&state=open",
+            headers={"Accept": "application/vnd.github.full+json"},
+        )
+
+    @pytest.mark.asyncio
+    async def test_update_milestone_state(self):
+        mock_response = {"number": 7, "state": "closed"}
+        mock_gitctx = Mock(spec=Connector)
+        mock_gitctx.patch = Mock(return_value=mock_response)
+
+        with patch("github_pm.api.context") as mock_context:
+            mock_context.github_repo = "test/repo"
+
+            result = await update_milestone_state(
+                mock_gitctx,
+                milestone_number=7,
+                milestone=UpdateMilestoneState(state="closed"),
+            )
+
+        assert result == mock_response
+        mock_gitctx.patch.assert_called_once_with(
+            "/repos/test/repo/milestones/7", data={"state": "closed"}
+        )
 
 
 class TestDeleteMilestone:
@@ -1517,6 +1607,40 @@ class TestDeleteLabel:
             # Act & Assert
             with pytest.raises(Exception):
                 await delete_label(mock_gitctx, label_name="nonexistent")
+
+
+class TestUpdateLabel:
+    """Test the update_label endpoint."""
+
+    @pytest.mark.asyncio
+    async def test_update_label_success(self):
+        """Test successfully updating a label, including its name."""
+        mock_label_response = {
+            "id": 1,
+            "name": "updated-label",
+            "color": "green",
+            "description": "Updated label",
+        }
+        label_data = UpdateLabel(
+            name="updated-label", color="green", description="Updated label"
+        )
+        mock_gitctx = Mock(spec=Connector)
+        mock_gitctx.patch = Mock(return_value=mock_label_response)
+
+        with patch("github_pm.api.context") as mock_context:
+            mock_context.github_repo = "test/repo"
+
+            result = await update_label(mock_gitctx, "old-label", label_data)
+
+        assert result == mock_label_response
+        mock_gitctx.patch.assert_called_once_with(
+            "/repos/test/repo/labels/old-label",
+            data={
+                "new_name": "updated-label",
+                "color": "green",
+                "description": "Updated label",
+            },
+        )
 
 
 class TestAddLabelToIssue:

@@ -1,5 +1,5 @@
 // Generated-by: Cursor
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Modal,
   Button,
@@ -13,10 +13,14 @@ import {
 } from '@patternfly/react-core';
 import {
   fetchMilestones,
+  fetchMilestoneOpenCounts,
   createMilestone,
   deleteMilestone,
+  updateMilestoneState,
 } from '../services/api';
 import milestonesCache from '../utils/milestonesCache';
+import { sortMilestones } from '../utils/milestones';
+import { CheckIcon, UndoIcon } from '@patternfly/react-icons';
 
 const ManageMilestones = ({ isOpen, onClose, onMilestoneChange }) => {
   const [milestones, setMilestones] = useState([]);
@@ -30,36 +34,48 @@ const ManageMilestones = ({ isOpen, onClose, onMilestoneChange }) => {
   });
   const [createError, setCreateError] = useState(null);
   const [isCreating, setIsCreating] = useState(false);
+  const [milestoneFilter, setMilestoneFilter] = useState('open');
+  const [milestoneToClose, setMilestoneToClose] = useState(null);
+  const [closeCounts, setCloseCounts] = useState(null);
+  const [isLoadingCloseCounts, setIsLoadingCloseCounts] = useState(false);
+  const [isChangingState, setIsChangingState] = useState(false);
+  const [actionError, setActionError] = useState(null);
+  const milestoneFilterRef = useRef('open');
 
   useEffect(() => {
-    if (isOpen) {
-      loadMilestones();
-    }
-  }, [isOpen]);
+    milestoneFilterRef.current = milestoneFilter;
+    if (isOpen) loadMilestones(milestoneFilter);
+  }, [isOpen, milestoneFilter]);
 
-  const loadMilestones = () => {
-    // Use cached data if available
-    if (milestonesCache.data.length > 0) {
+  // Assisted-by: openai-code-assist
+  const loadMilestones = (state) => {
+    // The shared cache is intentionally limited to open milestones because it
+    // is also used by Planning and issue milestone selectors.
+    if (state === 'open' && milestonesCache.data.length > 0) {
       setMilestones(milestonesCache.data);
       setLoading(false);
       setError(milestonesCache.error);
       // Still refresh in background
-      refreshMilestonesInBackground();
+      refreshMilestonesInBackground(state);
       return;
     }
 
     // If data is being loaded, wait for it
-    if (milestonesCache.promise) {
+    if (state === 'open' && milestonesCache.promise) {
       setLoading(true);
       milestonesCache.promise
         .then(() => {
-          setMilestones(milestonesCache.data);
-          setLoading(false);
-          setError(milestonesCache.error);
+          if (milestoneFilterRef.current === state) {
+            setMilestones(milestonesCache.data);
+            setLoading(false);
+            setError(milestonesCache.error);
+          }
         })
         .catch(() => {
-          setLoading(false);
-          setError(milestonesCache.error);
+          if (milestoneFilterRef.current === state) {
+            setLoading(false);
+            setError(milestonesCache.error);
+          }
         });
       return;
     }
@@ -67,36 +83,49 @@ const ManageMilestones = ({ isOpen, onClose, onMilestoneChange }) => {
     // Otherwise load fresh
     setLoading(true);
     setError(null);
-    fetchMilestones()
+    fetchMilestones(state)
       .then((data) => {
-        milestonesCache.data = data;
-        milestonesCache.loading = false;
-        milestonesCache.error = null;
-        setMilestones(data);
-        setLoading(false);
+        if (state === 'open') {
+          milestonesCache.data = data;
+          milestonesCache.loading = false;
+          milestonesCache.error = null;
+        }
+        if (milestoneFilterRef.current === state) {
+          setMilestones(data);
+          setLoading(false);
+        }
       })
       .catch((err) => {
-        milestonesCache.loading = false;
-        milestonesCache.error = err.message;
-        setError(err.message);
-        setLoading(false);
+        if (state === 'open') {
+          milestonesCache.loading = false;
+          milestonesCache.error = err.message;
+        }
+        if (milestoneFilterRef.current === state) {
+          setError(err.message);
+          setLoading(false);
+        }
       });
   };
 
-  const refreshMilestonesInBackground = () => {
+  // Assisted-by: openai-code-assist
+  const refreshMilestonesInBackground = (state) => {
     // Refresh in background without showing loading state
-    fetchMilestones()
+    fetchMilestones(state)
       .then((data) => {
-        milestonesCache.data = data;
-        milestonesCache.loading = false;
-        milestonesCache.error = null;
-        setMilestones(data);
+        if (state === 'open') {
+          milestonesCache.data = data;
+          milestonesCache.loading = false;
+          milestonesCache.error = null;
+        }
+        if (milestoneFilterRef.current === state) setMilestones(data);
       })
       .catch((err) => {
-        milestonesCache.loading = false;
-        milestonesCache.error = err.message;
-        // Only show error if we don't have cached data
-        if (milestones.length === 0) {
+        if (state === 'open') {
+          milestonesCache.loading = false;
+          milestonesCache.error = err.message;
+        }
+        // Only show an error if the current view has no usable data.
+        if (milestoneFilterRef.current === state && milestones.length === 0) {
           setError(err.message);
         }
       });
@@ -119,15 +148,17 @@ const ManageMilestones = ({ isOpen, onClose, onMilestoneChange }) => {
     );
     setMilestones(milestones.filter((m) => m.number !== milestoneNumber));
 
-    // Also remove from cache
-    milestonesCache.data = milestonesCache.data.filter(
-      (m) => m.number !== milestoneNumber
-    );
+    // The shared cache only contains open milestones.
+    if (milestoneFilter === 'open') {
+      milestonesCache.data = milestonesCache.data.filter(
+        (m) => m.number !== milestoneNumber
+      );
+    }
 
     try {
       await deleteMilestone(milestoneNumber);
       // Refresh in background to sync with server
-      refreshMilestonesInBackground();
+      refreshMilestonesInBackground(milestoneFilter);
       if (onMilestoneChange) {
         onMilestoneChange();
       }
@@ -135,14 +166,81 @@ const ManageMilestones = ({ isOpen, onClose, onMilestoneChange }) => {
       console.error('Failed to delete milestone:', err);
       // Restore on error
       if (deletedMilestone) {
-        setMilestones(
-          [...milestones, deletedMilestone].sort((a, b) => a.number - b.number)
-        );
-        milestonesCache.data = [...milestonesCache.data, deletedMilestone].sort(
-          (a, b) => a.number - b.number
-        );
+        setMilestones(sortMilestones([...milestones, deletedMilestone]));
+        if (milestoneFilter === 'open') {
+          milestonesCache.data = sortMilestones([
+            ...milestonesCache.data,
+            deletedMilestone,
+          ]);
+        }
       }
       setError(err.message);
+    }
+  };
+
+  // Assisted-by: openai-code-assist
+  const handleRequestClose = async (milestone) => {
+    setIsLoadingCloseCounts(true);
+    setActionError(null);
+    try {
+      const counts = await fetchMilestoneOpenCounts(milestone.number);
+      setCloseCounts(counts);
+      setMilestoneToClose(milestone);
+    } catch (err) {
+      setActionError(`Unable to check open work: ${err.message}`);
+    } finally {
+      setIsLoadingCloseCounts(false);
+    }
+  };
+
+  const clearCloseDialog = () => {
+    setMilestoneToClose(null);
+    setCloseCounts(null);
+  };
+
+  // Assisted-by: openai-code-assist
+  const handleMilestoneStateChange = async (milestone, nextState) => {
+    const previousMilestones = milestones;
+    const previousCache = milestonesCache.data;
+    setIsChangingState(true);
+    setActionError(null);
+
+    try {
+      const updated = await updateMilestoneState(milestone.number, nextState);
+      const updatedMilestone = {
+        ...milestone,
+        ...updated,
+        state: nextState,
+      };
+
+      setMilestones((current) =>
+        current.filter((item) => item.number !== milestone.number)
+      );
+
+      if (nextState === 'closed') {
+        if (milestoneFilter === 'open') {
+          milestonesCache.data = milestonesCache.data.filter(
+            (item) => item.number !== milestone.number
+          );
+        }
+        clearCloseDialog();
+      } else {
+        milestonesCache.data = sortMilestones([
+          ...milestonesCache.data.filter(
+            (item) => item.number !== milestone.number
+          ),
+          updatedMilestone,
+        ]);
+      }
+
+      refreshMilestonesInBackground(milestoneFilter);
+      onMilestoneChange?.();
+    } catch (err) {
+      setMilestones(previousMilestones);
+      if (milestoneFilter === 'open') milestonesCache.data = previousCache;
+      setActionError(`Unable to update milestone: ${err.message}`);
+    } finally {
+      setIsChangingState(false);
     }
   };
 
@@ -176,19 +274,18 @@ const ManageMilestones = ({ isOpen, onClose, onMilestoneChange }) => {
 
       const newMilestoneData = await createMilestone(milestoneData);
       // Optimistically add to UI
-      setMilestones(
-        [...milestones, newMilestoneData].sort((a, b) => a.number - b.number)
-      );
-      milestonesCache.data = [...milestonesCache.data, newMilestoneData].sort(
-        (a, b) => a.number - b.number
-      );
+      setMilestones(sortMilestones([...milestones, newMilestoneData]));
+      milestonesCache.data = sortMilestones([
+        ...milestonesCache.data,
+        newMilestoneData,
+      ]);
 
       setIsCreateDialogOpen(false);
       setNewMilestone({ title: '', description: '', due_on: '' });
       setCreateError(null);
 
       // Refresh in background to sync with server
-      refreshMilestonesInBackground();
+      refreshMilestonesInBackground(milestoneFilter);
       if (onMilestoneChange) {
         onMilestoneChange();
       }
@@ -209,7 +306,7 @@ const ManageMilestones = ({ isOpen, onClose, onMilestoneChange }) => {
     <>
       <Modal
         title="Manage Milestones"
-        isOpen={isOpen}
+        isOpen={isOpen && !milestoneToClose}
         onClose={onClose}
         actions={[
           <Button key="close" variant="primary" onClick={onClose}>
@@ -219,12 +316,32 @@ const ManageMilestones = ({ isOpen, onClose, onMilestoneChange }) => {
         width="80%"
         maxWidth="800px"
       >
-        <div style={{ marginBottom: '1rem' }}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '1rem',
+            marginBottom: '1rem',
+          }}
+        >
+          <label htmlFor="milestone-filter">Show:</label>
+          <select
+            id="milestone-filter"
+            aria-label="Milestone filter"
+            value={milestoneFilter}
+            onChange={(event) => setMilestoneFilter(event.target.value)}
+          >
+            <option value="open">Open milestones</option>
+            <option value="closed">Closed milestones</option>
+          </select>
           <Button
             variant="secondary"
-            onClick={() => setIsCreateDialogOpen(true)}
+            onClick={() => {
+              setMilestoneFilter('open');
+              setIsCreateDialogOpen(true);
+            }}
             style={{
-              marginBottom: '1rem',
+              marginLeft: 'auto',
             }}
           >
             + Create New Milestone
@@ -244,6 +361,17 @@ const ManageMilestones = ({ isOpen, onClose, onMilestoneChange }) => {
             style={{ marginBottom: '1rem' }}
           >
             {error}
+          </Alert>
+        )}
+
+        {actionError && (
+          <Alert
+            variant="danger"
+            title="Milestone action failed"
+            isInline
+            style={{ marginBottom: '1rem' }}
+          >
+            {actionError}
           </Alert>
         )}
 
@@ -285,6 +413,69 @@ const ManageMilestones = ({ isOpen, onClose, onMilestoneChange }) => {
                       <span style={{ color: '#6a6e73', fontSize: '0.75rem' }}>
                         ({formatDueDate(milestone.due_on)})
                       </span>
+                    )}
+                    {milestoneFilter === 'closed' && (
+                      <span
+                        style={{
+                          color: '#6a6e73',
+                          fontSize: '0.75rem',
+                          fontStyle: 'italic',
+                        }}
+                      >
+                        Closed
+                      </span>
+                    )}
+                    {milestone.number !== 0 && milestoneFilter === 'open' && (
+                      <Tooltip content="Close milestone">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRequestClose(milestone);
+                          }}
+                          disabled={isLoadingCloseCounts}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            color: '#6a6e73',
+                            cursor: isLoadingCloseCounts ? 'wait' : 'pointer',
+                            padding: '0',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            width: '16px',
+                            height: '16px',
+                          }}
+                          aria-label={`Close ${milestone.title} milestone`}
+                        >
+                          <CheckIcon />
+                        </button>
+                      </Tooltip>
+                    )}
+                    {milestone.number !== 0 && milestoneFilter === 'closed' && (
+                      <Tooltip content="Reopen milestone">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleMilestoneStateChange(milestone, 'open');
+                          }}
+                          disabled={isChangingState}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            color: '#6a6e73',
+                            cursor: isChangingState ? 'wait' : 'pointer',
+                            padding: '0',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            width: '16px',
+                            height: '16px',
+                          }}
+                          aria-label={`Reopen ${milestone.title} milestone`}
+                        >
+                          <UndoIcon />
+                        </button>
+                      </Tooltip>
                     )}
                     <button
                       onClick={(e) => {
@@ -443,6 +634,55 @@ const ManageMilestones = ({ isOpen, onClose, onMilestoneChange }) => {
             )}
         </Form>
       </Modal>
+
+      {milestoneToClose && closeCounts && (
+        <Modal
+          title={`Close milestone: ${milestoneToClose.title}`}
+          isOpen={true}
+          onClose={clearCloseDialog}
+          actions={[
+            <Button
+              key="close-milestone"
+              variant="primary"
+              onClick={() =>
+                handleMilestoneStateChange(milestoneToClose, 'closed')
+              }
+              isLoading={isChangingState}
+            >
+              Close milestone
+            </Button>,
+            <Button
+              key="cancel"
+              variant="link"
+              onClick={clearCloseDialog}
+              isDisabled={isChangingState}
+            >
+              Cancel
+            </Button>,
+          ]}
+        >
+          {actionError && (
+            <Alert variant="danger" isInline title="Unable to close milestone">
+              {actionError}
+            </Alert>
+          )}
+          {closeCounts.open_issues === 0 &&
+          closeCounts.open_pull_requests === 0 ? (
+            <p>There are no open issues or PRs against this milestone.</p>
+          ) : (
+            <p>
+              There are {closeCounts.open_issues} open issue
+              {closeCounts.open_issues === 1 ? '' : 's'} and{' '}
+              {closeCounts.open_pull_requests} open PR
+              {closeCounts.open_pull_requests === 1 ? '' : 's'} against this
+              milestone.
+            </p>
+          )}
+          <Alert variant="warning" isInline title="Open work will remain open">
+            Closing this milestone will not close its issues or pull requests.
+          </Alert>
+        </Modal>
+      )}
     </>
   );
 };
