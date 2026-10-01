@@ -27,10 +27,24 @@ const raiseForResponse = async (response, fallback) => {
   throw new Error(`${fallback}: ${detail}`);
 };
 
-export const fetchMilestones = async () => {
-  const response = await fetch(`${API_BASE}/milestones`);
+export const fetchMilestones = async (state = 'open') => {
+  const query = state === 'open' ? '' : `?state=${encodeURIComponent(state)}`;
+  const response = await fetch(`${API_BASE}/milestones${query}`);
   if (!response.ok) {
     throw new Error(`Failed to fetch milestones: ${response.statusText}`);
+  }
+  return response.json();
+};
+
+// Assisted-by: openai-code-assist
+export const fetchMilestoneOpenCounts = async (milestoneNumber) => {
+  const response = await fetch(
+    `${API_BASE}/milestones/${milestoneNumber}/open-counts`
+  );
+  if (!response.ok) {
+    throw new Error(
+      `Failed to fetch milestone open counts: ${response.statusText}`
+    );
   }
   return response.json();
 };
@@ -224,6 +238,24 @@ export const updateMilestone = async (milestoneNumber, milestoneData) => {
   });
   if (!response.ok) {
     throw new Error(`Failed to update milestone: ${response.statusText}`);
+  }
+  return response.json();
+};
+
+// Assisted-by: openai-code-assist
+export const updateMilestoneState = async (milestoneNumber, state) => {
+  const response = await fetch(
+    `${API_BASE}/milestones/${milestoneNumber}/state`,
+    {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ state }),
+    }
+  );
+  if (!response.ok) {
+    throw new Error(`Failed to update milestone state: ${response.statusText}`);
   }
   return response.json();
 };

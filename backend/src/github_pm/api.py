@@ -679,20 +679,27 @@ async def get_comment_reactions(
 
 
 @api_router.get("/milestones")
-async def get_milestones(gitctx: Annotated[Connector, Depends(connection)]):
+async def get_milestones(
+    gitctx: Annotated[Connector, Depends(connection)],
+    state: Annotated[
+        Literal["open", "closed"],
+        Query(title="Milestone State"),
+    ] = "open",
+):
     milestones = gitctx.get_paged(
-        f"/repos/{context.github_repo}/milestones",
+        f"/repos/{context.github_repo}/milestones?state={state}",
         headers=_GITHUB_BODY_ACCEPT,
     )
     milestones = sorted(milestones, key=_milestone_sort_key)
-    milestones.append(
-        {
-            "title": "none",
-            "number": 0,
-            "description": "No milestone",
-            "due_on": None,
-        }
-    )
+    if state == "open":
+        milestones.append(
+            {
+                "title": "none",
+                "number": 0,
+                "description": "No milestone",
+                "due_on": None,
+            }
+        )
     return milestones
 
 
@@ -707,6 +714,11 @@ class UpdateMilestone(BaseModel):
     title: str = Field(title="Milestone Title")
     description: str | None = Field(default=None, title="Milestone Description")
     due_on: datetime | None = Field(default=None, title="Milestone Due Date")
+
+
+# Assisted-by: openai-code-assist
+class UpdateMilestoneState(BaseModel):
+    state: Literal["open", "closed"] = Field(title="Milestone State")
 
 
 @api_router.post("/milestones")
@@ -741,6 +753,38 @@ async def update_milestone(
     }
     return gitctx.patch(
         f"/repos/{context.github_repo}/milestones/{milestone_number}", data=data
+    )
+
+
+# Assisted-by: openai-code-assist
+@api_router.get("/milestones/{milestone_number}/open-counts")
+async def get_milestone_open_counts(
+    gitctx: Annotated[Connector, Depends(connection)],
+    milestone_number: Annotated[int, Path(title="Milestone")],
+):
+    """Return open issue and pull-request counts for a milestone."""
+    items = gitctx.get_paged(
+        f"/repos/{context.github_repo}/issues?milestone={milestone_number}&state=open",
+        headers=_GITHUB_BODY_ACCEPT,
+    )
+    open_pull_requests = sum("pull_request" in item for item in items)
+    return {
+        "open_issues": len(items) - open_pull_requests,
+        "open_pull_requests": open_pull_requests,
+    }
+
+
+# Assisted-by: openai-code-assist
+@api_router.patch("/milestones/{milestone_number}/state")
+async def update_milestone_state(
+    gitctx: Annotated[Connector, Depends(connection)],
+    milestone_number: Annotated[int, Path(title="Milestone")],
+    milestone: Annotated[UpdateMilestoneState, Body(title="Milestone State")],
+):
+    """Open or close a milestone without modifying its other fields."""
+    return gitctx.patch(
+        f"/repos/{context.github_repo}/milestones/{milestone_number}",
+        data={"state": milestone.state},
     )
 
 

@@ -2,6 +2,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   fetchMilestones,
+  fetchMilestoneOpenCounts,
   fetchIssues,
   fetchComments,
   fetchProject,
@@ -23,6 +24,7 @@ import {
   updateComment,
   updateIssueBody,
   updateIssueTitle,
+  updateMilestoneState,
 } from './api';
 
 describe('api', () => {
@@ -54,6 +56,53 @@ describe('api', () => {
       await expect(fetchMilestones()).rejects.toThrow(
         'Failed to fetch milestones'
       );
+    });
+
+    it('fetches closed milestones with a state filter', async () => {
+      global.fetch.mockResolvedValue({
+        ok: true,
+        json: async () => [{ number: 1, title: 'Completed' }],
+      });
+
+      await fetchMilestones('closed');
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/v1/milestones?state=closed'
+      );
+    });
+  });
+
+  describe('milestone state APIs', () => {
+    it('fetches open issue and pull-request counts', async () => {
+      const counts = { open_issues: 2, open_pull_requests: 1 };
+      global.fetch.mockResolvedValue({
+        ok: true,
+        json: async () => counts,
+      });
+
+      const result = await fetchMilestoneOpenCounts(6);
+
+      expect(result).toEqual(counts);
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/v1/milestones/6/open-counts'
+      );
+    });
+
+    it('updates milestone state', async () => {
+      const milestone = { number: 6, state: 'closed' };
+      global.fetch.mockResolvedValue({
+        ok: true,
+        json: async () => milestone,
+      });
+
+      const result = await updateMilestoneState(6, 'closed');
+
+      expect(result).toEqual(milestone);
+      expect(global.fetch).toHaveBeenCalledWith('/api/v1/milestones/6/state', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ state: 'closed' }),
+      });
     });
   });
 
