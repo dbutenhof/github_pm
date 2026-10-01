@@ -1,4 +1,5 @@
 // Generated-by: Cursor
+// Assisted-by: openai-code-assist
 import React, { useState, useEffect } from 'react';
 import {
   Modal,
@@ -11,15 +12,22 @@ import {
   Form,
   FormGroup,
 } from '@patternfly/react-core';
-import { fetchLabels, createLabel, deleteLabel } from '../services/api';
-import labelsCache, { clearLabelsCache } from '../utils/labelsCache';
+import {
+  fetchLabels,
+  createLabel,
+  updateLabel,
+  deleteLabel,
+} from '../services/api';
+import labelsCache from '../utils/labelsCache';
 import LabelColorInput from './LabelColorInput';
+import { PencilAltIcon } from '@patternfly/react-icons';
 
 const ManageLabels = ({ isOpen, onClose, onLabelChange }) => {
   const [labels, setLabels] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [editingLabelName, setEditingLabelName] = useState(null);
   const [newLabel, setNewLabel] = useState({
     name: '',
     color: '',
@@ -129,7 +137,26 @@ const ManageLabels = ({ isOpen, onClose, onLabelChange }) => {
     }
   };
 
-  const handleCreateLabel = async () => {
+  const handleOpenCreateDialog = () => {
+    setEditingLabelName(null);
+    setNewLabel({ name: '', color: '', description: '' });
+    setCreateError(null);
+    setIsCreateDialogOpen(true);
+  };
+
+  const handleEditLabel = (label) => {
+    setEditingLabelName(label.name);
+    setNewLabel({
+      name: label.name || '',
+      color: label.color || '',
+      description: label.description || '',
+    });
+    setCreateError(null);
+    setIsCreateDialogOpen(true);
+  };
+
+  // Assisted-by: openai-code-assist
+  const handleSaveLabel = async () => {
     const name = String(newLabel.name || '').trim();
     if (!name) {
       setCreateError('Name is required');
@@ -151,20 +178,42 @@ const ManageLabels = ({ isOpen, onClose, onLabelChange }) => {
       }
 
       const description = String(newLabel.description || '').trim();
-      if (description) {
+      if (editingLabelName) {
+        // Sending an empty description lets an edit clear the current value.
+        labelData.description = description;
+      } else if (description) {
         labelData.description = description;
       }
 
-      const newLabelData = await createLabel(labelData);
-      // Optimistically add to UI
-      setLabels(
-        [...labels, newLabelData].sort((a, b) => a.name.localeCompare(b.name))
-      );
-      labelsCache.data = [...labelsCache.data, newLabelData].sort((a, b) =>
-        a.name.localeCompare(b.name)
-      );
+      const savedLabel = editingLabelName
+        ? await updateLabel(editingLabelName, labelData)
+        : await createLabel(labelData);
+      const updatedLabel = { ...newLabel, ...savedLabel, name };
+
+      if (editingLabelName) {
+        setLabels(
+          labels
+            .map((label) =>
+              label.name === editingLabelName ? updatedLabel : label
+            )
+            .sort((a, b) => a.name.localeCompare(b.name))
+        );
+        labelsCache.data = labelsCache.data
+          .map((label) =>
+            label.name === editingLabelName ? updatedLabel : label
+          )
+          .sort((a, b) => a.name.localeCompare(b.name));
+      } else {
+        setLabels(
+          [...labels, updatedLabel].sort((a, b) => a.name.localeCompare(b.name))
+        );
+        labelsCache.data = [...labelsCache.data, updatedLabel].sort((a, b) =>
+          a.name.localeCompare(b.name)
+        );
+      }
 
       setIsCreateDialogOpen(false);
+      setEditingLabelName(null);
       setNewLabel({ name: '', color: '', description: '' });
       setCreateError(null);
 
@@ -182,6 +231,7 @@ const ManageLabels = ({ isOpen, onClose, onLabelChange }) => {
 
   const handleCancelCreate = () => {
     setIsCreateDialogOpen(false);
+    setEditingLabelName(null);
     setNewLabel({ name: '', color: '', description: '' });
     setCreateError(null);
   };
@@ -215,7 +265,7 @@ const ManageLabels = ({ isOpen, onClose, onLabelChange }) => {
         <div style={{ marginBottom: '1rem' }}>
           <Button
             variant="secondary"
-            onClick={() => setIsCreateDialogOpen(true)}
+            onClick={handleOpenCreateDialog}
             style={{
               marginBottom: '1rem',
             }}
@@ -278,6 +328,35 @@ const ManageLabels = ({ isOpen, onClose, onLabelChange }) => {
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
+                        handleEditLabel(label);
+                      }}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: getContrastColor(label.color),
+                        cursor: 'pointer',
+                        padding: '0',
+                        lineHeight: '1',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        width: '16px',
+                        height: '16px',
+                        marginLeft: '0.25rem',
+                      }}
+                      aria-label={`Edit ${label.name} label`}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.opacity = '0.7';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.opacity = '1';
+                      }}
+                    >
+                      <PencilAltIcon />
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
                         handleDeleteLabel(label.name);
                       }}
                       style={{
@@ -314,18 +393,18 @@ const ManageLabels = ({ isOpen, onClose, onLabelChange }) => {
       </Modal>
 
       <Modal
-        title="Create New Label"
+        title={editingLabelName ? 'Edit Label' : 'Create New Label'}
         isOpen={isCreateDialogOpen}
         onClose={handleCancelCreate}
         actions={[
           <Button
-            key="create"
+            key="save"
             variant="primary"
-            onClick={handleCreateLabel}
+            onClick={handleSaveLabel}
             isLoading={isCreating}
             isDisabled={!newLabel.name || !String(newLabel.name).trim()}
           >
-            Create
+            {editingLabelName ? 'OK' : 'Create'}
           </Button>,
           <Button key="cancel" variant="link" onClick={handleCancelCreate}>
             Cancel
@@ -378,7 +457,15 @@ const ManageLabels = ({ isOpen, onClose, onLabelChange }) => {
             />
           </FormGroup>
           {createError && newLabel.name && String(newLabel.name).trim() && (
-            <Alert variant="danger" title="Error creating label" isInline>
+            <Alert
+              variant="danger"
+              title={
+                editingLabelName
+                  ? 'Error updating label'
+                  : 'Error creating label'
+              }
+              isInline
+            >
               {createError}
             </Alert>
           )}

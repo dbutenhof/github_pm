@@ -52,10 +52,12 @@ from github_pm.api import (
     update_comment,
     update_issue_body,
     update_issue_title,
+    update_label,
     update_milestone_state,
     UpdateComment,
     UpdateIssueBody,
     UpdateIssueTitle,
+    UpdateLabel,
     UpdateMilestoneState,
 )
 from github_pm.app import app
@@ -1605,6 +1607,40 @@ class TestDeleteLabel:
             # Act & Assert
             with pytest.raises(Exception):
                 await delete_label(mock_gitctx, label_name="nonexistent")
+
+
+class TestUpdateLabel:
+    """Test the update_label endpoint."""
+
+    @pytest.mark.asyncio
+    async def test_update_label_success(self):
+        """Test successfully updating a label, including its name."""
+        mock_label_response = {
+            "id": 1,
+            "name": "updated-label",
+            "color": "green",
+            "description": "Updated label",
+        }
+        label_data = UpdateLabel(
+            name="updated-label", color="green", description="Updated label"
+        )
+        mock_gitctx = Mock(spec=Connector)
+        mock_gitctx.patch = Mock(return_value=mock_label_response)
+
+        with patch("github_pm.api.context") as mock_context:
+            mock_context.github_repo = "test/repo"
+
+            result = await update_label(mock_gitctx, "old-label", label_data)
+
+        assert result == mock_label_response
+        mock_gitctx.patch.assert_called_once_with(
+            "/repos/test/repo/labels/old-label",
+            data={
+                "new_name": "updated-label",
+                "color": "green",
+                "description": "Updated label",
+            },
+        )
 
 
 class TestAddLabelToIssue:

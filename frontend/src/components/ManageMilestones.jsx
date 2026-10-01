@@ -661,6 +661,11 @@ const ManageMilestones = ({ isOpen, onClose, onMilestoneChange }) => {
             </Button>,
           ]}
         >
+          {actionError && (
+            <Alert variant="danger" isInline title="Unable to close milestone">
+              {actionError}
+            </Alert>
+          )}
           {closeCounts.open_issues === 0 &&
           closeCounts.open_pull_requests === 0 ? (
             <p>There are no open issues or PRs against this milestone.</p>

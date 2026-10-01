@@ -24,6 +24,7 @@ import {
   updateComment,
   updateIssueBody,
   updateIssueTitle,
+  updateLabel,
   updateMilestoneState,
 } from './api';
 
@@ -102,6 +103,33 @@ describe('api', () => {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ state: 'closed' }),
+      });
+    });
+  });
+
+  describe('label APIs', () => {
+    it('updates a label', async () => {
+      const updatedLabel = { id: 1, name: 'defect', color: 'b60205' };
+      global.fetch.mockResolvedValue({
+        ok: true,
+        json: async () => updatedLabel,
+      });
+
+      const result = await updateLabel('bug', {
+        name: 'defect',
+        color: 'b60205',
+        description: 'Something is broken',
+      });
+
+      expect(result).toEqual(updatedLabel);
+      expect(global.fetch).toHaveBeenCalledWith('/api/v1/labels/bug', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: 'defect',
+          color: 'b60205',
+          description: 'Something is broken',
+        }),
       });
     });
   });

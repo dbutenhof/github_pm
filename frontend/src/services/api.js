@@ -284,6 +284,21 @@ export const createLabel = async (labelData) => {
   return response.json();
 };
 
+// Assisted-by: openai-code-assist
+export const updateLabel = async (labelName, labelData) => {
+  const response = await fetch(`${API_BASE}/labels/${labelName}`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(labelData),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to update label: ${response.statusText}`);
+  }
+  return response.json();
+};
+
 export const deleteLabel = async (labelName) => {
   const response = await fetch(`${API_BASE}/labels/${labelName}`, {
     method: 'DELETE',

@@ -1191,6 +1191,17 @@ class CreateLabel(BaseModel):
     description: str | None = Field(default=None, title="Label Description")
 
 
+class UpdateLabel(BaseModel):
+    """Body for updating a repository label.
+
+    Assisted-by: openai-code-assist
+    """
+
+    name: str = Field(title="Label Name")
+    color: str | None = Field(default=None, title="Label Color")
+    description: str | None = Field(default=None, title="Label Description")
+
+
 @api_router.post("/labels")
 async def create_label(
     gitctx: Annotated[Connector, Depends(connection)],
@@ -1200,6 +1211,28 @@ async def create_label(
         f"/repos/{context.github_repo}/labels",
         data={
             "name": label.name,
+            "color": label.color,
+            "description": label.description,
+        },
+    )
+    return response
+
+
+@api_router.patch("/labels/{label_name}")
+async def update_label(
+    gitctx: Annotated[Connector, Depends(connection)],
+    label_name: str,
+    label: Annotated[UpdateLabel, Body(title="Label")],
+):
+    """Update a repository label, including its name, color, or description.
+
+    Assisted-by: openai-code-assist
+    """
+
+    response = gitctx.patch(
+        f"/repos/{context.github_repo}/labels/{label_name}",
+        data={
+            "new_name": label.name,
             "color": label.color,
             "description": label.description,
         },
