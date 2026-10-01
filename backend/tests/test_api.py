@@ -893,6 +893,29 @@ class TestGetMilestones:
         assert result[2]["due_on"] is None
         mock_gitctx.get_paged.assert_called_once()
 
+    @pytest.mark.asyncio
+    async def test_get_milestones_sorts_versions_numerically_before_other_milestones(
+        self,
+    ):
+        mock_milestones = [
+            {"title": "v0.9.0", "number": 9},
+            {"title": "Backlog", "number": 1},
+            {"title": "v0.10.0", "number": 10},
+            {"title": "v0.8.1", "number": 8},
+        ]
+        mock_gitctx = Mock(spec=Connector)
+        mock_gitctx.get_paged = Mock(return_value=mock_milestones)
+
+        result = await get_milestones(mock_gitctx)
+
+        assert [milestone["title"] for milestone in result] == [
+            "v0.8.1",
+            "v0.9.0",
+            "v0.10.0",
+            "Backlog",
+            "none",
+        ]
+
 
 class TestCreateMilestone:
     """Test the create_milestone endpoint."""

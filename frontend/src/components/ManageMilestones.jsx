@@ -17,6 +17,7 @@ import {
   deleteMilestone,
 } from '../services/api';
 import milestonesCache from '../utils/milestonesCache';
+import { sortMilestones } from '../utils/milestones';
 
 const ManageMilestones = ({ isOpen, onClose, onMilestoneChange }) => {
   const [milestones, setMilestones] = useState([]);
@@ -135,12 +136,11 @@ const ManageMilestones = ({ isOpen, onClose, onMilestoneChange }) => {
       console.error('Failed to delete milestone:', err);
       // Restore on error
       if (deletedMilestone) {
-        setMilestones(
-          [...milestones, deletedMilestone].sort((a, b) => a.number - b.number)
-        );
-        milestonesCache.data = [...milestonesCache.data, deletedMilestone].sort(
-          (a, b) => a.number - b.number
-        );
+        setMilestones(sortMilestones([...milestones, deletedMilestone]));
+        milestonesCache.data = sortMilestones([
+          ...milestonesCache.data,
+          deletedMilestone,
+        ]);
       }
       setError(err.message);
     }
@@ -176,12 +176,11 @@ const ManageMilestones = ({ isOpen, onClose, onMilestoneChange }) => {
 
       const newMilestoneData = await createMilestone(milestoneData);
       // Optimistically add to UI
-      setMilestones(
-        [...milestones, newMilestoneData].sort((a, b) => a.number - b.number)
-      );
-      milestonesCache.data = [...milestonesCache.data, newMilestoneData].sort(
-        (a, b) => a.number - b.number
-      );
+      setMilestones(sortMilestones([...milestones, newMilestoneData]));
+      milestonesCache.data = sortMilestones([
+        ...milestonesCache.data,
+        newMilestoneData,
+      ]);
 
       setIsCreateDialogOpen(false);
       setNewMilestone({ title: '', description: '', due_on: '' });

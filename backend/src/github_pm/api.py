@@ -28,6 +28,21 @@ api_router = APIRouter()
 # We sort "semver" style milestones first, then others alphabetically
 VERSION_MATCH = re.compile(r"^v\d+\.\d+\.\d+$")
 
+
+# Assisted-by: openai-code-assist
+def _milestone_sort_key(milestone: dict[str, Any]) -> tuple:
+    """Sort version milestones numerically before other milestones."""
+    title = milestone.get("title") or ""
+    version_match = VERSION_MATCH.fullmatch(title)
+    if version_match:
+        return (
+            0,
+            tuple(int(part) for part in version_match.group(0)[1:].split(".")),
+            "",
+        )
+    return (1, (), title)
+
+
 # Bounded retries for transient GitHub gateway timeouts (504).
 _GITHUB_504_MAX_ATTEMPTS = 5
 _GITHUB_504_BACKOFF_SEC = 1.5
@@ -669,16 +684,7 @@ async def get_milestones(gitctx: Annotated[Connector, Depends(connection)]):
         f"/repos/{context.github_repo}/milestones",
         headers=_GITHUB_BODY_ACCEPT,
     )
-    versions = []
-    others = []
-    for m in milestones:
-        if VERSION_MATCH.match(m["title"]):
-            versions.append(m)
-        else:
-            others.append(m)
-    milestones = sorted(versions, key=lambda x: x["title"]) + sorted(
-        others, key=lambda x: x["title"]
-    )
+    milestones = sorted(milestones, key=_milestone_sort_key)
     milestones.append(
         {
             "title": "none",
