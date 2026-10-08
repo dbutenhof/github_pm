@@ -71,7 +71,9 @@ describe('CommentCard', () => {
     render(<CommentCard comment={mockComment} />);
 
     await user.click(screen.getByRole('button', { name: 'Edit comment' }));
-    expect(screen.getByText('Edit comment')).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: 'Edit comment' })
+    ).toBeInTheDocument();
     expect(screen.getByPlaceholderText('Write markdown…')).toHaveValue(
       mockComment.body
     );
