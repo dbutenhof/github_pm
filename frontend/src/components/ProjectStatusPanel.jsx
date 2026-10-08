@@ -1,4 +1,5 @@
 // Generated-by: Cursor
+// Assisted-by: openai-code-assist
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
@@ -165,8 +166,8 @@ const StatusSection = ({
 const ProjectStatusPanel = () => {
   const initial = useMemo(() => getInitialDateRange(), []);
 
-  const [startDate, setStartDate] = useState(initial.start);
-  const [endDate, setEndDate] = useState(initial.end);
+  const [startDate, setStartDate] = useState(null);
+  const [endDate, setEndDate] = useState(null);
   const [draftStartDate, setDraftStartDate] = useState(initial.start);
   const [draftEndDate, setDraftEndDate] = useState(initial.end);
   const [loading, setLoading] = useState(false);
@@ -188,10 +189,16 @@ const ProjectStatusPanel = () => {
   }, []);
 
   useEffect(() => {
+    if (!startDate || !endDate) {
+      return;
+    }
     load(startDate, endDate);
   }, [startDate, endDate, load]);
 
   useEffect(() => {
+    if (!startDate || !endDate) {
+      return;
+    }
     try {
       localStorage.setItem(STORAGE_START_KEY, startDate);
       localStorage.setItem(STORAGE_END_KEY, endDate);
@@ -202,8 +209,8 @@ const ProjectStatusPanel = () => {
 
   const onApply = () => {
     if (draftStartDate > draftEndDate) {
-      setDraftStartDate(startDate);
-      setDraftEndDate(endDate);
+      setDraftStartDate(startDate ?? initial.start);
+      setDraftEndDate(endDate ?? initial.end);
       return;
     }
     setStartDate(draftStartDate);

@@ -42,6 +42,10 @@ The .env_sample file shows the necessary configuration keywords, including
 a personal access token for GitHub API access and the target GitHub
 repository name.
 
+To create a GitHub API token, open your personal GitHub Settings, and select "Developer Settings" from the sidebar. Open "Personal access tokens" and select "Tokens (classic)"
+
+Click on "Generate new token" and select the "Generate new token (classic)" option from the pulldown. You can set a Note to identify this particular token. Select the Expiration (30 days default), and "repo". Make sure you copy and save the generated token right away, because you can't display it again.
+
 #### Frontend
 
 ```bash

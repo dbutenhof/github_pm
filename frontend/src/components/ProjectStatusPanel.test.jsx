@@ -1,4 +1,5 @@
 // Generated-by: Cursor
+// Assisted-by: openai-code-assist
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -59,7 +60,11 @@ describe('ProjectStatusPanel', () => {
   });
 
   it('loads report and renders linked rows', async () => {
+    const user = userEvent.setup();
     render(<ProjectStatusPanel />);
+
+    expect(api.fetchProjectStatusReport).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Apply' }));
 
     await waitFor(() => {
       expect(api.fetchProjectStatusReport).toHaveBeenCalledWith(
@@ -81,6 +86,7 @@ describe('ProjectStatusPanel', () => {
   });
 
   it('shows days since update in PR backlog section', async () => {
+    const user = userEvent.setup();
     api.fetchProjectStatusReport.mockResolvedValue({
       start_date: '2025-04-04',
       end_date: '2025-04-10',
@@ -100,6 +106,8 @@ describe('ProjectStatusPanel', () => {
       ],
     });
     render(<ProjectStatusPanel />);
+    expect(api.fetchProjectStatusReport).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Apply' }));
     await waitFor(() => {
       expect(screen.getByText('Stale open')).toBeInTheDocument();
     });
@@ -109,6 +117,9 @@ describe('ProjectStatusPanel', () => {
   it('copy button passes section items to clipboard helper', async () => {
     const user = userEvent.setup();
     render(<ProjectStatusPanel />);
+
+    expect(api.fetchProjectStatusReport).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Apply' }));
 
     await waitFor(() => {
       expect(
@@ -160,10 +171,7 @@ describe('ProjectStatusPanel', () => {
     });
 
     render(<ProjectStatusPanel />);
-
-    await waitFor(() => {
-      expect(api.fetchProjectStatusReport).toHaveBeenCalled();
-    });
+    expect(api.fetchProjectStatusReport).not.toHaveBeenCalled();
 
     await user.clear(screen.getByLabelText('Starting'));
     await user.type(screen.getByLabelText('Starting'), '2025-04-01');
@@ -200,15 +208,13 @@ describe('ProjectStatusPanel', () => {
 
     render(<ProjectStatusPanel />);
 
-    await waitFor(() => {
-      expect(api.fetchProjectStatusReport).toHaveBeenCalledTimes(1);
-    });
+    expect(api.fetchProjectStatusReport).not.toHaveBeenCalled();
 
     await user.click(screen.getByRole('button', { name: 'Today' }));
 
     expect(screen.getByLabelText('Starting')).toHaveValue(start);
     expect(screen.getByLabelText('Ending')).toHaveValue(today);
-    expect(api.fetchProjectStatusReport).toHaveBeenCalledTimes(1);
+    expect(api.fetchProjectStatusReport).not.toHaveBeenCalled();
     expect(localStorage.getItem(STORAGE_START_KEY)).toBe('2025-04-03');
     expect(localStorage.getItem(STORAGE_END_KEY)).toBe('2025-04-10');
 
