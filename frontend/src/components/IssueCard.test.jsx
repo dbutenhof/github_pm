@@ -311,6 +311,47 @@ describe('IssueCard', () => {
     );
   });
 
+  it('adds a closed-by pull request from the Links popover', async () => {
+    const user = userEvent.setup();
+    const onIssueUpdate = vi.fn();
+    api.addClosedBy.mockResolvedValue({
+      issue_number: 459,
+      relationship: 'closed_by',
+      linked_pull_request: {
+        number: 123,
+        title: 'Fix issue',
+        url: 'https://github.com/test/repo/pull/123',
+      },
+    });
+    await act(async () => {
+      render(
+        <table>
+          <tbody>
+            <IssueCard issue={mockIssue} onIssueUpdate={onIssueUpdate} />
+          </tbody>
+        </table>
+      );
+    });
+    await user.click(screen.getByRole('button', { name: 'Add link' }));
+    await user.click(screen.getByRole('button', { name: 'Closed by' }));
+    await user.type(
+      screen.getByRole('textbox', { name: 'Pull request number' }),
+      '123'
+    );
+    await user.click(screen.getByRole('button', { name: 'Add' }));
+    await waitFor(() => {
+      expect(api.addClosedBy).toHaveBeenCalledWith(459, 123);
+    });
+    expect(screen.getByRole('link', { name: '#123' })).toBeInTheDocument();
+    expect(onIssueUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        closed_by: [
+          expect.objectContaining({ number: 123, title: 'Fix issue' }),
+        ],
+      })
+    );
+  });
+
   it('renders branch icon in Links column for pull request rows', async () => {
     const prIssue = {
       ...mockIssue,

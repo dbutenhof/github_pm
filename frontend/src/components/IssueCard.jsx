@@ -1,5 +1,6 @@
 // Generated-by: Cursor
 // Assisted-by: Cursor
+// Assisted-by: openai-code-assist
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   ExpandableSection,
@@ -55,6 +56,7 @@ import {
   removeBlockedBy,
   addBlocking,
   removeBlocking,
+  addClosedBy,
 } from '../services/api';
 import CommentCard from './CommentCard';
 import Reactions from './Reactions';
@@ -179,6 +181,7 @@ const IssueCard = ({
     issue.blocked_by || []
   );
   const [currentBlocking, setCurrentBlocking] = useState(issue.blocking || []);
+  const [currentClosedBy, setCurrentClosedBy] = useState(issue.closed_by || []);
   const [isLinkMenuOpen, setIsLinkMenuOpen] = useState(false);
   const [linkRelation, setLinkRelation] = useState('blocked_by');
   const [linkIssueNumber, setLinkIssueNumber] = useState('');
@@ -281,6 +284,10 @@ const IssueCard = ({
   useEffect(() => {
     setCurrentBlocking(issue.blocking || []);
   }, [issue.blocking]);
+
+  useEffect(() => {
+    setCurrentClosedBy(issue.closed_by || []);
+  }, [issue.closed_by]);
 
   useEffect(() => {
     if (!isCloseMenuOpen || closeActiveTab !== 1) return;
@@ -1041,10 +1048,15 @@ const IssueCard = ({
     textDecoration: opts.dimmed ? 'line-through' : 'none',
   });
 
-  const notifyLinksChanged = (blockedBy, blocking) => {
+  const notifyLinksChanged = (
+    blockedBy,
+    blocking,
+    closedBy = currentClosedBy
+  ) => {
     if (onIssueUpdate) {
       onIssueUpdate({
         ...issue,
+        closed_by: closedBy,
         blocked_by: blockedBy,
         blocking,
       });
@@ -1088,7 +1100,11 @@ const IssueCard = ({
   const handleAddLink = async () => {
     const parsed = parseInt(String(linkIssueNumber).trim(), 10);
     if (!Number.isFinite(parsed) || parsed <= 0) {
-      setLinkError('Enter a valid issue number');
+      setLinkError(
+        linkRelation === 'closed_by'
+          ? 'Enter a valid pull request number'
+          : 'Enter a valid issue number'
+      );
       return;
     }
     if (parsed === issue.number) {
@@ -1096,7 +1112,11 @@ const IssueCard = ({
       return;
     }
     const existing =
-      linkRelation === 'blocked_by' ? currentBlockedBy : currentBlocking;
+      linkRelation === 'blocked_by'
+        ? currentBlockedBy
+        : linkRelation === 'blocking'
+          ? currentBlocking
+          : currentClosedBy;
     if (existing.some((d) => d.number === parsed)) {
       setLinkError(`#${parsed} is already linked`);
       return;
@@ -1108,16 +1128,25 @@ const IssueCard = ({
       const result =
         linkRelation === 'blocked_by'
           ? await addBlockedBy(issue.number, parsed)
-          : await addBlocking(issue.number, parsed);
-      const linked = result.linked_issue;
+          : linkRelation === 'blocking'
+            ? await addBlocking(issue.number, parsed)
+            : await addClosedBy(issue.number, parsed);
+      const linked =
+        linkRelation === 'closed_by'
+          ? result.linked_pull_request
+          : result.linked_issue;
       if (linkRelation === 'blocked_by') {
         const next = [...currentBlockedBy, linked];
         setCurrentBlockedBy(next);
         notifyLinksChanged(next, currentBlocking);
-      } else {
+      } else if (linkRelation === 'blocking') {
         const next = [...currentBlocking, linked];
         setCurrentBlocking(next);
         notifyLinksChanged(currentBlockedBy, next);
+      } else {
+        const next = [...currentClosedBy, linked];
+        setCurrentClosedBy(next);
+        notifyLinksChanged(currentBlockedBy, currentBlocking, next);
       }
       setLinkIssueNumber('');
       setIsLinkMenuOpen(false);
@@ -1223,7 +1252,7 @@ const IssueCard = ({
       );
     }
 
-    const closedBy = issue.closed_by || [];
+    const closedBy = currentClosedBy;
 
     return (
       <div
@@ -1351,6 +1380,19 @@ const IssueCard = ({
                 >
                   Blocking
                 </Button>
+                <Button
+                  variant={
+                    linkRelation === 'closed_by' ? 'primary' : 'secondary'
+                  }
+                  onClick={() => setLinkRelation('closed_by')}
+                  style={{
+                    padding: '0.25rem 0.5rem',
+                    fontSize: '0.75rem',
+                    flex: 1,
+                  }}
+                >
+                  Closed by
+                </Button>
               </div>
               <TextInput
                 value={linkIssueNumber}
@@ -1361,8 +1403,16 @@ const IssueCard = ({
                       : value?.target?.value || '';
                   setLinkIssueNumber(stringValue);
                 }}
-                placeholder="Issue number"
-                aria-label="Related issue number"
+                placeholder={
+                  linkRelation === 'closed_by'
+                    ? 'Pull request number'
+                    : 'Issue number'
+                }
+                aria-label={
+                  linkRelation === 'closed_by'
+                    ? 'Pull request number'
+                    : 'Related issue number'
+                }
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
                     e.preventDefault();

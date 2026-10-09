@@ -1002,6 +1002,15 @@ class AddDependency(BaseModel):
     issue_number: int = Field(title="Related Issue Number")
 
 
+class AddCloseReference(BaseModel):
+    """Request body for adding a pull request as a closing reference.
+
+    Generated-by: openai-code-assist
+    """
+
+    pull_request_number: int = Field(title="Pull Request Number")
+
+
 def _dependency_link_payload(issue: dict) -> dict:
     """Normalize a GitHub REST issue into the Planning dependency shape.
 
@@ -1039,6 +1048,107 @@ def _get_issue_for_dependency(gitctx: Connector, issue_number: int) -> dict:
             detail=f"#{issue_number} is a pull request; dependencies require issues",
         )
     return issue
+
+
+def _get_issue_or_pull_request(gitctx: Connector, number: int) -> dict:
+    """Fetch an issue or pull request and translate a missing item to 404.
+
+    Generated-by: openai-code-assist
+    """
+    try:
+        return gitctx.get(f"/repos/{context.github_repo}/issues/{number}")
+    except requests.HTTPError as exc:
+        status = getattr(exc.response, "status_code", None)
+        if status == 404:
+            raise HTTPException(
+                status_code=404, detail=f"Issue #{number} not found"
+            ) from exc
+        raise
+
+
+def _close_reference_payload(pull_request: dict) -> dict:
+    """Normalize a pull request into the Planning closed-by link shape.
+
+    Generated-by: openai-code-assist
+    """
+    return {
+        "number": pull_request["number"],
+        "title": pull_request.get("title"),
+        "url": pull_request.get("html_url") or pull_request.get("url"),
+    }
+
+
+def _add_close_reference(gitctx: Connector, issue: dict, pull_request: dict) -> dict:
+    """Manually link a pull request as a closing reference for an issue.
+
+    Generated-by: openai-code-assist
+    """
+    if not issue.get("node_id") or not pull_request.get("node_id"):
+        raise HTTPException(
+            status_code=502,
+            detail="GitHub did not return node IDs for the issue and pull request",
+        )
+    response = gitctx.post(
+        "/graphql",
+        data={
+            "query": """
+mutation($issueId: ID!, $pullRequestIds: [ID!]!) {
+  addCloseIssueReferences(
+    input: {issueId: $issueId, pullRequestIds: $pullRequestIds}
+  ) {
+    issue {
+      number
+    }
+  }
+}
+""",
+            "variables": {
+                "issueId": issue["node_id"],
+                "pullRequestIds": [pull_request["node_id"]],
+            },
+        },
+    )
+    errors = response.get("errors") or []
+    if errors:
+        detail = "; ".join(
+            str(error.get("message", error)) if isinstance(error, dict) else str(error)
+            for error in errors
+        )
+        raise HTTPException(status_code=502, detail=detail)
+    return _close_reference_payload(pull_request)
+
+
+@api_router.post("/issues/{issue_number}/close-references")
+async def add_close_reference(
+    gitctx: Annotated[Connector, Depends(connection)],
+    issue_number: Annotated[int, Path(title="Issue")],
+    body: Annotated[AddCloseReference, Body(title="Closing Reference")],
+):
+    """Manually link a pull request as closing this issue.
+
+    Generated-by: openai-code-assist
+    """
+    issue = _get_issue_or_pull_request(gitctx, issue_number)
+    if "pull_request" in issue:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"#{issue_number} is a pull request; "
+                "closing references require issues"
+            ),
+        )
+    pull_request = _get_issue_or_pull_request(gitctx, body.pull_request_number)
+    if "pull_request" not in pull_request:
+        raise HTTPException(
+            status_code=422,
+            detail=f"#{body.pull_request_number} is not a pull request",
+        )
+    linked = _add_close_reference(gitctx, issue, pull_request)
+    return {
+        "issue_number": issue_number,
+        "relationship": "closed_by",
+        "linked_pull_request": linked,
+    }
 
 
 def _dependency_already_exists(exc: requests.HTTPError) -> bool:

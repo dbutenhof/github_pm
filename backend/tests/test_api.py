@@ -13,8 +13,10 @@ import requests
 from github_pm.api import (
     add_blocked_by,
     add_blocking,
+    add_close_reference,
     add_label_to_issue,
     add_milestone_to_issue,
+    AddCloseReference,
     AddDependency,
     adopt_parent_milestone,
     api_router,
@@ -1443,6 +1445,73 @@ class TestIssueDependencies:
         mock_gitctx.delete.assert_called_once_with(
             "/repos/test/repo/issues/88/dependencies/blocked_by/1"
         )
+
+
+class TestCloseReferences:
+    """Test manually linking a pull request as an issue's closing reference."""
+
+    @pytest.mark.asyncio
+    async def test_add_close_reference(self):
+        mock_gitctx = Mock(spec=Connector)
+        mock_gitctx.get = Mock(
+            side_effect=[
+                {"id": 1, "node_id": "I_issue", "number": 1, "title": "Bug"},
+                {
+                    "id": 17,
+                    "node_id": "PR_pull_request",
+                    "number": 17,
+                    "title": "Fix bug",
+                    "html_url": "https://github.com/test/repo/pull/17",
+                    "pull_request": {},
+                },
+            ]
+        )
+        mock_gitctx.post = Mock(
+            return_value={"data": {"addCloseIssueReferences": {"issue": {"number": 1}}}}
+        )
+
+        with patch("github_pm.api.context") as mock_context:
+            mock_context.github_repo = "test/repo"
+            result = await add_close_reference(
+                mock_gitctx, 1, AddCloseReference(pull_request_number=17)
+            )
+
+        assert result == {
+            "issue_number": 1,
+            "relationship": "closed_by",
+            "linked_pull_request": {
+                "number": 17,
+                "title": "Fix bug",
+                "url": "https://github.com/test/repo/pull/17",
+            },
+        }
+        mock_gitctx.post.assert_called_once()
+        payload = mock_gitctx.post.call_args.kwargs["data"]
+        assert payload["variables"] == {
+            "issueId": "I_issue",
+            "pullRequestIds": ["PR_pull_request"],
+        }
+        assert "addCloseIssueReferences" in payload["query"]
+
+    @pytest.mark.asyncio
+    async def test_add_close_reference_rejects_issue_target(self):
+        mock_gitctx = Mock(spec=Connector)
+        mock_gitctx.get = Mock(
+            side_effect=[
+                {"id": 1, "node_id": "I_issue", "number": 1},
+                {"id": 17, "node_id": "I_other", "number": 17},
+            ]
+        )
+
+        with patch("github_pm.api.context") as mock_context:
+            mock_context.github_repo = "test/repo"
+            with pytest.raises(HTTPException) as exc:
+                await add_close_reference(
+                    mock_gitctx, 1, AddCloseReference(pull_request_number=17)
+                )
+
+        assert exc.value.status_code == 422
+        mock_gitctx.post.assert_not_called()
 
 
 class TestAdoptParentMilestone:

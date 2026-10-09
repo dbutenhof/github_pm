@@ -424,6 +424,22 @@ export const removeBlocking = async (issueNumber, blockedIssueNumber) => {
   return response.json();
 };
 
+// Assisted-by: openai-code-assist
+export const addClosedBy = async (issueNumber, pullRequestNumber) => {
+  const response = await fetch(
+    `${API_BASE}/issues/${issueNumber}/close-references`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ pull_request_number: pullRequestNumber }),
+    }
+  );
+  await raiseForResponse(response, 'Failed to add closed-by link');
+  return response.json();
+};
+
 export const fetchIssueReactions = async (issueNumber) => {
   const response = await fetch(`${API_BASE}/issues/${issueNumber}/reactions`);
   if (!response.ok) {
