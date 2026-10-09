@@ -17,6 +17,7 @@ import {
   removeBlockedBy,
   addBlocking,
   removeBlocking,
+  addClosedBy,
   createComment,
   closeIssue,
   renderMarkdown,
@@ -405,6 +406,22 @@ describe('api', () => {
       expect(global.fetch).toHaveBeenCalledWith(
         '/api/v1/issues/1/dependencies/blocking/88',
         { method: 'DELETE' }
+      );
+    });
+
+    it('addClosedBy POSTs the pull request number', async () => {
+      global.fetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({ relationship: 'closed_by' }),
+      });
+      await addClosedBy(1, 17);
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/v1/issues/1/close-references',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pull_request_number: 17 }),
+        }
       );
     });
   });
