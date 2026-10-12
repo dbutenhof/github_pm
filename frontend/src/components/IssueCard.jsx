@@ -39,6 +39,7 @@ import {
   addLabel,
   removeLabel,
   createLabel,
+  fetchMilestones,
   setIssueMilestone,
   removeIssueMilestone,
   fetchIssueReactions,
@@ -150,6 +151,11 @@ const IssueCard = ({
   const [isCreatingLabel, setIsCreatingLabel] = useState(false);
   const [currentMilestone, setCurrentMilestone] = useState(issue.milestone);
   const [isMilestoneMenuOpen, setIsMilestoneMenuOpen] = useState(false);
+  const [milestoneTab, setMilestoneTab] = useState(0);
+  const [closedMilestones, setClosedMilestones] = useState([]);
+  const [closedMilestonesLoaded, setClosedMilestonesLoaded] = useState(false);
+  const [closedMilestonesLoading, setClosedMilestonesLoading] = useState(false);
+  const [closedMilestonesError, setClosedMilestonesError] = useState(null);
   const milestoneMenuRef = useRef(null);
   const milestoneToggleRef = useRef(null);
   const menuRef = useRef(null);
@@ -825,9 +831,10 @@ const IssueCard = ({
       } else {
         // Set milestone
         await setIssueMilestone(issue.number, milestoneNumber);
-        const newMilestone = milestonesCache.data.find(
-          (m) => m.number === milestoneNumber
-        );
+        const newMilestone = [
+          ...milestonesCache.data,
+          ...closedMilestones,
+        ].find((m) => m.number === milestoneNumber);
         if (newMilestone) {
           setCurrentMilestone(newMilestone);
         }
@@ -842,6 +849,32 @@ const IssueCard = ({
       console.error('Failed to change milestone:', err);
       // Restore previous milestone on error
       setCurrentMilestone(issue.milestone);
+    }
+  };
+
+  // Assisted-by: openai-code-assist
+  const loadClosedMilestones = () => {
+    if (closedMilestonesLoaded || closedMilestonesLoading) return;
+
+    setClosedMilestonesLoading(true);
+    setClosedMilestonesError(null);
+    fetchMilestones('closed')
+      .then((data) => {
+        setClosedMilestones(data);
+        setClosedMilestonesLoaded(true);
+        setClosedMilestonesLoading(false);
+      })
+      .catch((err) => {
+        setClosedMilestonesError(err.message);
+        setClosedMilestonesLoading(false);
+      });
+  };
+
+  const handleMilestoneTabSelect = (_event, key) => {
+    const nextTab = Number(key);
+    setMilestoneTab(nextTab);
+    if (nextTab === 1) {
+      loadClosedMilestones();
     }
   };
 
@@ -1903,7 +1936,12 @@ const IssueCard = ({
           >
             <Button
               variant={currentMilestone ? 'primary' : 'secondary'}
-              onClick={() => setIsMilestoneMenuOpen(!isMilestoneMenuOpen)}
+              onClick={() => {
+                setIsMilestoneMenuOpen(!isMilestoneMenuOpen);
+                if (!isMilestoneMenuOpen) {
+                  setMilestoneTab(0);
+                }
+              }}
               style={{
                 padding: '0.25rem 0.75rem',
                 fontSize: '0.75rem',
@@ -1930,64 +1968,140 @@ const IssueCard = ({
                   overflowY: 'auto',
                 }}
               >
-                <div
-                  style={{
-                    padding: '0.5rem',
-                    cursor: 'pointer',
-                    borderBottom: '1px solid #d2d2d2',
-                    backgroundColor:
-                      currentMilestone === null ? '#f0f0f0' : 'transparent',
-                  }}
-                  onClick={() => {
-                    handleMilestoneChange(null);
-                    setIsMilestoneMenuOpen(false);
-                  }}
-                  onMouseEnter={(e) => {
-                    if (currentMilestone !== null) {
-                      e.currentTarget.style.backgroundColor = '#f0f0f0';
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (currentMilestone !== null) {
-                      e.currentTarget.style.backgroundColor = 'transparent';
-                    }
-                  }}
+                <Tabs
+                  activeKey={milestoneTab}
+                  onSelect={handleMilestoneTabSelect}
+                  aria-label={`Milestone state for issue #${issue.number}`}
                 >
-                  <span style={{ fontSize: '0.875rem', fontStyle: 'italic' }}>
-                    No Milestone
-                  </span>
-                </div>
-                {milestonesCache.data.map((milestone) => (
-                  <div
-                    key={milestone.number}
-                    style={{
-                      padding: '0.5rem',
-                      cursor: 'pointer',
-                      backgroundColor:
-                        currentMilestone?.number === milestone.number
-                          ? '#f0f0f0'
-                          : 'transparent',
-                    }}
-                    onClick={() => {
-                      handleMilestoneChange(milestone.number);
-                      setIsMilestoneMenuOpen(false);
-                    }}
-                    onMouseEnter={(e) => {
-                      if (currentMilestone?.number !== milestone.number) {
-                        e.currentTarget.style.backgroundColor = '#f0f0f0';
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (currentMilestone?.number !== milestone.number) {
-                        e.currentTarget.style.backgroundColor = 'transparent';
-                      }
-                    }}
-                  >
-                    <span style={{ fontSize: '0.875rem' }}>
-                      {milestone.title}
-                    </span>
-                  </div>
-                ))}
+                  <Tab eventKey={0} title={<TabTitleText>Open</TabTitleText>}>
+                    <div>
+                      <div
+                        style={{
+                          padding: '0.5rem',
+                          cursor: 'pointer',
+                          borderBottom: '1px solid #d2d2d2',
+                          backgroundColor:
+                            currentMilestone === null
+                              ? '#f0f0f0'
+                              : 'transparent',
+                        }}
+                        onClick={() => {
+                          handleMilestoneChange(null);
+                          setIsMilestoneMenuOpen(false);
+                        }}
+                        onMouseEnter={(e) => {
+                          if (currentMilestone !== null) {
+                            e.currentTarget.style.backgroundColor = '#f0f0f0';
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          if (currentMilestone !== null) {
+                            e.currentTarget.style.backgroundColor =
+                              'transparent';
+                          }
+                        }}
+                      >
+                        <span
+                          style={{ fontSize: '0.875rem', fontStyle: 'italic' }}
+                        >
+                          No Milestone
+                        </span>
+                      </div>
+                      {milestonesCache.data
+                        .filter((milestone) => milestone.number !== 0)
+                        .map((milestone) => (
+                          <div
+                            key={milestone.number}
+                            style={{
+                              padding: '0.5rem',
+                              cursor: 'pointer',
+                              backgroundColor:
+                                currentMilestone?.number === milestone.number
+                                  ? '#f0f0f0'
+                                  : 'transparent',
+                            }}
+                            onClick={() => {
+                              handleMilestoneChange(milestone.number);
+                              setIsMilestoneMenuOpen(false);
+                            }}
+                            onMouseEnter={(e) => {
+                              if (
+                                currentMilestone?.number !== milestone.number
+                              ) {
+                                e.currentTarget.style.backgroundColor =
+                                  '#f0f0f0';
+                              }
+                            }}
+                            onMouseLeave={(e) => {
+                              if (
+                                currentMilestone?.number !== milestone.number
+                              ) {
+                                e.currentTarget.style.backgroundColor =
+                                  'transparent';
+                              }
+                            }}
+                          >
+                            <span style={{ fontSize: '0.875rem' }}>
+                              {milestone.title}
+                            </span>
+                          </div>
+                        ))}
+                    </div>
+                  </Tab>
+                  <Tab eventKey={1} title={<TabTitleText>Closed</TabTitleText>}>
+                    {closedMilestonesLoading && (
+                      <div style={{ padding: '1rem', textAlign: 'center' }}>
+                        <Spinner
+                          size="md"
+                          aria-label="Loading closed milestones"
+                        />
+                      </div>
+                    )}
+                    {closedMilestonesError && (
+                      <Alert
+                        variant="danger"
+                        isInline
+                        title="Error loading closed milestones"
+                      >
+                        {closedMilestonesError}
+                      </Alert>
+                    )}
+                    {!closedMilestonesLoading &&
+                      !closedMilestonesError &&
+                      closedMilestones.map((milestone) => (
+                        <div
+                          key={milestone.number}
+                          style={{
+                            padding: '0.5rem',
+                            cursor: 'pointer',
+                            backgroundColor:
+                              currentMilestone?.number === milestone.number
+                                ? '#f0f0f0'
+                                : 'transparent',
+                          }}
+                          onClick={() => {
+                            handleMilestoneChange(milestone.number);
+                            setIsMilestoneMenuOpen(false);
+                          }}
+                          onMouseEnter={(e) => {
+                            if (currentMilestone?.number !== milestone.number) {
+                              e.currentTarget.style.backgroundColor = '#f0f0f0';
+                            }
+                          }}
+                          onMouseLeave={(e) => {
+                            if (currentMilestone?.number !== milestone.number) {
+                              e.currentTarget.style.backgroundColor =
+                                'transparent';
+                            }
+                          }}
+                        >
+                          <span style={{ fontSize: '0.875rem' }}>
+                            {milestone.title}
+                          </span>
+                        </div>
+                      ))}
+                  </Tab>
+                </Tabs>
               </div>
             )}
           </div>

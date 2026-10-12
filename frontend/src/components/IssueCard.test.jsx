@@ -598,6 +598,55 @@ describe('IssueCard', () => {
     });
   });
 
+  it('loads closed milestones in a separate tab and can assign one', async () => {
+    const user = userEvent.setup();
+    const onMilestoneChange = vi.fn();
+    const closedMilestone = {
+      number: 11,
+      title: 'Completed release',
+      state: 'closed',
+    };
+    milestonesCache.data = [{ number: 10, title: 'Next release' }];
+    api.fetchMilestones.mockResolvedValue([closedMilestone]);
+    api.setIssueMilestone.mockResolvedValue({});
+
+    await act(async () => {
+      render(
+        <table>
+          <tbody>
+            <IssueCard
+              issue={mockIssue}
+              onMilestoneChange={onMilestoneChange}
+            />
+          </tbody>
+        </table>
+      );
+    });
+
+    await user.click(screen.getByRole('button', { name: 'No Milestone' }));
+    expect(screen.getByRole('tab', { name: 'Open' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Closed' })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('tab', { name: 'Closed' }));
+
+    await waitFor(() => {
+      expect(api.fetchMilestones).toHaveBeenCalledWith('closed');
+      expect(screen.getByText('Completed release')).toBeInTheDocument();
+    });
+    await user.click(screen.getByText('Completed release'));
+
+    await waitFor(() => {
+      expect(api.setIssueMilestone).toHaveBeenCalledWith(459, 11);
+      expect(onMilestoneChange).toHaveBeenCalledWith({
+        fromMilestoneNumber: null,
+        toMilestoneNumber: 11,
+      });
+      expect(
+        screen.getByRole('button', { name: 'Completed release' })
+      ).toBeInTheDocument();
+    });
+  });
+
   it('calls onMilestoneChange with to null when milestone is removed', async () => {
     const user = userEvent.setup();
     const onMilestoneChange = vi.fn();
