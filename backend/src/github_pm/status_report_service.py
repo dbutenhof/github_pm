@@ -13,6 +13,7 @@ from github_pm.api import Connector
 from github_pm.status_report_models import (
     PrBacklogItem,
     ProjectStatusReportResponse,
+    SecondApprovalItem,
     StatusReportItem,
 )
 
@@ -82,6 +83,20 @@ def _backlog_item_from_gql_node(node: dict[str, Any], end_d: date) -> PrBacklogI
     )
 
 
+def _second_approval_item_from_gql_node(
+    node: dict[str, Any], review: dict[str, Any]
+) -> SecondApprovalItem:
+    base = _item_from_gql_node(node)
+    author = review.get("author")
+    reviewer_login = author.get("login") if isinstance(author, dict) else None
+    return SecondApprovalItem(
+        number=base.number,
+        title=base.title,
+        html_url=base.html_url,
+        reviewer_login=str(reviewer_login or ""),
+    )
+
+
 def _max_submitted_review_time(node: dict[str, Any]) -> datetime | None:
     """Latest ``submittedAt`` among non-pending PR reviews, or ``None`` if none."""
     best: datetime | None = None
@@ -98,11 +113,25 @@ def _max_submitted_review_time(node: dict[str, Any]) -> datetime | None:
     return best
 
 
+def _submitted_approval_reviews(node: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return submitted approval reviews on a pull request."""
+    return [
+        review
+        for review in (node.get("reviews") or {}).get("nodes") or []
+        if isinstance(review, dict) and review.get("state") == "APPROVED"
+    ]
+
+
 def _partition_attention_open_prs(
     nodes: list[dict[str, Any]],
-) -> tuple[list[StatusReportItem], list[StatusReportItem]]:
-    """Split open PR nodes into reviewer vs creator attention lists."""
+) -> tuple[
+    list[StatusReportItem],
+    list[StatusReportItem],
+    list[StatusReportItem],
+]:
+    """Split open PR nodes into reviewer, second-approval, and creator lists."""
     reviewer_out: list[StatusReportItem] = []
+    second_approval_out: list[StatusReportItem] = []
     creator_out: list[StatusReportItem] = []
     for n in nodes:
         if n.get("state") != "OPEN" or n.get("mergedAt"):
@@ -118,18 +147,24 @@ def _partition_attention_open_prs(
             "BEHIND",
             "DIRTY",
         )
-        if (
+        is_ready_for_review = (
             not is_draft
             and mergeable == "MERGEABLE"
             and merge_state not in ("BEHIND", "DIRTY")
-            and (last_review is None or updated > last_review)
-        ):
+        )
+        approval_reviews = _submitted_approval_reviews(n)
+        if is_ready_for_review and len(approval_reviews) == 1:
+            second_approval_out.append(
+                _second_approval_item_from_gql_node(n, approval_reviews[0])
+            )
+        if is_ready_for_review and (last_review is None or updated > last_review):
             reviewer_out.append(_item_from_gql_node(n))
         if needs_creator_branch or (last_review is not None and last_review > updated):
             creator_out.append(_item_from_gql_node(n))
     reviewer_out.sort(key=lambda x: x.number)
+    second_approval_out.sort(key=lambda x: x.number)
     creator_out.sort(key=lambda x: x.number)
-    return reviewer_out, creator_out
+    return reviewer_out, second_approval_out, creator_out
 
 
 def build_project_status_report(
@@ -203,8 +238,8 @@ def build_project_status_report(
         attention_q,
         filter_bot_authors=False,
     )
-    reviewer_attention, creator_attention = _partition_attention_open_prs(
-        attention_nodes
+    reviewer_attention, second_approval, creator_attention = (
+        _partition_attention_open_prs(attention_nodes)
     )
 
     backlog_q = sm.open_pr_backlog_query(repo, start_date)
@@ -235,6 +270,7 @@ def build_project_status_report(
         merged_pull_requests=merged_items,
         opened_pull_requests=[_item_from_gql_node(n) for n in opened_pr_filtered],
         opened_issues=[_item_from_gql_node(n) for n in opened_issue_filtered],
+        second_approval_needed=second_approval,
         recently_updated_pull_requests=recently_items,
         reviewer_attention_needed=reviewer_attention,
         creator_attention_needed=creator_attention,

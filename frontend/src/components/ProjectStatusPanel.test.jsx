@@ -34,6 +34,14 @@ describe('ProjectStatusPanel', () => {
       html_url: 'https://github.com/o/r/issues/2',
     },
   ];
+  const secondApproval = [
+    {
+      number: 3,
+      title: 'Awaiting second approval',
+      html_url: 'https://github.com/o/r/pull/3',
+      reviewer_login: 'reviewer',
+    },
+  ];
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -47,6 +55,7 @@ describe('ProjectStatusPanel', () => {
       merged_pull_requests: merged,
       opened_pull_requests: [],
       opened_issues: issues,
+      second_approval_needed: secondApproval,
       recently_updated_pull_requests: [],
       reviewer_attention_needed: [],
       creator_attention_needed: [],
@@ -83,6 +92,14 @@ describe('ProjectStatusPanel', () => {
       'https://github.com/o/r/issues/2'
     );
     expect(screen.getByText('Track work')).toBeInTheDocument();
+
+    const secondApprovalLink = screen.getByRole('link', { name: '#3' });
+    expect(secondApprovalLink).toHaveAttribute(
+      'href',
+      'https://github.com/o/r/pull/3'
+    );
+    expect(screen.getByText('Awaiting second approval')).toBeInTheDocument();
+    expect(screen.getByText('(reviewer)').tagName).toBe('STRONG');
   });
 
   it('retries after a failed Apply without changing the dates', async () => {
@@ -201,6 +218,9 @@ describe('ProjectStatusPanel', () => {
       ).toBeInTheDocument();
       expect(
         screen.getByRole('heading', { name: 'Recently updated PRs' })
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole('heading', { name: 'Needs second approval' })
       ).toBeInTheDocument();
       expect(
         screen.getByRole('heading', { name: 'Reviewer attention needed' })

@@ -441,6 +441,12 @@ def graphql_search_open_pull_requests_attention(
               nodes {
                 submittedAt
                 state
+                author {
+                  __typename
+                  ... on User { login }
+                  ... on Bot { login }
+                  ... on Organization { login }
+                }
               }
             }
             additions

@@ -30,6 +30,12 @@ class PrBacklogItem(StatusReportItem):
     )
 
 
+class SecondApprovalItem(StatusReportItem):
+    """Ready-to-review PR row including its approving reviewer handle."""
+
+    reviewer_login: str = Field(description="GitHub handle of the approving reviewer")
+
+
 class ProjectStatusReportResponse(BaseModel):
     """Inclusive calendar window from ``start_date`` through ``end_date`` (UTC calendar dates)."""
 
@@ -46,6 +52,13 @@ class ProjectStatusReportResponse(BaseModel):
     opened_issues: list[StatusReportItem] = Field(
         default_factory=list,
         description="Issues created in the window (pull requests excluded)",
+    )
+    second_approval_needed: list[SecondApprovalItem] = Field(
+        default_factory=list,
+        description=(
+            "Open, non-draft pull requests that are mergeable and clean, with exactly "
+            "one submitted approval"
+        ),
     )
     recently_updated_pull_requests: list[StatusReportItem] = Field(
         default_factory=list,
