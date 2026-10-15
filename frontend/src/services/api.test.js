@@ -25,6 +25,7 @@ import {
   updateComment,
   updateIssueBody,
   updateIssueTitle,
+  updateIssueType,
   updateLabel,
   updateMilestoneState,
 } from './api';
@@ -476,6 +477,19 @@ describe('api', () => {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title: 'New title' }),
+      });
+    });
+
+    it('updateIssueType PATCHes type', async () => {
+      global.fetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({ number: 42, type: { name: 'Task' } }),
+      });
+      await updateIssueType(42, 'Task');
+      expect(global.fetch).toHaveBeenCalledWith('/api/v1/issues/42/type', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'Task' }),
       });
     });
 

@@ -455,6 +455,49 @@ describe('IssueCard', () => {
     });
   });
 
+  it('updates the issue type from the planning view', async () => {
+    const user = userEvent.setup();
+    const onIssueUpdate = vi.fn();
+    const issueWithType = {
+      ...mockIssue,
+      type: {
+        name: 'Feature',
+        color: 'blue',
+        description: 'A request, idea, or new functionality',
+      },
+    };
+    api.updateIssueType.mockResolvedValue({
+      type: {
+        name: 'Task',
+        color: 'green',
+        description: 'A unit of work',
+      },
+    });
+
+    render(
+      <table>
+        <tbody>
+          <IssueCard issue={issueWithType} onIssueUpdate={onIssueUpdate} />
+        </tbody>
+      </table>
+    );
+
+    await user.click(
+      screen.getByRole('button', { name: 'Change issue type for #459' })
+    );
+    await user.click(screen.getByRole('button', { name: 'Task' }));
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => {
+      expect(api.updateIssueType).toHaveBeenCalledWith(459, 'Task');
+      expect(onIssueUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: expect.objectContaining({ name: 'Task' }),
+        })
+      );
+    });
+  });
+
   it('does not show comments control when description is not expanded', async () => {
     const issueWithComments = { ...mockIssue, comments: 2 };
     await act(async () => {
