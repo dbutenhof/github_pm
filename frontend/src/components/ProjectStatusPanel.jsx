@@ -168,6 +168,7 @@ const ProjectStatusPanel = () => {
 
   const [startDate, setStartDate] = useState(null);
   const [endDate, setEndDate] = useState(null);
+  const [applyRevision, setApplyRevision] = useState(0);
   const [draftStartDate, setDraftStartDate] = useState(initial.start);
   const [draftEndDate, setDraftEndDate] = useState(initial.end);
   const [loading, setLoading] = useState(false);
@@ -193,7 +194,7 @@ const ProjectStatusPanel = () => {
       return;
     }
     load(startDate, endDate);
-  }, [startDate, endDate, load]);
+  }, [startDate, endDate, applyRevision, load]);
 
   useEffect(() => {
     if (!startDate || !endDate) {
@@ -215,6 +216,7 @@ const ProjectStatusPanel = () => {
     }
     setStartDate(draftStartDate);
     setEndDate(draftEndDate);
+    setApplyRevision((revision) => revision + 1);
   };
 
   const windowLabel =

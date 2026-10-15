@@ -85,6 +85,78 @@ describe('ProjectStatusPanel', () => {
     expect(screen.getByText('Track work')).toBeInTheDocument();
   });
 
+  it('retries after a failed Apply without changing the dates', async () => {
+    const user = userEvent.setup();
+    api.fetchProjectStatusReport
+      .mockRejectedValueOnce(new Error('GitHub is unavailable'))
+      .mockResolvedValueOnce({
+        start_date: '2025-04-03',
+        end_date: '2025-04-10',
+        merged_pull_requests: merged,
+        opened_pull_requests: [],
+        opened_issues: [],
+        recently_updated_pull_requests: [],
+        reviewer_attention_needed: [],
+        creator_attention_needed: [],
+        pr_backlog: [],
+      });
+
+    render(<ProjectStatusPanel />);
+
+    await user.click(screen.getByRole('button', { name: 'Apply' }));
+    expect(
+      await screen.findByText('GitHub is unavailable')
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Apply' }));
+
+    await waitFor(() => {
+      expect(api.fetchProjectStatusReport).toHaveBeenCalledTimes(2);
+      expect(screen.getByText('Fix bug')).toBeInTheDocument();
+    });
+  });
+
+  it('re-fetches when Apply is clicked again without changing the dates', async () => {
+    const user = userEvent.setup();
+    api.fetchProjectStatusReport
+      .mockResolvedValueOnce({
+        start_date: '2025-04-03',
+        end_date: '2025-04-10',
+        merged_pull_requests: [],
+        opened_pull_requests: [],
+        opened_issues: [],
+        recently_updated_pull_requests: [],
+        reviewer_attention_needed: [],
+        creator_attention_needed: [],
+        pr_backlog: [],
+      })
+      .mockResolvedValueOnce({
+        start_date: '2025-04-03',
+        end_date: '2025-04-10',
+        merged_pull_requests: merged,
+        opened_pull_requests: [],
+        opened_issues: [],
+        recently_updated_pull_requests: [],
+        reviewer_attention_needed: [],
+        creator_attention_needed: [],
+        pr_backlog: [],
+      });
+
+    render(<ProjectStatusPanel />);
+
+    await user.click(screen.getByRole('button', { name: 'Apply' }));
+    await waitFor(() => {
+      expect(api.fetchProjectStatusReport).toHaveBeenCalledTimes(1);
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Apply' }));
+
+    await waitFor(() => {
+      expect(api.fetchProjectStatusReport).toHaveBeenCalledTimes(2);
+      expect(screen.getByText('Fix bug')).toBeInTheDocument();
+    });
+  });
+
   it('shows days since update in PR backlog section', async () => {
     const user = userEvent.setup();
     api.fetchProjectStatusReport.mockResolvedValue({
