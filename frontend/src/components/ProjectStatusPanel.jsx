@@ -51,6 +51,10 @@ const getInitialDateRange = () => {
 
 const emptyListMessage = 'None in this period.';
 
+const secondApprovalReviewerSuffix = (row) => (
+  <strong style={{ marginLeft: '0.25rem' }}>({row.reviewer_login})</strong>
+);
+
 const backlogAgeSuffix = (row) => {
   const n = row.days_since_update;
   if (typeof n !== 'number' || Number.isNaN(n)) {
@@ -168,6 +172,7 @@ const ProjectStatusPanel = () => {
 
   const [startDate, setStartDate] = useState(null);
   const [endDate, setEndDate] = useState(null);
+  const [applyRevision, setApplyRevision] = useState(0);
   const [draftStartDate, setDraftStartDate] = useState(initial.start);
   const [draftEndDate, setDraftEndDate] = useState(initial.end);
   const [loading, setLoading] = useState(false);
@@ -193,7 +198,7 @@ const ProjectStatusPanel = () => {
       return;
     }
     load(startDate, endDate);
-  }, [startDate, endDate, load]);
+  }, [startDate, endDate, applyRevision, load]);
 
   useEffect(() => {
     if (!startDate || !endDate) {
@@ -215,6 +220,7 @@ const ProjectStatusPanel = () => {
     }
     setStartDate(draftStartDate);
     setEndDate(draftEndDate);
+    setApplyRevision((revision) => revision + 1);
   };
 
   const windowLabel =
@@ -343,6 +349,13 @@ const ProjectStatusPanel = () => {
             heading="New issues opened"
             description="Issues opened in this date range."
             items={report.opened_issues}
+          />
+          <StatusSection
+            heading="Needs second approval"
+            description="Ready-to-review PRs with one approval already."
+            items={report.second_approval_needed}
+            renderTitleSuffix={secondApprovalReviewerSuffix}
+            emptyMessage="None match."
           />
           <StatusSection
             heading="Recently updated PRs"

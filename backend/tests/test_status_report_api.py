@@ -153,6 +153,7 @@ class TestProjectStatusReport:
         ]
         assert body["opened_pull_requests"][0]["number"] == 11
         assert body["opened_issues"][0]["number"] == 12
+        assert body["second_approval_needed"] == []
         assert body["recently_updated_pull_requests"] == []
         assert body["reviewer_attention_needed"] == []
         assert body["creator_attention_needed"] == []
@@ -372,6 +373,61 @@ class TestProjectStatusReport:
                 "milestone": None,
                 "author": {"__typename": "User", "login": "u"},
             },
+            {
+                "number": 75,
+                "title": "Needs second approval",
+                "url": "https://github.com/test/repo/pull/75",
+                "createdAt": "2025-01-01T00:00:00Z",
+                "updatedAt": "2025-04-05T12:00:00Z",
+                "state": "OPEN",
+                "isDraft": False,
+                "mergedAt": None,
+                "mergeable": "MERGEABLE",
+                "mergeStateStatus": "CLEAN",
+                "reviews": {
+                    "nodes": [
+                        {
+                            "submittedAt": "2025-04-04T10:00:00Z",
+                            "state": "APPROVED",
+                            "author": {"__typename": "User", "login": "reviewer"},
+                        }
+                    ]
+                },
+                "additions": 1,
+                "deletions": 0,
+                "labels": {"nodes": []},
+                "milestone": None,
+                "author": {"__typename": "User", "login": "u"},
+            },
+            {
+                "number": 76,
+                "title": "Already has two approvals",
+                "url": "https://github.com/test/repo/pull/76",
+                "createdAt": "2025-01-01T00:00:00Z",
+                "updatedAt": "2025-04-05T12:00:00Z",
+                "state": "OPEN",
+                "isDraft": False,
+                "mergedAt": None,
+                "mergeable": "MERGEABLE",
+                "mergeStateStatus": "CLEAN",
+                "reviews": {
+                    "nodes": [
+                        {
+                            "submittedAt": "2025-04-03T10:00:00Z",
+                            "state": "APPROVED",
+                        },
+                        {
+                            "submittedAt": "2025-04-04T10:00:00Z",
+                            "state": "APPROVED",
+                        },
+                    ]
+                },
+                "additions": 1,
+                "deletions": 0,
+                "labels": {"nodes": []},
+                "milestone": None,
+                "author": {"__typename": "User", "login": "u"},
+            },
         ]
 
         async def override_conn():
@@ -388,7 +444,20 @@ class TestProjectStatusReport:
 
         assert r.status_code == 200
         body = r.json()
-        assert {p["number"] for p in body["reviewer_attention_needed"]} == {70, 71}
+        assert {p["number"] for p in body["reviewer_attention_needed"]} == {
+            70,
+            71,
+            75,
+            76,
+        }
+        assert body["second_approval_needed"] == [
+            {
+                "number": 75,
+                "title": "Needs second approval",
+                "html_url": "https://github.com/test/repo/pull/75",
+                "reviewer_login": "reviewer",
+            }
+        ]
         assert {p["number"] for p in body["creator_attention_needed"]} == {72, 73, 74}
 
     def test_recently_updated_pull_requests_excludes_opened_in_window(

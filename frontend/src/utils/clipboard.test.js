@@ -74,6 +74,21 @@ describe('formatStatusSectionClipboardMarkdown', () => {
       '[#50](https://github.com/o/r/pull/50) Stale open (7 days)\n[#51](https://github.com/o/r/pull/51) One day (1 day)'
     );
   });
+
+  it('appends the reviewer handle for second-approval rows', () => {
+    expect(
+      formatStatusSectionClipboardMarkdown([
+        {
+          number: 3,
+          title: 'Awaiting second approval',
+          html_url: 'https://github.com/o/r/pull/3',
+          reviewer_login: 'reviewer',
+        },
+      ])
+    ).toBe(
+      '[#3](https://github.com/o/r/pull/3) Awaiting second approval (reviewer)'
+    );
+  });
 });
 
 describe('formatStatusSectionClipboardHtml', () => {
@@ -95,6 +110,20 @@ describe('formatStatusSectionClipboardHtml', () => {
       },
     ]);
     expect(html).toContain('T (3 days)');
+  });
+
+  it('bolds the reviewer handle in HTML clipboard output', () => {
+    const html = formatStatusSectionClipboardHtml([
+      {
+        number: 3,
+        title: 'Awaiting second approval',
+        html_url: 'https://github.com/o/r/pull/3',
+        reviewer_login: 'reviewer',
+      },
+    ]);
+    expect(html).toContain(
+      'Awaiting second approval <strong>(reviewer)</strong>'
+    );
   });
 
   it('does not end with a trailing newline', () => {
