@@ -53,6 +53,7 @@ import {
   renderMarkdown,
   updateIssueBody,
   updateIssueTitle,
+  updateIssueType,
   addBlockedBy,
   removeBlockedBy,
   addBlocking,
@@ -67,6 +68,9 @@ import LabelColorInput from './LabelColorInput';
 import labelsCache, { clearLabelsCache } from '../utils/labelsCache';
 import milestonesCache from '../utils/milestonesCache';
 import assigneesCache from '../utils/assigneesCache';
+
+// Assisted-by: openai-code-assist
+const ISSUE_TYPES = ['Bug', 'Feature', 'Task'];
 
 const getContrastColor = (hexColor) => {
   // Convert hex to RGB
@@ -179,6 +183,10 @@ const IssueCard = ({
   const [titleDraft, setTitleDraft] = useState(issue.title || '');
   const [titleError, setTitleError] = useState(null);
   const [titleBusy, setTitleBusy] = useState(false);
+  const [isTypeDialogOpen, setIsTypeDialogOpen] = useState(false);
+  const [typeDraft, setTypeDraft] = useState(issue.type?.name || 'Feature');
+  const [typeError, setTypeError] = useState(null);
+  const [typeBusy, setTypeBusy] = useState(false);
   const [isCreateSubIssueOpen, setIsCreateSubIssueOpen] = useState(false);
   const [commentCount, setCommentCount] = useState(issue.comments || 0);
   const [descriptionBody, setDescriptionBody] = useState(issue.body || '');
@@ -1001,6 +1009,52 @@ const IssueCard = ({
       setTitleError(err.message);
     } finally {
       setTitleBusy(false);
+    }
+  };
+
+  // Assisted-by: openai-code-assist
+  const beginTypeEdit = () => {
+    if (issue.pull_request) return;
+    setTypeDraft(issue.type?.name || 'Feature');
+    setTypeError(null);
+    setTypeBusy(false);
+    setIsTypeDialogOpen(true);
+  };
+
+  // Assisted-by: openai-code-assist
+  const cancelTypeEdit = () => {
+    setTypeDraft(issue.type?.name || 'Feature');
+    setTypeError(null);
+    setTypeBusy(false);
+    setIsTypeDialogOpen(false);
+  };
+
+  // Assisted-by: openai-code-assist
+  const handleUpdateType = async () => {
+    const nextTypeName = String(typeDraft || '').trim();
+    if (!nextTypeName) {
+      setTypeError('Type is required');
+      return;
+    }
+    if (nextTypeName === issue.type?.name) {
+      cancelTypeEdit();
+      return;
+    }
+
+    setTypeBusy(true);
+    setTypeError(null);
+    try {
+      const updated = await updateIssueType(issue.number, nextTypeName);
+      const nextType = updated?.type || {
+        ...(issue.type || {}),
+        name: nextTypeName,
+      };
+      setIsTypeDialogOpen(false);
+      onIssueUpdate?.({ ...issue, ...updated, type: nextType });
+    } catch (err) {
+      setTypeError(err.message);
+    } finally {
+      setTypeBusy(false);
     }
   };
 
@@ -2395,8 +2449,30 @@ const IssueCard = ({
           >
             <div style={{ minWidth: 0, flex: 1 }}>
               {issue.type && (
-                <Tooltip content={issue.type.description || ''}>
+                <Tooltip
+                  content={
+                    issue.type.description ||
+                    (!issue.pull_request ? 'Change issue type' : '')
+                  }
+                >
                   <span
+                    role={issue.pull_request ? undefined : 'button'}
+                    tabIndex={issue.pull_request ? undefined : 0}
+                    aria-label={
+                      issue.pull_request
+                        ? undefined
+                        : `Change issue type for #${issue.number}`
+                    }
+                    onClick={beginTypeEdit}
+                    onKeyDown={(event) => {
+                      if (
+                        !issue.pull_request &&
+                        (event.key === 'Enter' || event.key === ' ')
+                      ) {
+                        event.preventDefault();
+                        beginTypeEdit();
+                      }
+                    }}
                     style={{
                       display: 'inline-block',
                       marginRight: '0.5rem',
@@ -2407,12 +2483,30 @@ const IssueCard = ({
                       backgroundColor: issue.type.color,
                       color: getTypeContrastColor(issue.type.color),
                       whiteSpace: 'nowrap',
-                      cursor: issue.type.description ? 'help' : 'default',
+                      cursor: issue.pull_request
+                        ? issue.type.description
+                          ? 'help'
+                          : 'default'
+                        : 'pointer',
                     }}
                   >
                     {issue.type.name}
                   </span>
                 </Tooltip>
+              )}
+              {!issue.type && !issue.pull_request && (
+                <Button
+                  variant="secondary"
+                  onClick={beginTypeEdit}
+                  aria-label={`Set issue type for #${issue.number}`}
+                  style={{
+                    marginRight: '0.5rem',
+                    padding: '0.125rem 0.5rem',
+                    fontSize: '0.75rem',
+                  }}
+                >
+                  Set type
+                </Button>
               )}
               {isEditingTitle ? (
                 <div
@@ -2858,6 +2952,56 @@ const IssueCard = ({
         submitLabel="Create Issue"
         onSubmit={handleCreateSubIssue}
       />
+      <Modal
+        title={`Change type for #${issue.number}`}
+        isOpen={isTypeDialogOpen}
+        onClose={cancelTypeEdit}
+        actions={[
+          <Button
+            key="save"
+            variant="primary"
+            onClick={handleUpdateType}
+            isLoading={typeBusy}
+            isDisabled={typeBusy}
+          >
+            Save
+          </Button>,
+          <Button
+            key="cancel"
+            variant="link"
+            onClick={cancelTypeEdit}
+            isDisabled={typeBusy}
+          >
+            Cancel
+          </Button>,
+        ]}
+      >
+        <Form>
+          <FormGroup label="Type" fieldId={`issue-type-${issue.number}`}>
+            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+              {ISSUE_TYPES.map((typeName) => (
+                <Button
+                  key={typeName}
+                  variant={typeDraft === typeName ? 'primary' : 'secondary'}
+                  onClick={() => setTypeDraft(typeName)}
+                  isDisabled={typeBusy}
+                  style={{
+                    padding: '0.25rem 0.75rem',
+                    fontSize: '0.875rem',
+                  }}
+                >
+                  {typeName}
+                </Button>
+              ))}
+            </div>
+          </FormGroup>
+          {typeError && (
+            <Alert variant="danger" title="Unable to update type" isInline>
+              {typeError}
+            </Alert>
+          )}
+        </Form>
+      </Modal>
       <Modal
         title="Create New Label"
         isOpen={isCreateLabelDialogOpen}

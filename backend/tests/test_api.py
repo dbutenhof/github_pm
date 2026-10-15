@@ -54,11 +54,13 @@ from github_pm.api import (
     update_comment,
     update_issue_body,
     update_issue_title,
+    update_issue_type,
     update_label,
     update_milestone_state,
     UpdateComment,
     UpdateIssueBody,
     UpdateIssueTitle,
+    UpdateIssueType,
     UpdateLabel,
     UpdateMilestoneState,
 )
@@ -2198,6 +2200,35 @@ class TestUpdateIssueTitle:
         mock_gitctx.patch.assert_called_once_with(
             "/repos/test/repo/issues/42",
             data={"title": "Updated title"},
+            headers={"Accept": "application/vnd.github.full+json"},
+        )
+
+
+class TestUpdateIssueType:
+    """Test the update_issue_type endpoint.
+
+    Assisted-by: openai-code-assist
+    """
+
+    @pytest.mark.asyncio
+    async def test_update_issue_type_success(self):
+        mock_issue = {
+            "number": 42,
+            "type": {"name": "Task", "color": "green"},
+        }
+        mock_gitctx = Mock(spec=Connector)
+        mock_gitctx.patch = Mock(return_value=mock_issue)
+
+        with patch("github_pm.api.context") as mock_context:
+            mock_context.github_repo = "test/repo"
+            result = await update_issue_type(
+                mock_gitctx, 42, UpdateIssueType(type="Task")
+            )
+
+        assert result == mock_issue
+        mock_gitctx.patch.assert_called_once_with(
+            "/repos/test/repo/issues/42",
+            data={"type": "Task"},
             headers={"Accept": "application/vnd.github.full+json"},
         )
 

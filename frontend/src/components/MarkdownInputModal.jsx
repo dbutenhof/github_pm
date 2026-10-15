@@ -20,7 +20,8 @@ import labelsCache from '../utils/labelsCache';
 import assigneesCache from '../utils/assigneesCache';
 import UserAvatar from './UserAvatar';
 
-const ISSUE_TYPES = ['Bug', 'Feature'];
+// Assisted-by: openai-code-assist
+const ISSUE_TYPES = ['Bug', 'Feature', 'Task'];
 
 /**
  * Popup input window with Edit / Preview markdown tabs.

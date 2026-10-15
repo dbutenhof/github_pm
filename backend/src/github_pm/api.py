@@ -518,6 +518,30 @@ async def update_issue_title(
     return updated
 
 
+# Assisted-by: openai-code-assist
+class UpdateIssueType(BaseModel):
+    """Body for updating an issue type."""
+
+    type: str = Field(title="Issue Type", min_length=1)
+
+
+# Assisted-by: openai-code-assist
+@api_router.patch("/issues/{issue_number}/type")
+async def update_issue_type(
+    gitctx: Annotated[Connector, Depends(connection)],
+    issue_number: Annotated[int, Path(title="Issue")],
+    payload: Annotated[UpdateIssueType, Body(title="Issue Type")],
+):
+    """Update an issue's GitHub issue type."""
+    updated = gitctx.patch(
+        f"/repos/{context.github_repo}/issues/{issue_number}",
+        data={"type": payload.type},
+        headers=_GITHUB_BODY_ACCEPT,
+    )
+    logger.info("Updated type for issue #%s", issue_number)
+    return updated
+
+
 class CloseIssueRequest(BaseModel):
     """Body for closing an issue with a reason and optional comment.
 
@@ -591,7 +615,7 @@ class CreateIssue(BaseModel):
     type: str | None = Field(
         default=None,
         title="Issue Type",
-        description="GitHub issue type name, e.g. Bug or Feature",
+        description="GitHub issue type name, e.g. Bug, Feature, or Task",
     )
     milestone: int | None = Field(default=None, title="Milestone Number")
     parent_number: int | None = Field(

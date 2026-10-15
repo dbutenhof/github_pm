@@ -126,6 +126,21 @@ export const updateIssueTitle = async (issueNumber, title) => {
   return response.json();
 };
 
+// Assisted-by: openai-code-assist
+export const updateIssueType = async (issueNumber, type) => {
+  const response = await fetch(`${API_BASE}/issues/${issueNumber}/type`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ type }),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to update issue type: ${response.statusText}`);
+  }
+  return response.json();
+};
+
 export const closeIssue = async (issueNumber, { reason, body }) => {
   const response = await fetch(
     `${API_BASE}/issues/${issueNumber}/close-with-comment`,

@@ -106,6 +106,7 @@ describe('MarkdownInputModal', () => {
     expect(screen.getByLabelText(/Title/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Bug' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Feature' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Task' })).toBeInTheDocument();
 
     await user.type(screen.getByPlaceholderText('Issue title'), 'My epic');
     await user.click(screen.getByRole('button', { name: 'Bug' }));
