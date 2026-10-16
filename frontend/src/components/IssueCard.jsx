@@ -31,6 +31,7 @@ import {
   PencilAltIcon,
   LockIcon,
   ArrowRightIcon,
+  OutlinedCopyIcon,
 } from '@patternfly/react-icons';
 import { getDaysSince, formatDate } from '../utils/dateUtils';
 import {
@@ -68,6 +69,7 @@ import LabelColorInput from './LabelColorInput';
 import labelsCache, { clearLabelsCache } from '../utils/labelsCache';
 import milestonesCache from '../utils/milestonesCache';
 import assigneesCache from '../utils/assigneesCache';
+import { copyIssueReferenceToClipboard } from '../utils/clipboard';
 
 // Assisted-by: openai-code-assist
 const ISSUE_TYPES = ['Bug', 'Feature', 'Task'];
@@ -1695,19 +1697,36 @@ const IssueCard = ({
 
         {/* Column 2: Issue number link */}
         <td style={{ ...cellStyle, paddingLeft: `${0.5 + indentPx / 16}rem` }}>
-          <a
-            href={issue.html_url}
-            target="_blank"
-            rel="noopener noreferrer"
+          <div
             style={{
-              textDecoration: 'none',
-              color: '#0066cc',
-              fontWeight: '500',
-              whiteSpace: 'nowrap',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.25rem',
             }}
           >
-            #{issue.number}
-          </a>
+            <a
+              href={issue.html_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                textDecoration: 'none',
+                color: '#0066cc',
+                fontWeight: '500',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              #{issue.number}
+            </a>
+            <Button
+              variant="plain"
+              onClick={() => void copyIssueReferenceToClipboard(issue)}
+              aria-label={`Copy issue #${issue.number} reference to clipboard`}
+              title="Copy issue reference"
+              style={{ padding: '0.125rem' }}
+            >
+              <OutlinedCopyIcon />
+            </Button>
+          </div>
         </td>
 
         {renderHierarchyType()}

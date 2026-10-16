@@ -4,10 +4,12 @@ import { render, screen, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import IssueCard from './IssueCard';
 import * as api from '../services/api';
+import * as clipboard from '../utils/clipboard';
 import assigneesCache from '../utils/assigneesCache';
 import milestonesCache from '../utils/milestonesCache';
 
 vi.mock('../services/api');
+vi.mock('../utils/clipboard');
 
 describe('IssueCard', () => {
   const mockIssue = {
@@ -42,6 +44,7 @@ describe('IssueCard', () => {
     api.renderMarkdown.mockResolvedValue({
       html: '<p><strong>Previewed close note</strong></p>',
     });
+    clipboard.copyIssueReferenceToClipboard.mockResolvedValue(undefined);
     // Clear assignees cache before each test
     assigneesCache.data = [];
     assigneesCache.loading = false;
@@ -80,6 +83,21 @@ describe('IssueCard', () => {
       expect(link).toHaveAttribute('target', '_blank');
       expect(link).toHaveAttribute('rel', 'noopener noreferrer');
     });
+  });
+
+  it('copies the issue number and title as rich clipboard content', async () => {
+    const user = userEvent.setup();
+    render(<IssueCard issue={mockIssue} />);
+
+    await user.click(
+      screen.getByRole('button', {
+        name: 'Copy issue #459 reference to clipboard',
+      })
+    );
+
+    expect(clipboard.copyIssueReferenceToClipboard).toHaveBeenCalledWith(
+      mockIssue
+    );
   });
 
   it('shows expansion icon when body exists', async () => {
