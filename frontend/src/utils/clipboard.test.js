@@ -2,7 +2,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   copyTextToClipboard,
+  copyIssueReferenceToClipboard,
   copyStatusSectionToClipboard,
+  formatIssueReferenceClipboardHtml,
+  formatIssueReferenceClipboardText,
   formatStatusSectionClipboardHtml,
   formatStatusSectionClipboardMarkdown,
 } from './clipboard';
@@ -135,6 +138,30 @@ describe('formatStatusSectionClipboardHtml', () => {
   });
 });
 
+describe('formatIssueReferenceClipboard', () => {
+  it('uses plain text without Markdown syntax', () => {
+    expect(
+      formatIssueReferenceClipboardText({
+        number: 42,
+        title: 'Hello world',
+        html_url: 'https://github.com/o/r/issues/42',
+      })
+    ).toBe('#42 Hello world');
+  });
+
+  it('uses an HTML link for the issue number', () => {
+    expect(
+      formatIssueReferenceClipboardHtml({
+        number: 42,
+        title: 'A & B',
+        html_url: 'https://github.com/o/r/issues/42?x=1&y=2',
+      })
+    ).toBe(
+      '<a href="https://github.com/o/r/issues/42?x=1&amp;y=2">#42</a> A &amp; B'
+    );
+  });
+});
+
 describe('copyTextToClipboard', () => {
   beforeEach(() => {
     const writeText = vi.fn().mockResolvedValue(undefined);
@@ -195,5 +222,37 @@ describe('copyStatusSectionToClipboard', () => {
       '[#1](https://github.com/o/r/pull/1) T'
     );
     warn.mockRestore();
+  });
+});
+
+describe('copyIssueReferenceToClipboard', () => {
+  beforeEach(() => {
+    globalThis.ClipboardItem = class {
+      constructor(data) {
+        this._data = data;
+      }
+    };
+  });
+
+  it('writes rich HTML and plain text for document editors', async () => {
+    const write = vi.fn().mockResolvedValue(undefined);
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { write, writeText },
+      configurable: true,
+      writable: true,
+    });
+
+    await copyIssueReferenceToClipboard({
+      number: 42,
+      title: 'Hello world',
+      html_url: 'https://github.com/o/r/issues/42',
+    });
+
+    expect(write).toHaveBeenCalledTimes(1);
+    const [clipboardItem] = write.mock.calls[0][0];
+    expect(clipboardItem._data['text/plain'].type).toBe('text/plain');
+    expect(clipboardItem._data['text/html'].type).toBe('text/html');
+    expect(writeText).not.toHaveBeenCalled();
   });
 });

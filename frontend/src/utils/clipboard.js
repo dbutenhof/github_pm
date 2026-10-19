@@ -112,17 +112,11 @@ export async function copyTextToClipboard(text) {
 }
 
 /**
- * Copy section rows with ``#number`` hyperlinked in HTML and Markdown link syntax in plain text.
- *
- * @param {Array<{ number: number, title?: string, html_url?: string, days_since_update?: number, reviewer_login?: string }>} items
+ * @param {string} plain
+ * @param {string} innerHtml
  * @returns {Promise<void>}
  */
-export async function copyStatusSectionToClipboard(items) {
-  const plain = formatStatusSectionClipboardMarkdown(items);
-  if (!plain) {
-    return;
-  }
-  const innerHtml = formatStatusSectionClipboardHtml(items);
+async function copyRichClipboardContent(plain, innerHtml) {
   const htmlDoc = `<!DOCTYPE html><html><head><meta charset="utf-8" /></head><body>${innerHtml}</body></html>`;
 
   if (
@@ -143,4 +137,56 @@ export async function copyStatusSectionToClipboard(items) {
     }
   }
   await copyTextToClipboard(plain);
+}
+
+/**
+ * @param {{ number: number, title?: string, html_url?: string }} issue
+ * @returns {string}
+ */
+export function formatIssueReferenceClipboardText(issue) {
+  const title = (issue.title != null ? String(issue.title) : '').trim();
+  return `#${issue.number} ${title}`.trim();
+}
+
+/**
+ * @param {{ number: number, title?: string, html_url?: string }} issue
+ * @returns {string}
+ */
+export function formatIssueReferenceClipboardHtml(issue) {
+  const title = escapeHtmlText(
+    (issue.title != null ? String(issue.title) : '').trim()
+  );
+  const url = (issue.html_url != null ? String(issue.html_url) : '').trim();
+  const number = url
+    ? `<a href="${escapeHtmlAttr(url)}">#${issue.number}</a>`
+    : `#${issue.number}`;
+  return `${number} ${title}`.trim();
+}
+
+/**
+ * Copy an issue reference as rich HTML for document editors such as Google Docs.
+ *
+ * @param {{ number: number, title?: string, html_url?: string }} issue
+ * @returns {Promise<void>}
+ */
+export async function copyIssueReferenceToClipboard(issue) {
+  await copyRichClipboardContent(
+    formatIssueReferenceClipboardText(issue),
+    formatIssueReferenceClipboardHtml(issue)
+  );
+}
+
+/**
+ * Copy section rows with ``#number`` hyperlinked in HTML and Markdown link syntax in plain text.
+ *
+ * @param {Array<{ number: number, title?: string, html_url?: string, days_since_update?: number, reviewer_login?: string }>} items
+ * @returns {Promise<void>}
+ */
+export async function copyStatusSectionToClipboard(items) {
+  const plain = formatStatusSectionClipboardMarkdown(items);
+  if (!plain) {
+    return;
+  }
+  const innerHtml = formatStatusSectionClipboardHtml(items);
+  await copyRichClipboardContent(plain, innerHtml);
 }
