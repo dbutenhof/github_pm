@@ -1,3 +1,4 @@
+// Assisted-by: Codex
 // Generated-by: Cursor
 import React, { useState, useEffect, useRef } from 'react';
 import {
@@ -98,7 +99,7 @@ const MarkdownInputModal = ({
     if (mode !== 'issue') return;
 
     // Load labels
-    if (labelsCache.data.length > 0) {
+    if (labelsCache.loaded) {
       setAvailableLabels(labelsCache.data);
     } else {
       setLabelsLoading(true);
@@ -112,7 +113,7 @@ const MarkdownInputModal = ({
     }
 
     // Load assignees
-    if (assigneesCache.data.length > 0) {
+    if (assigneesCache.loaded) {
       setAvailableAssignees(assigneesCache.data);
     } else {
       setAssigneesLoading(true);

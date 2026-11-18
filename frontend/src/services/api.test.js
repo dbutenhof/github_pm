@@ -1,3 +1,4 @@
+// Assisted-by: Codex
 // Generated-by: Cursor
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
@@ -33,6 +34,32 @@ import {
 describe('api', () => {
   beforeEach(() => {
     global.fetch = vi.fn();
+  });
+
+  it('caches identical Markdown previews without invalidating other reads', async () => {
+    global.fetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ html: '<p>Preview</p>' }),
+    });
+    await fetchIssues(1);
+    await renderMarkdown('Preview');
+    await renderMarkdown('Preview');
+    await fetchIssues(1, ['bug']);
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('invalidates cached reads even when a mutation times out', async () => {
+    global.fetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ issues: [], pull_requests: [] }),
+    });
+    await fetchIssues(1);
+    global.fetch.mockRejectedValueOnce(new Error('ambiguous write'));
+    await expect(updateIssueTitle(1, 'updated')).rejects.toThrow(
+      'ambiguous write'
+    );
+    await fetchIssues(1);
+    expect(global.fetch).toHaveBeenCalledTimes(3);
   });
 
   describe('fetchMilestones', () => {

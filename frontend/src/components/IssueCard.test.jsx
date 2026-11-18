@@ -1,3 +1,4 @@
+// Assisted-by: Codex
 // Generated-by: Cursor
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, act } from '@testing-library/react';
@@ -746,7 +747,10 @@ describe('IssueCard', () => {
   it('calls onLabelsChange when a label is removed', async () => {
     const user = userEvent.setup();
     const onLabelsChange = vi.fn();
-    api.removeLabel.mockResolvedValue({});
+    const onIssueUpdate = vi.fn();
+    api.removeLabel.mockResolvedValue({
+      labels: [{ name: 'concurrently-added', color: 'ffffff' }],
+    });
     const issueWithMilestone = {
       ...mockIssue,
       milestone: { number: 6, title: 'Current' },
@@ -759,6 +763,7 @@ describe('IssueCard', () => {
             <IssueCard
               issue={issueWithMilestone}
               onLabelsChange={onLabelsChange}
+              onIssueUpdate={onIssueUpdate}
             />
           </tbody>
         </table>
@@ -772,6 +777,10 @@ describe('IssueCard', () => {
     await waitFor(() => {
       expect(api.removeLabel).toHaveBeenCalledWith(459, 'enhancement');
       expect(onLabelsChange).toHaveBeenCalledWith({ milestoneNumber: 6 });
+      expect(onIssueUpdate).toHaveBeenCalledWith({
+        id: mockIssue.id,
+        labels: [{ name: 'concurrently-added', color: 'ffffff' }],
+      });
     });
   });
 

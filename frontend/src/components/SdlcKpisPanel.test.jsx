@@ -1,21 +1,13 @@
+// Assisted-by: Codex
 // Generated-by: Cursor
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import SdlcKpisPanel, { formatDaysAndHours } from './SdlcKpisPanel';
 
-vi.mock('../services/api', () => ({
-  fetchSdlcDelivery: vi.fn(),
-  fetchEscapedDefectRate: vi.fn(),
-  fetchBugBacklogDelta: vi.fn(),
-}));
-
-import {
-  fetchSdlcDelivery,
-  fetchEscapedDefectRate,
-  fetchBugBacklogDelta,
-} from '../services/api';
+vi.mock('../services/api', () => ({ fetchSdlcDashboard: vi.fn() }));
+import { fetchSdlcDashboard } from '../services/api';
 
 describe('formatDaysAndHours', () => {
   it('formats days and hours', () => {
@@ -70,11 +62,11 @@ describe('SdlcKpisPanel', () => {
     const slices = Array.from({ length: sliceCount }, () => ({
       ...deliverySlice,
     }));
-    fetchSdlcDelivery.mockResolvedValue({
+    const delivery = {
       weeks: sliceCount,
       week_days: 7,
       slices,
-    });
+    };
     const escapeSlice = {
       window_start: '2025-04-03T12:00:00Z',
       window_end: '2025-04-10T12:00:00Z',
@@ -100,16 +92,17 @@ describe('SdlcKpisPanel', () => {
       bugs_closed: 0,
       net: 1,
     };
-    fetchEscapedDefectRate.mockResolvedValue({
+    const escaped = {
       weeks: sliceCount,
       week_days: 7,
       slices: Array.from({ length: sliceCount }, () => ({ ...escapeSlice })),
-    });
-    fetchBugBacklogDelta.mockResolvedValue({
+    };
+    const backlog = {
       weeks: sliceCount,
       week_days: 7,
       slices: Array.from({ length: sliceCount }, () => ({ ...backlogSlice })),
-    });
+    };
+    fetchSdlcDashboard.mockResolvedValue({ delivery, escaped, backlog });
   };
 
   it('renders title and loads metrics on mount', async () => {
@@ -119,14 +112,32 @@ describe('SdlcKpisPanel', () => {
     expect(screen.getByText('SDLC KPIs')).toBeInTheDocument();
 
     await waitFor(() => {
-      expect(fetchSdlcDelivery).toHaveBeenCalledWith(4, 7);
-      expect(fetchEscapedDefectRate).toHaveBeenCalledWith(4, 7);
-      expect(fetchBugBacklogDelta).toHaveBeenCalledWith(4, 7);
+      expect(fetchSdlcDashboard).toHaveBeenCalledWith(4, 7, { force: false });
+      expect(fetchSdlcDashboard).toHaveBeenCalledTimes(1);
     });
 
     await waitFor(() => {
       expect(screen.getByText(/Merged PR throughput/i)).toBeInTheDocument();
     });
+  });
+
+  it('ignores older dashboard responses and reloads on explicit Refresh', async () => {
+    let rejectOld;
+    fetchSdlcDashboard.mockReturnValueOnce(
+      new Promise((_, reject) => {
+        rejectOld = reject;
+      })
+    );
+    makeSeriesMocks(4);
+    const { rerender } = render(<SdlcKpisPanel refreshKey={0} />);
+    rerender(<SdlcKpisPanel refreshKey={1} />);
+    await screen.findByText(/Merged PR throughput/i);
+    expect(fetchSdlcDashboard).toHaveBeenLastCalledWith(4, 7, { force: true });
+    await act(async () => {
+      rejectOld(new Error('obsolete failure'));
+    });
+    expect(screen.queryByText(/obsolete failure/)).not.toBeInTheDocument();
+    expect(screen.getByText(/Merged PR throughput/i)).toBeInTheDocument();
   });
 
   it('loads week count from localStorage', async () => {
@@ -136,9 +147,8 @@ describe('SdlcKpisPanel', () => {
     render(<SdlcKpisPanel />);
 
     await waitFor(() => {
-      expect(fetchSdlcDelivery).toHaveBeenCalledWith(8, 7);
-      expect(fetchEscapedDefectRate).toHaveBeenCalledWith(8, 7);
-      expect(fetchBugBacklogDelta).toHaveBeenCalledWith(8, 7);
+      expect(fetchSdlcDashboard).toHaveBeenCalledWith(8, 7, { force: false });
+      expect(fetchSdlcDashboard).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -160,6 +170,6 @@ describe('SdlcKpisPanel', () => {
     await waitFor(() => {
       expect(localStorage.getItem('pmStatsSdlcWeeks')).toBe('6');
     });
-    expect(fetchSdlcDelivery).toHaveBeenLastCalledWith(6, 7);
+    expect(fetchSdlcDashboard).toHaveBeenLastCalledWith(6, 7, { force: false });
   });
 });

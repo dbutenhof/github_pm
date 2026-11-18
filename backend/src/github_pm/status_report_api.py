@@ -1,3 +1,4 @@
+# Assisted-by: Codex
 """REST API for the project status report.
 
 Generated-by: Cursor
@@ -10,7 +11,9 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from github_pm.api import connection, Connector
+from github_pm.api import connection
+from github_pm.execution import offload
+from github_pm.github_client import Connector
 from github_pm.status_report_models import ProjectStatusReportResponse
 from github_pm.status_report_service import build_project_status_report
 
@@ -24,7 +27,8 @@ def _default_end_date() -> date:
 
 
 @status_report_router.get("/project-status", response_model=ProjectStatusReportResponse)
-async def get_project_status_report(
+@offload
+def get_project_status_report(
     gitctx: Annotated[Connector, Depends(connection)],
     start_date: Annotated[
         date | None,

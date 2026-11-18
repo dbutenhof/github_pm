@@ -1,3 +1,4 @@
+# Assisted-by: Codex
 """Tests for the offline SDLC HTML report CLI.
 
 Generated-by: Cursor
@@ -17,6 +18,7 @@ from github_pm.sdlc_models import (
     BugBacklogResponse,
     BugBacklogSeriesResponse,
     CycleTimePayload,
+    DashboardResponse,
     DeliveryResponse,
     DeliverySeriesResponse,
     EscapedDefectResponse,
@@ -116,21 +118,14 @@ class TestSdlcReportCli:
         out = tmp_path / "report.html"
 
         with (
-            patch("github_pm.api.Connector") as mc,
+            patch("github_pm.github_client.Connector") as mc,
             patch(
-                "github_pm.sdlc_service.compute_sdlc_delivery_series",
-                return_value=delivery,
-            ),
-            patch(
-                "github_pm.sdlc_service.compute_escaped_defect_rate_series",
-                return_value=escaped,
-            ),
-            patch(
-                "github_pm.sdlc_service.compute_bug_backlog_delta_series",
-                return_value=bugs,
+                "github_pm.sdlc_service.compute_sdlc_dashboard",
+                return_value=DashboardResponse(
+                    delivery=delivery, escaped=escaped, backlog=bugs
+                ),
             ),
         ):
-            mc.return_value = object()
             runner = CliRunner()
             result = runner.invoke(
                 main,
@@ -138,6 +133,7 @@ class TestSdlcReportCli:
                 env={"GITHUB_TOKEN": "tok", "GITHUB_REPO": "x/y"},
             )
 
+        mc.return_value.__exit__.assert_called_once()
         assert result.exit_code == 0, result.output
         assert out.is_file()
         body = out.read_text(encoding="utf-8")

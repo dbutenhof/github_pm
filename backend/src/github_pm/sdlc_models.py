@@ -99,3 +99,11 @@ class BugBacklogSeriesResponse(BaseModel):
     weeks: int
     week_days: int
     slices: list[BugBacklogResponse]
+
+
+class DashboardResponse(BaseModel):
+    """One collection context for all dashboard panels. Generated-by: Codex."""
+
+    delivery: DeliverySeriesResponse
+    escaped: EscapedDefectSeriesResponse
+    backlog: BugBacklogSeriesResponse

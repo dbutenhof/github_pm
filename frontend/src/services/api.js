@@ -1,5 +1,30 @@
+// Assisted-by: Codex
 // Generated-by: Cursor
+import {
+  cachedQuery,
+  invalidateQueries,
+  setQueryRepository,
+} from '../utils/queryCache';
 const API_BASE = '/api/v1';
+
+// Generated-by: Codex
+const apiFetch = async (url, options) => {
+  const mutation =
+    options?.method && options.method !== 'GET' && !url.endsWith('/markdown');
+  if (mutation) invalidateQueries();
+  try {
+    return await (options ? fetch(url, options) : fetch(url));
+  } finally {
+    // A timeout can follow an accepted write, so invalidate on failure too.
+    if (mutation) invalidateQueries();
+  }
+};
+
+const readJson = async (path, message) => {
+  const response = await apiFetch(`${API_BASE}${path}`);
+  await raiseForResponse(response, message);
+  return response.json();
+};
 
 const readErrorDetail = async (response) => {
   try {
@@ -27,18 +52,18 @@ const raiseForResponse = async (response, fallback) => {
   throw new Error(`${fallback}: ${detail}`);
 };
 
-export const fetchMilestones = async (state = 'open') => {
-  const query = state === 'open' ? '' : `?state=${encodeURIComponent(state)}`;
-  const response = await fetch(`${API_BASE}/milestones${query}`);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch milestones: ${response.statusText}`);
-  }
-  return response.json();
+export const fetchMilestones = (state = 'open', options = {}) => {
+  const path = `/milestones${state === 'open' ? '' : `?state=${encodeURIComponent(state)}`}`;
+  return cachedQuery(
+    path,
+    () => readJson(path, 'Failed to fetch milestones'),
+    options
+  );
 };
 
 // Assisted-by: openai-code-assist
 export const fetchMilestoneOpenCounts = async (milestoneNumber) => {
-  const response = await fetch(
+  const response = await apiFetch(
     `${API_BASE}/milestones/${milestoneNumber}/open-counts`
   );
   if (!response.ok) {
@@ -49,29 +74,23 @@ export const fetchMilestoneOpenCounts = async (milestoneNumber) => {
   return response.json();
 };
 
-export const fetchIssues = async (milestoneNumber, sortOrder = []) => {
-  let url = `${API_BASE}/issues/${milestoneNumber}`;
-  if (sortOrder && sortOrder.length > 0) {
-    const sortParam = sortOrder.join(',');
-    url += `?sort=${encodeURIComponent(sortParam)}`;
-  }
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch issues: ${response.statusText}`);
-  }
-  return response.json();
+export const fetchIssues = (milestoneNumber, _sortOrder = [], options = {}) => {
+  const path = `/issues/${milestoneNumber}`;
+  return cachedQuery(path, () => readJson(path, 'Failed to fetch issues'), {
+    ttl: 15000,
+    ...options,
+  });
 };
 
-export const fetchComments = async (issueNumber) => {
-  const response = await fetch(`${API_BASE}/comments/${issueNumber}`);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch comments: ${response.statusText}`);
-  }
-  return response.json();
-};
+export const fetchComments = (issueNumber) =>
+  cachedQuery(
+    `/comments/${issueNumber}`,
+    () => readJson(`/comments/${issueNumber}`, 'Failed to fetch comments'),
+    { ttl: 15000 }
+  );
 
 export const createComment = async (issueNumber, body) => {
-  const response = await fetch(`${API_BASE}/comments/${issueNumber}`, {
+  const response = await apiFetch(`${API_BASE}/comments/${issueNumber}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -85,7 +104,7 @@ export const createComment = async (issueNumber, body) => {
 };
 
 export const updateComment = async (commentId, body) => {
-  const response = await fetch(`${API_BASE}/comments/${commentId}/body`, {
+  const response = await apiFetch(`${API_BASE}/comments/${commentId}/body`, {
     method: 'PATCH',
     headers: {
       'Content-Type': 'application/json',
@@ -99,7 +118,7 @@ export const updateComment = async (commentId, body) => {
 };
 
 export const updateIssueBody = async (issueNumber, body) => {
-  const response = await fetch(`${API_BASE}/issues/${issueNumber}/body`, {
+  const response = await apiFetch(`${API_BASE}/issues/${issueNumber}/body`, {
     method: 'PATCH',
     headers: {
       'Content-Type': 'application/json',
@@ -113,7 +132,7 @@ export const updateIssueBody = async (issueNumber, body) => {
 };
 
 export const updateIssueTitle = async (issueNumber, title) => {
-  const response = await fetch(`${API_BASE}/issues/${issueNumber}/title`, {
+  const response = await apiFetch(`${API_BASE}/issues/${issueNumber}/title`, {
     method: 'PATCH',
     headers: {
       'Content-Type': 'application/json',
@@ -128,7 +147,7 @@ export const updateIssueTitle = async (issueNumber, title) => {
 
 // Assisted-by: openai-code-assist
 export const updateIssueType = async (issueNumber, type) => {
-  const response = await fetch(`${API_BASE}/issues/${issueNumber}/type`, {
+  const response = await apiFetch(`${API_BASE}/issues/${issueNumber}/type`, {
     method: 'PATCH',
     headers: {
       'Content-Type': 'application/json',
@@ -142,7 +161,7 @@ export const updateIssueType = async (issueNumber, type) => {
 };
 
 export const closeIssue = async (issueNumber, { reason, body }) => {
-  const response = await fetch(
+  const response = await apiFetch(
     `${API_BASE}/issues/${issueNumber}/close-with-comment`,
     {
       method: 'POST',
@@ -159,21 +178,26 @@ export const closeIssue = async (issueNumber, { reason, body }) => {
 };
 
 export const renderMarkdown = async (text) => {
-  const response = await fetch(`${API_BASE}/markdown`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
+  return cachedQuery(
+    `markdown:${text}`,
+    async () => {
+      const response = await apiFetch(`${API_BASE}/markdown`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ text }),
+      });
+      if (!response.ok) {
+        throw new Error(`Failed to render markdown: ${response.statusText}`);
+      }
+      return response.json();
     },
-    body: JSON.stringify({ text }),
-  });
-  if (!response.ok) {
-    throw new Error(`Failed to render markdown: ${response.statusText}`);
-  }
-  return response.json();
+    { ttl: 300000 }
+  );
 };
-
 export const createIssue = async (issueData) => {
-  const response = await fetch(`${API_BASE}/issues`, {
+  const response = await apiFetch(`${API_BASE}/issues`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -187,24 +211,21 @@ export const createIssue = async (issueData) => {
 };
 
 export const fetchProject = async () => {
-  const response = await fetch(`${API_BASE}/project`);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch project: ${response.statusText}`);
-  }
-  return response.json();
+  const data = await readJson('/project', 'Failed to fetch project');
+  setQueryRepository(data.github_repo);
+  return data;
 };
 
-export const fetchLabels = async () => {
-  const response = await fetch(`${API_BASE}/labels`);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch labels: ${response.statusText}`);
-  }
-  return response.json();
-};
+export const fetchLabels = (options = {}) =>
+  cachedQuery(
+    '/labels',
+    () => readJson('/labels', 'Failed to fetch labels'),
+    options
+  );
 
 export const addLabel = async (issueNumber, labelName) => {
-  const response = await fetch(
-    `${API_BASE}/issues/${issueNumber}/labels/${labelName}`,
+  const response = await apiFetch(
+    `${API_BASE}/issues/${issueNumber}/labels/${encodeURIComponent(labelName)}`,
     {
       method: 'POST',
     }
@@ -216,8 +237,8 @@ export const addLabel = async (issueNumber, labelName) => {
 };
 
 export const removeLabel = async (issueNumber, labelName) => {
-  const response = await fetch(
-    `${API_BASE}/issues/${issueNumber}/labels/${labelName}`,
+  const response = await apiFetch(
+    `${API_BASE}/issues/${issueNumber}/labels/${encodeURIComponent(labelName)}`,
     {
       method: 'DELETE',
     }
@@ -229,7 +250,7 @@ export const removeLabel = async (issueNumber, labelName) => {
 };
 
 export const createMilestone = async (milestoneData) => {
-  const response = await fetch(`${API_BASE}/milestones`, {
+  const response = await apiFetch(`${API_BASE}/milestones`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -244,7 +265,7 @@ export const createMilestone = async (milestoneData) => {
 
 // Assisted-by: openai-code-assist
 export const updateMilestone = async (milestoneNumber, milestoneData) => {
-  const response = await fetch(`${API_BASE}/milestones/${milestoneNumber}`, {
+  const response = await apiFetch(`${API_BASE}/milestones/${milestoneNumber}`, {
     method: 'PATCH',
     headers: {
       'Content-Type': 'application/json',
@@ -259,7 +280,7 @@ export const updateMilestone = async (milestoneNumber, milestoneData) => {
 
 // Assisted-by: openai-code-assist
 export const updateMilestoneState = async (milestoneNumber, state) => {
-  const response = await fetch(
+  const response = await apiFetch(
     `${API_BASE}/milestones/${milestoneNumber}/state`,
     {
       method: 'PATCH',
@@ -276,7 +297,7 @@ export const updateMilestoneState = async (milestoneNumber, state) => {
 };
 
 export const deleteMilestone = async (milestoneNumber) => {
-  const response = await fetch(`${API_BASE}/milestones/${milestoneNumber}`, {
+  const response = await apiFetch(`${API_BASE}/milestones/${milestoneNumber}`, {
     method: 'DELETE',
   });
   if (!response.ok) {
@@ -286,7 +307,7 @@ export const deleteMilestone = async (milestoneNumber) => {
 };
 
 export const createLabel = async (labelData) => {
-  const response = await fetch(`${API_BASE}/labels`, {
+  const response = await apiFetch(`${API_BASE}/labels`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -301,13 +322,16 @@ export const createLabel = async (labelData) => {
 
 // Assisted-by: openai-code-assist
 export const updateLabel = async (labelName, labelData) => {
-  const response = await fetch(`${API_BASE}/labels/${labelName}`, {
-    method: 'PATCH',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(labelData),
-  });
+  const response = await apiFetch(
+    `${API_BASE}/labels/${encodeURIComponent(labelName)}`,
+    {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(labelData),
+    }
+  );
   if (!response.ok) {
     throw new Error(`Failed to update label: ${response.statusText}`);
   }
@@ -315,9 +339,12 @@ export const updateLabel = async (labelName, labelData) => {
 };
 
 export const deleteLabel = async (labelName) => {
-  const response = await fetch(`${API_BASE}/labels/${labelName}`, {
-    method: 'DELETE',
-  });
+  const response = await apiFetch(
+    `${API_BASE}/labels/${encodeURIComponent(labelName)}`,
+    {
+      method: 'DELETE',
+    }
+  );
   if (!response.ok) {
     throw new Error(`Failed to delete label: ${response.statusText}`);
   }
@@ -325,7 +352,7 @@ export const deleteLabel = async (labelName) => {
 };
 
 export const setIssueMilestone = async (issueNumber, milestoneNumber) => {
-  const response = await fetch(
+  const response = await apiFetch(
     `${API_BASE}/issues/${issueNumber}/milestone/${milestoneNumber}`,
     {
       method: 'POST',
@@ -338,7 +365,7 @@ export const setIssueMilestone = async (issueNumber, milestoneNumber) => {
 };
 
 export const removeIssueMilestone = async (issueNumber, milestoneNumber) => {
-  const response = await fetch(
+  const response = await apiFetch(
     `${API_BASE}/issues/${issueNumber}/milestone/${milestoneNumber}`,
     {
       method: 'DELETE',
@@ -351,7 +378,7 @@ export const removeIssueMilestone = async (issueNumber, milestoneNumber) => {
 };
 
 export const setIssueParent = async (issueNumber, parentNumber) => {
-  const response = await fetch(`${API_BASE}/issues/${issueNumber}/parent`, {
+  const response = await apiFetch(`${API_BASE}/issues/${issueNumber}/parent`, {
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
@@ -365,7 +392,7 @@ export const setIssueParent = async (issueNumber, parentNumber) => {
 };
 
 export const clearIssueParent = async (issueNumber) => {
-  const response = await fetch(`${API_BASE}/issues/${issueNumber}/parent`, {
+  const response = await apiFetch(`${API_BASE}/issues/${issueNumber}/parent`, {
     method: 'DELETE',
   });
   if (!response.ok) {
@@ -375,7 +402,7 @@ export const clearIssueParent = async (issueNumber) => {
 };
 
 export const adoptParentMilestone = async (issueNumber) => {
-  const response = await fetch(
+  const response = await apiFetch(
     `${API_BASE}/issues/${issueNumber}/adopt-parent-milestone`,
     {
       method: 'POST',
@@ -388,7 +415,7 @@ export const adoptParentMilestone = async (issueNumber) => {
 };
 
 export const addBlockedBy = async (issueNumber, relatedIssueNumber) => {
-  const response = await fetch(
+  const response = await apiFetch(
     `${API_BASE}/issues/${issueNumber}/dependencies/blocked_by`,
     {
       method: 'POST',
@@ -403,7 +430,7 @@ export const addBlockedBy = async (issueNumber, relatedIssueNumber) => {
 };
 
 export const removeBlockedBy = async (issueNumber, blockingIssueNumber) => {
-  const response = await fetch(
+  const response = await apiFetch(
     `${API_BASE}/issues/${issueNumber}/dependencies/blocked_by/${blockingIssueNumber}`,
     {
       method: 'DELETE',
@@ -414,7 +441,7 @@ export const removeBlockedBy = async (issueNumber, blockingIssueNumber) => {
 };
 
 export const addBlocking = async (issueNumber, relatedIssueNumber) => {
-  const response = await fetch(
+  const response = await apiFetch(
     `${API_BASE}/issues/${issueNumber}/dependencies/blocking`,
     {
       method: 'POST',
@@ -429,7 +456,7 @@ export const addBlocking = async (issueNumber, relatedIssueNumber) => {
 };
 
 export const removeBlocking = async (issueNumber, blockedIssueNumber) => {
-  const response = await fetch(
+  const response = await apiFetch(
     `${API_BASE}/issues/${issueNumber}/dependencies/blocking/${blockedIssueNumber}`,
     {
       method: 'DELETE',
@@ -441,7 +468,7 @@ export const removeBlocking = async (issueNumber, blockedIssueNumber) => {
 
 // Assisted-by: openai-code-assist
 export const addClosedBy = async (issueNumber, pullRequestNumber) => {
-  const response = await fetch(
+  const response = await apiFetch(
     `${API_BASE}/issues/${issueNumber}/close-references`,
     {
       method: 'POST',
@@ -455,40 +482,46 @@ export const addClosedBy = async (issueNumber, pullRequestNumber) => {
   return response.json();
 };
 
-export const fetchIssueReactions = async (issueNumber) => {
-  const response = await fetch(`${API_BASE}/issues/${issueNumber}/reactions`);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch issue reactions: ${response.statusText}`);
-  }
-  return response.json();
-};
+export const fetchIssueReactions = (issueNumber) =>
+  cachedQuery(
+    `/issues/${issueNumber}/reactions`,
+    () =>
+      readJson(
+        `/issues/${issueNumber}/reactions`,
+        'Failed to fetch issuereactions'
+      ),
+    { ttl: 15000 }
+  );
 
-export const fetchCommentReactions = async (commentId) => {
-  const response = await fetch(`${API_BASE}/comments/${commentId}/reactions`);
-  if (!response.ok) {
-    throw new Error(
-      `Failed to fetch comment reactions: ${response.statusText}`
-    );
-  }
-  return response.json();
-};
+export const fetchCommentReactions = (commentId) =>
+  cachedQuery(
+    `/comments/${commentId}/reactions`,
+    () =>
+      readJson(
+        `/comments/${commentId}/reactions`,
+        'Failed to fetch commentreactions'
+      ),
+    { ttl: 15000 }
+  );
 
-export const fetchAssignees = async () => {
-  const response = await fetch(`${API_BASE}/assignees`);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch assignees: ${response.statusText}`);
-  }
-  return response.json();
-};
+export const fetchAssignees = (options = {}) =>
+  cachedQuery(
+    '/assignees',
+    () => readJson('/assignees', 'Failed to fetch assignees'),
+    options
+  );
 
 export const setIssueAssignees = async (issueNumber, assignees) => {
-  const response = await fetch(`${API_BASE}/issues/${issueNumber}/assignees`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(assignees),
-  });
+  const response = await apiFetch(
+    `${API_BASE}/issues/${issueNumber}/assignees`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(assignees),
+    }
+  );
   if (!response.ok) {
     throw new Error(`Failed to set assignees: ${response.statusText}`);
   }
@@ -496,13 +529,16 @@ export const setIssueAssignees = async (issueNumber, assignees) => {
 };
 
 export const removeIssueAssignees = async (issueNumber, assignees) => {
-  const response = await fetch(`${API_BASE}/issues/${issueNumber}/assignees`, {
-    method: 'DELETE',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(assignees),
-  });
+  const response = await apiFetch(
+    `${API_BASE}/issues/${issueNumber}/assignees`,
+    {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(assignees),
+    }
+  );
   if (!response.ok) {
     throw new Error(`Failed to remove assignees: ${response.statusText}`);
   }
@@ -514,7 +550,7 @@ export const fetchSdlcDelivery = async (weeks = 4, weekDays = 7) => {
     weeks: String(weeks),
     week_days: String(weekDays),
   });
-  const response = await fetch(`${API_BASE}/sdlc/delivery?${params}`);
+  const response = await apiFetch(`${API_BASE}/sdlc/delivery?${params}`);
   if (!response.ok) {
     throw new Error(
       `Failed to fetch SDLC delivery metrics: ${response.statusText}`
@@ -528,7 +564,7 @@ export const fetchEscapedDefectRate = async (weeks = 4, weekDays = 7) => {
     weeks: String(weeks),
     week_days: String(weekDays),
   });
-  const response = await fetch(
+  const response = await apiFetch(
     `${API_BASE}/sdlc/escaped-defect-rate?${params}`
   );
   if (!response.ok) {
@@ -544,7 +580,9 @@ export const fetchBugBacklogDelta = async (weeks = 4, weekDays = 7) => {
     weeks: String(weeks),
     week_days: String(weekDays),
   });
-  const response = await fetch(`${API_BASE}/sdlc/bug-backlog-delta?${params}`);
+  const response = await apiFetch(
+    `${API_BASE}/sdlc/bug-backlog-delta?${params}`
+  );
   if (!response.ok) {
     throw new Error(
       `Failed to fetch bug backlog delta: ${response.statusText}`
@@ -569,11 +607,21 @@ export const fetchProjectStatusReport = async (startDateISO, endDateISO) => {
   const url = qs
     ? `${API_BASE}/project-status?${qs}`
     : `${API_BASE}/project-status`;
-  const response = await fetch(url);
+  const response = await apiFetch(url);
   if (!response.ok) {
     throw new Error(
       `Failed to fetch project status report: ${response.statusText}`
     );
   }
   return response.json();
+};
+
+// Generated-by: Codex
+export const fetchSdlcDashboard = (weeks = 4, weekDays = 7, options = {}) => {
+  const path = `/sdlc/dashboard?${new URLSearchParams({ weeks: String(weeks), week_days: String(weekDays) })}`;
+  return cachedQuery(
+    path,
+    () => readJson(path, 'Failed to fetch SDLC metrics'),
+    { ttl: 15000, ...options }
+  );
 };

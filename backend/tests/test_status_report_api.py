@@ -1,8 +1,10 @@
+# Assisted-by: Codex
 """Tests for project status report API (mocked GitHub GraphQL).
 
 Generated-by: Cursor
 """
 
+from copy import deepcopy
 from unittest.mock import MagicMock
 
 from fastapi.testclient import TestClient
@@ -10,6 +12,36 @@ import pytest
 
 from github_pm.api import connection
 from github_pm.app import app
+
+
+def _page(nodes):
+    return {
+        "nodes": deepcopy(nodes),
+        "issueCount": len(nodes),
+        "pageInfo": {"hasNextPage": False, "endCursor": None},
+    }
+
+
+def _response(body, merged, opened, issues, attention):
+    result = {}
+    for key, query in body["variables"].items():
+        if not key.startswith("q"):
+            continue
+        nodes = (
+            merged
+            if "is:merged" in query
+            else issues if "is:issue" in query else opened
+        )
+        result["s" + key[1:]] = _page(nodes)
+    if not result:
+        nodes = list({n["number"]: deepcopy(n) for n in attention}.values())
+        for node in nodes:
+            node.setdefault("id", f'P{node["number"]}')
+            node.setdefault("reviews", {"nodes": []})["pageInfo"] = _page([])[
+                "pageInfo"
+            ]
+        result["repository"] = {"pullRequests": _page(nodes)}
+    return {"data": result}
 
 
 @pytest.fixture
@@ -51,6 +83,7 @@ def mock_connector_graphql():
             "state": "OPEN",
         }
     ]
+    gitctx.status_opened_pr_nodes = opened_pr_nodes
 
     issue_nodes = [
         {
@@ -63,76 +96,28 @@ def mock_connector_graphql():
     ]
     gitctx.status_opened_issue_nodes = issue_nodes
 
-    def post_side(path: str, data=None, **kwargs):
-        body = data
-        if path != "/graphql" or not isinstance(body, dict):
-            raise AssertionError(f"unexpected post {path=!r} body={body!r}")
-        q = (body.get("variables") or {}).get("q") or ""
-        if "is:merged" in q and "merged:" in q:
-            return {
-                "data": {
-                    "search": {
-                        "pageInfo": {"hasNextPage": False, "endCursor": None},
-                        "nodes": merged_nodes,
-                    }
-                }
-            }
-        if "is:issue" in q and "created:" in q:
-            assert "closedAt" in body["query"]
-            return {
-                "data": {
-                    "search": {
-                        "pageInfo": {"hasNextPage": False, "endCursor": None},
-                        "nodes": list(gitctx.status_opened_issue_nodes),
-                    }
-                }
-            }
-        if q == "repo:test/repo is:pr is:open":
-            return {
-                "data": {
-                    "search": {
-                        "pageInfo": {"hasNextPage": False, "endCursor": None},
-                        "nodes": list(gitctx.status_attention_open_nodes),
-                    }
-                }
-            }
-        if "is:pr" in q and "is:open" in q and "updated:" in q:
-            if "updated:<" in q:
-                return {
-                    "data": {
-                        "search": {
-                            "pageInfo": {"hasNextPage": False, "endCursor": None},
-                            "nodes": list(gitctx.status_backlog_nodes),
-                        }
-                    }
-                }
-            return {
-                "data": {
-                    "search": {
-                        "pageInfo": {"hasNextPage": False, "endCursor": None},
-                        "nodes": list(gitctx.status_recently_updated_nodes),
-                    }
-                }
-            }
-        if "is:pr" in q and "created:" in q:
-            return {
-                "data": {
-                    "search": {
-                        "pageInfo": {"hasNextPage": False, "endCursor": None},
-                        "nodes": opened_pr_nodes,
-                    }
-                }
-            }
-        raise AssertionError(f"unexpected graphql q={q!r}")
+    def post_side(path, data=None, **kwargs):
+        return _response(
+            data,
+            merged_nodes,
+            opened_pr_nodes,
+            issue_nodes,
+            list(gitctx.status_attention_open_nodes)
+            + list(gitctx.status_recently_updated_nodes)
+            + list(gitctx.status_backlog_nodes),
+        )
 
     gitctx.post.side_effect = post_side
     return gitctx
 
 
 class TestProjectStatusReport:
+    @pytest.mark.parametrize("is_draft", [False, True])
     def test_report_ok_with_end_date_only_defaults_start(
-        self, client, mock_connector_graphql
+        self, client, mock_connector_graphql, is_draft
     ):
+        mock_connector_graphql.status_opened_pr_nodes[0]["isDraft"] = is_draft
+
         async def override_conn():
             yield mock_connector_graphql
 
@@ -153,7 +138,13 @@ class TestProjectStatusReport:
                 "html_url": "https://github.com/test/repo/pull/10",
             }
         ]
-        assert body["opened_pull_requests"][0]["number"] == 11
+        assert body["opened_pull_requests"] == [
+            {
+                "number": 11,
+                "title": "Opened PR (draft)" if is_draft else "Opened PR",
+                "html_url": "https://github.com/test/repo/pull/11",
+            }
+        ]
         assert body["opened_issues"][0]["number"] == 12
         assert body["second_approval_needed"] == []
         assert body["recently_updated_pull_requests"] == []
@@ -218,6 +209,7 @@ class TestProjectStatusReport:
         body = r.json()
         assert body["start_date"] == "2025-04-10"
         assert body["end_date"] == "2025-04-10"
+        assert body["opened_pull_requests"] == []
 
     def test_report_explicit_range(self, client, mock_connector_graphql):
         async def override_conn():
@@ -285,7 +277,9 @@ class TestProjectStatusReport:
             args = getattr(c, "args", ())
             body = args[1] if len(args) >= 2 else getattr(c, "kwargs", {}).get("data")
             if isinstance(body, dict) and body.get("variables"):
-                gql_qs.append(body["variables"].get("q") or "")
+                gql_qs.extend(
+                    v for k, v in body["variables"].items() if k.startswith("q")
+                )
 
         assert any("merged:2025-04-04..2025-04-10" in q for q in gql_qs)
         assert any("is:merged" in q for q in gql_qs)
@@ -296,16 +290,15 @@ class TestProjectStatusReport:
             "repo:test/repo is:issue created:2025-04-04..2025-04-10" in q
             for q in gql_qs
         )
-        assert any(
-            "repo:test/repo is:pr is:open draft:false updated:<2025-04-04" in q
-            for q in gql_qs
-        )
-        assert any(
-            "repo:test/repo is:pr is:open draft:false updated:2025-04-04..2025-04-10"
-            in q
-            for q in gql_qs
-        )
-        assert any(q == "repo:test/repo is:pr is:open" for q in gql_qs)
+        assert len(gql_qs) == 3
+        assert mock_connector_graphql.post.call_count == 2
+        search_query = mock_connector_graphql.post.call_args_list[0].args[1]["query"]
+        assert "isDraft" in search_query
+        assert "closedAt" in search_query
+        open_query = mock_connector_graphql.post.call_args.args[1]["query"]
+        assert "pullRequests(states:[OPEN]" in open_query
+        assert "additions" not in open_query
+        assert "labels" not in open_query
 
     def test_attention_sections_partition_open_prs(
         self, client, mock_connector_graphql
@@ -738,66 +731,8 @@ class TestProjectStatusReport:
 
         issue_nodes = []
 
-        def post_side(path: str, data=None, **kwargs):
-            body = data
-            if path != "/graphql" or not isinstance(body, dict):
-                raise AssertionError(f"unexpected post {path=!r} body={body!r}")
-            q = (body.get("variables") or {}).get("q") or ""
-            if "is:merged" in q and "merged:" in q:
-                return {
-                    "data": {
-                        "search": {
-                            "pageInfo": {"hasNextPage": False, "endCursor": None},
-                            "nodes": merged_nodes,
-                        }
-                    }
-                }
-            if "is:issue" in q and "created:" in q:
-                return {
-                    "data": {
-                        "search": {
-                            "pageInfo": {"hasNextPage": False, "endCursor": None},
-                            "nodes": issue_nodes,
-                        }
-                    }
-                }
-            if q == "repo:test/repo is:pr is:open":
-                return {
-                    "data": {
-                        "search": {
-                            "pageInfo": {"hasNextPage": False, "endCursor": None},
-                            "nodes": [],
-                        }
-                    }
-                }
-            if "is:pr" in q and "is:open" in q and "updated:" in q:
-                if "updated:<" in q:
-                    return {
-                        "data": {
-                            "search": {
-                                "pageInfo": {"hasNextPage": False, "endCursor": None},
-                                "nodes": [],
-                            }
-                        }
-                    }
-                return {
-                    "data": {
-                        "search": {
-                            "pageInfo": {"hasNextPage": False, "endCursor": None},
-                            "nodes": [],
-                        }
-                    }
-                }
-            if "is:pr" in q and "created:" in q:
-                return {
-                    "data": {
-                        "search": {
-                            "pageInfo": {"hasNextPage": False, "endCursor": None},
-                            "nodes": opened_pr_nodes,
-                        }
-                    }
-                }
-            raise AssertionError(f"unexpected graphql q={q!r}")
+        def post_side(path, data=None, **kwargs):
+            return _response(data, merged_nodes, opened_pr_nodes, issue_nodes, [])
 
         gitctx.post.side_effect = post_side
 

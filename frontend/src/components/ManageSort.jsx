@@ -1,3 +1,4 @@
+// Assisted-by: Codex
 // Generated-by: Cursor
 import React, { useState, useEffect, useRef } from 'react';
 import { Modal, Button, Tooltip, Spinner, Alert } from '@patternfly/react-core';
@@ -20,7 +21,7 @@ const ManageSort = ({ isOpen, onClose, sortOrder, onSortChange }) => {
 
   const loadLabels = () => {
     // Use cached data if available
-    if (labelsCache.data.length > 0) {
+    if (labelsCache.loaded) {
       setAllLabels(labelsCache.data);
       setLoading(false);
       setError(labelsCache.error);

@@ -1,19 +1,9 @@
-// Generated-by: Cursor
-// Shared assignees cache - loaded once and shared across all components
-let assigneesCache = {
-  data: [],
-  loading: false,
-  error: null,
-  promise: null,
-};
-
+// Generated-by: Codex
+import { createMetadataCache, invalidateQueries } from './queryCache';
+const assigneesCache = createMetadataCache();
 export const getAssigneesCache = () => assigneesCache;
-
 export const clearAssigneesCache = () => {
-  assigneesCache.data = [];
-  assigneesCache.loading = false;
-  assigneesCache.error = null;
-  assigneesCache.promise = null;
+  assigneesCache.clear();
+  invalidateQueries('/assignees');
 };
-
 export default assigneesCache;

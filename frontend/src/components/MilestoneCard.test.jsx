@@ -1,3 +1,4 @@
+// Assisted-by: Codex
 // Generated-by: Cursor
 // Assisted-by: Cursor
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -59,6 +60,50 @@ describe('MilestoneCard', () => {
     assigneesCache.loading = false;
     assigneesCache.error = null;
     assigneesCache.promise = null;
+  });
+
+  it('changes sort order locally without fetching the milestone again', async () => {
+    const user = userEvent.setup();
+    api.fetchIssues.mockResolvedValue({
+      issues: [mockIssue],
+      pull_requests: [],
+    });
+    const { rerender } = render(
+      <MilestoneCard milestone={mockMilestone} sortOrder={[]} />
+    );
+    await user.click(screen.getByRole('button', { name: /show issues/i }));
+    await screen.findByText(/Test Issue/);
+    rerender(<MilestoneCard milestone={mockMilestone} sortOrder={['bug']} />);
+    expect(screen.getByText(/Test Issue/)).toBeInTheDocument();
+    expect(api.fetchIssues).toHaveBeenCalledTimes(1);
+  });
+
+  it('reloads authoritative data after a partially failed hierarchy edit', async () => {
+    const user = userEvent.setup();
+    api.fetchIssues.mockResolvedValue({
+      issues: [mockIssue],
+      pull_requests: [],
+    });
+    const { rerender } = render(<MilestoneCard milestone={mockMilestone} />);
+    await user.click(screen.getByRole('button', { name: /show issues/i }));
+    await screen.findByText(/Test Issue/);
+    api.fetchIssues.mockResolvedValue({ issues: [], pull_requests: [] });
+    rerender(
+      <MilestoneCard
+        milestone={mockMilestone}
+        hierarchyAction={{
+          key: 1,
+          type: 'error',
+          sourceMilestoneNumber: 6,
+          targetMilestoneNumber: 7,
+        }}
+      />
+    );
+    await waitFor(() => expect(api.fetchIssues).toHaveBeenCalledTimes(2));
+    expect(api.fetchIssues).toHaveBeenLastCalledWith(6, [], { force: true });
+    await waitFor(() =>
+      expect(screen.queryByText(/Test Issue/)).not.toBeInTheDocument()
+    );
   });
 
   it('renders milestone title', async () => {
@@ -124,7 +169,7 @@ describe('MilestoneCard', () => {
     await user.click(expandButton);
 
     await waitFor(() => {
-      expect(api.fetchIssues).toHaveBeenCalledWith(6, []);
+      expect(api.fetchIssues).toHaveBeenCalledWith(6);
     });
 
     await waitFor(
@@ -275,7 +320,7 @@ describe('MilestoneCard', () => {
     await waitFor(() => {
       expect(api.fetchIssues).toHaveBeenCalledTimes(2);
     });
-    expect(api.fetchIssues).toHaveBeenLastCalledWith(6, []);
+    expect(api.fetchIssues).toHaveBeenLastCalledWith(6, [], { force: true });
   });
 
   it('refetches loaded milestones even when issues section is collapsed', async () => {

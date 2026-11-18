@@ -1,3 +1,4 @@
+// Assisted-by: Codex
 // Generated-by: Cursor
 import React, { useState, useEffect, useRef } from 'react';
 import {
@@ -51,7 +52,7 @@ const ManageMilestones = ({ isOpen, onClose, onMilestoneChange }) => {
   const loadMilestones = (state) => {
     // The shared cache is intentionally limited to open milestones because it
     // is also used by Planning and issue milestone selectors.
-    if (state === 'open' && milestonesCache.data.length > 0) {
+    if (state === 'open' && milestonesCache.loaded) {
       setMilestones(milestonesCache.data);
       setLoading(false);
       setError(milestonesCache.error);
@@ -110,7 +111,7 @@ const ManageMilestones = ({ isOpen, onClose, onMilestoneChange }) => {
   // Assisted-by: openai-code-assist
   const refreshMilestonesInBackground = (state) => {
     // Refresh in background without showing loading state
-    fetchMilestones(state)
+    fetchMilestones(state, { revalidate: true })
       .then((data) => {
         if (state === 'open') {
           milestonesCache.data = data;

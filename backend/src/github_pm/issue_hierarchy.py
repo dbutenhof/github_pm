@@ -1,3 +1,4 @@
+# Assisted-by: Codex
 """Build and mutate GitHub sub-issue hierarchies for the planner.
 
 Generated-by: Cursor
@@ -191,83 +192,6 @@ def apply_graphql_links(issue: dict, issue_node: dict | None) -> None:
     blocking = _dependency_nodes(issue_node.get("blocking"))
     if blocking:
         issue["blocking"] = blocking
-
-
-ISSUE_HIERARCHY_GRAPHQL = """
-query($owner: String!, $repo: String!, $issue: Int!) {
-    repository(owner: $owner, name: $repo, followRenames: true) {
-        issue(number: $issue) {
-            closedByPullRequestsReferences(first: 100, includeClosedPrs: true) {
-                nodes {
-                    number
-                    title
-                    url
-                }
-            }
-            blockedBy(first: 50) {
-                nodes {
-                    databaseId
-                    number
-                    title
-                    url
-                    state
-                }
-            }
-            blocking(first: 50) {
-                nodes {
-                    databaseId
-                    number
-                    title
-                    url
-                    state
-                }
-            }
-            parent {
-                number
-                title
-                milestone {
-                    number
-                    title
-                }
-            }
-            subIssues(first: 100) {
-                nodes {
-                    number
-                }
-            }
-            subIssuesSummary {
-                total
-                completed
-                percentCompleted
-            }
-        }
-    }
-}
-"""
-
-PARENT_ONLY_GRAPHQL = """
-query($owner: String!, $repo: String!, $issue: Int!) {
-    repository(owner: $owner, name: $repo, followRenames: true) {
-        issue(number: $issue) {
-            id
-            number
-            parent {
-                number
-                title
-                milestone {
-                    number
-                    title
-                }
-            }
-            subIssues(first: 100) {
-                nodes {
-                    number
-                }
-            }
-        }
-    }
-}
-"""
 
 
 def collect_descendant_numbers(

@@ -1,3 +1,4 @@
+// Assisted-by: Codex
 // Generated-by: Cursor
 // Assisted-by: Cursor
 import React, { useState, useEffect } from 'react';
@@ -30,6 +31,7 @@ import ManageSort from './components/ManageSort';
 import milestonesCache from './utils/milestonesCache';
 import labelsCache, { clearLabelsCache } from './utils/labelsCache';
 import assigneesCache from './utils/assigneesCache';
+import { invalidateQueries } from './utils/queryCache';
 import iconImage from './assets/icon.png';
 import './icon.css';
 
@@ -39,7 +41,7 @@ const VALID_MAIN_VIEW_TABS = new Set(['planning', 'sdlc', 'project-status']);
 const App = () => {
   // Initialize with cached data if available
   const [milestones, setMilestones] = useState(milestonesCache.data || []);
-  const [loading, setLoading] = useState(milestonesCache.data.length === 0);
+  const [loading, setLoading] = useState(!milestonesCache.loaded);
   const [error, setError] = useState(milestonesCache.error || null);
   const [project, setProject] = useState(null);
   const [projectLoading, setProjectLoading] = useState(true);
@@ -99,10 +101,18 @@ const App = () => {
 
   // Preload milestones and labels in the background
   useEffect(() => {
+    if (projectLoading) return;
+    if (
+      activeViewTab !== 'planning' &&
+      !isManageMilestonesOpen &&
+      !isManageLabelsOpen &&
+      !isManageSortOpen
+    )
+      return;
     // Preload milestones
     if (
       !milestonesCache.loading &&
-      milestonesCache.data.length === 0 &&
+      !milestonesCache.loaded &&
       !milestonesCache.promise
     ) {
       milestonesCache.loading = true;
@@ -124,7 +134,7 @@ const App = () => {
           setError(err.message);
           setLoading(false);
         });
-    } else if (milestonesCache.data.length > 0) {
+    } else if (milestonesCache.loaded) {
       // Use cached data immediately
       setMilestones(milestonesCache.data);
       setLoading(false);
@@ -145,11 +155,7 @@ const App = () => {
     }
 
     // Preload labels
-    if (
-      !labelsCache.loading &&
-      labelsCache.data.length === 0 &&
-      !labelsCache.promise
-    ) {
+    if (!labelsCache.loading && !labelsCache.loaded && !labelsCache.promise) {
       labelsCache.loading = true;
       labelsCache.error = null;
       labelsCache.promise = fetchLabels()
@@ -169,7 +175,7 @@ const App = () => {
     // Preload assignees
     if (
       !assigneesCache.loading &&
-      assigneesCache.data.length === 0 &&
+      !assigneesCache.loaded &&
       !assigneesCache.promise
     ) {
       assigneesCache.loading = true;
@@ -188,7 +194,14 @@ const App = () => {
         });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [
+    projectLoading,
+    activeViewTab,
+    isManageMilestonesOpen,
+    isManageLabelsOpen,
+    isManageSortOpen,
+    issueMilestoneRefresh,
+  ]);
 
   // Save sort order to localStorage whenever it changes
   useEffect(() => {
@@ -231,7 +244,7 @@ const App = () => {
 
   const handleMilestoneChange = () => {
     // Use cached data if available, otherwise load
-    if (milestonesCache.data.length > 0) {
+    if (milestonesCache.loaded) {
       setMilestones(milestonesCache.data);
       setLoading(false);
       setError(milestonesCache.error);
@@ -241,6 +254,7 @@ const App = () => {
   };
 
   const handleRefresh = () => {
+    invalidateQueries();
     setIssueMilestoneRefresh((key) => key + 1);
   };
 
@@ -385,8 +399,12 @@ const App = () => {
         aria-label="Selected view content"
       >
         {activeViewTab === 'planning' && renderPlanningContent()}
-        {activeViewTab === 'sdlc' && <SdlcKpisPanel />}
-        {activeViewTab === 'project-status' && <ProjectStatusPanel />}
+        {!projectLoading && activeViewTab === 'sdlc' && (
+          <SdlcKpisPanel refreshKey={issueMilestoneRefresh} />
+        )}
+        {!projectLoading && activeViewTab === 'project-status' && (
+          <ProjectStatusPanel refreshKey={issueMilestoneRefresh} />
+        )}
       </PageSection>
       <ManageMilestones
         isOpen={isManageMilestonesOpen}

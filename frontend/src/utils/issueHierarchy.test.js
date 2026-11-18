@@ -1,3 +1,4 @@
+// Assisted-by: Codex
 // Generated-by: Cursor
 import { describe, it, expect } from 'vitest';
 import {
@@ -7,6 +8,7 @@ import {
   removeClosedIssueFromForest,
   insertIssueInForest,
   reannotateDepths,
+  sortIssueForest,
 } from './issueHierarchy';
 
 describe('issueHierarchy utils', () => {
@@ -113,4 +115,24 @@ describe('issueHierarchy utils', () => {
     expect(annotated[0].children[0].number).toBe(9);
     expect(annotated[0].children[0].hierarchy_depth).toBe(1);
   });
+});
+
+it('sorts siblings by first matching label and number without changing hierarchy or inputs', () => {
+  const forest = [
+    { number: 1, labels: [], children: [] },
+    {
+      number: 3,
+      labels: [{ name: 'BUG' }, { name: 'feature' }],
+      children: [
+        { number: 4, labels: [] },
+        { number: 5, labels: [{ name: 'feature' }] },
+      ],
+    },
+    { number: 2, labels: [{ name: 'feature' }], children: [] },
+  ];
+  const sorted = sortIssueForest(forest, [' feature ', 'bug']);
+  expect(sorted.map((node) => node.number)).toEqual([2, 3, 1]);
+  expect(sorted[1].children.map((node) => node.number)).toEqual([5, 4]);
+  expect(forest[1].children.map((node) => node.number)).toEqual([4, 5]);
+  expect(sortIssueForest(forest).map((node) => node.number)).toEqual([1, 2, 3]);
 });

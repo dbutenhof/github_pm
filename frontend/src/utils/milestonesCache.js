@@ -1,19 +1,9 @@
-// Generated-by: Cursor
-// Shared milestones cache - loaded once and shared across all components
-let milestonesCache = {
-  data: [],
-  loading: false,
-  error: null,
-  promise: null,
-};
-
+// Generated-by: Codex
+import { createMetadataCache, invalidateQueries } from './queryCache';
+const milestonesCache = createMetadataCache();
 export const getMilestonesCache = () => milestonesCache;
-
 export const clearMilestonesCache = () => {
-  milestonesCache.data = [];
-  milestonesCache.loading = false;
-  milestonesCache.error = null;
-  milestonesCache.promise = null;
+  milestonesCache.clear();
+  invalidateQueries('/milestones');
 };
-
 export default milestonesCache;

@@ -1,6 +1,13 @@
+// Assisted-by: Codex
 // Generated-by: Cursor
 // Assisted-by: openai-code-assist
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   Alert,
   Button,
@@ -167,7 +174,8 @@ const StatusSection = ({
   );
 };
 
-const ProjectStatusPanel = () => {
+const ProjectStatusPanel = ({ refreshKey = 0 }) => {
+  const requestId = useRef(0);
   const initial = useMemo(() => getInitialDateRange(), []);
 
   const [startDate, setStartDate] = useState(null);
@@ -180,16 +188,18 @@ const ProjectStatusPanel = () => {
   const [report, setReport] = useState(null);
 
   const load = useCallback(async (startIso, endIso) => {
+    const id = ++requestId.current;
     setLoading(true);
     setError(null);
     try {
       const data = await fetchProjectStatusReport(startIso, endIso);
-      setReport(data);
+      if (id === requestId.current) setReport(data);
     } catch (e) {
+      if (id !== requestId.current) return;
       setReport(null);
       setError(e?.message || 'Failed to load report');
     } finally {
-      setLoading(false);
+      if (id === requestId.current) setLoading(false);
     }
   }, []);
 
@@ -198,7 +208,10 @@ const ProjectStatusPanel = () => {
       return;
     }
     load(startDate, endDate);
-  }, [startDate, endDate, applyRevision, load]);
+    return () => {
+      requestId.current += 1;
+    };
+  }, [startDate, endDate, applyRevision, refreshKey, load]);
 
   useEffect(() => {
     if (!startDate || !endDate) {

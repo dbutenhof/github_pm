@@ -1,32 +1,32 @@
+"""HTTP routes for Planning. Assisted-by: Codex."""
+
 from collections import defaultdict
-from collections.abc import Callable
 from datetime import datetime
-import re
 import time
 from typing import Annotated, Any, AsyncGenerator, Literal, NoReturn
-from urllib.parse import quote_plus
+from urllib.parse import quote
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query
 from pydantic import BaseModel, Field
 import requests
 
+from github_pm import planning_reader as pr
 from github_pm.context import context
+from github_pm.execution import offload
+from github_pm.github_client import Connector
 from github_pm.issue_hierarchy import (
     apply_graphql_hierarchy,
     apply_graphql_links,
     build_issue_forest,
-    collect_descendant_numbers,
-    is_ancestor,
-    ISSUE_HIERARCHY_GRAPHQL,
-    PARENT_ONLY_GRAPHQL,
 )
 from github_pm.logger import logger
+from github_pm.report_queries import execute
+from github_pm.repository_catalog import catalog, VERSION_MATCH
 
 api_router = APIRouter()
 
 
 # We sort "semver" style milestones first, then others alphabetically
-VERSION_MATCH = re.compile(r"^v\d+\.\d+\.\d+$")
 
 
 # Assisted-by: openai-code-assist
@@ -43,166 +43,8 @@ def _milestone_sort_key(milestone: dict[str, Any]) -> tuple:
     return (1, (), title)
 
 
-# Bounded retries for transient GitHub gateway timeouts (504).
-_GITHUB_504_MAX_ATTEMPTS = 5
-_GITHUB_504_BACKOFF_SEC = 1.5
-
-# full+json returns raw markdown ``body`` and rendered ``body_html``.
-# html+json alone omits ``body``, which breaks edit-in-place flows.
-# Assisted-by: Cursor
+# Raw Markdown and GitHub-rendered HTML are both required by the editors.
 _GITHUB_BODY_ACCEPT = {"Accept": "application/vnd.github.full+json"}
-
-
-class Connector:
-    def __init__(self, github_token: str, *, github_repo: str | None = None):
-        """Initialize a GitHub connection.
-
-        Args:
-            github_token: The GitHub Personal Access Token to use
-            github_repo: ``owner/name``; defaults to ``context.github_repo`` when omitted.
-        """
-        self.github_token = github_token
-        self.base_url = "https://api.github.com"
-        repo = github_repo if github_repo is not None else context.github_repo
-        self.owner, self.repo = repo.split("/", maxsplit=1)
-        self.github = requests.session()
-        self.github.headers.update(
-            {
-                "Authorization": f"Bearer {self.github_token}",
-                "Accept": "application/vnd.github+json",
-                "User-Agent": "Project-Manager",
-                "X-GitHub-Api-Version": "2022-11-28",
-            }
-        )
-        logger.info(
-            "Initializing GitHub Connector service to %s/%s",
-            self.base_url,
-            repo,
-        )
-
-    def _with_504_retry(
-        self, request: Callable[[], requests.Response]
-    ) -> requests.Response:
-        """Perform one HTTP call, retrying on 504 with a short capped backoff."""
-        for attempt in range(_GITHUB_504_MAX_ATTEMPTS):
-            response = request()
-            logger.info("GOT %s: %s", response.status_code, response.url)
-            if response.status_code == 504 and attempt < _GITHUB_504_MAX_ATTEMPTS - 1:
-                delay = _GITHUB_504_BACKOFF_SEC * (attempt + 1)
-                logger.warning(
-                    "GitHub API 504 Gateway Timeout; waiting %.1fs before retry %d/%d",
-                    delay,
-                    attempt + 2,
-                    _GITHUB_504_MAX_ATTEMPTS,
-                )
-                time.sleep(delay)
-                continue
-            response.raise_for_status()
-            self.response = response
-            return response
-
-    def get(self, path: str, headers: dict[str, str] | None = None) -> dict:
-        response = self._with_504_retry(
-            lambda: self.github.get(f"{self.base_url}{path}", headers=headers)
-        )
-        return response.json()
-
-    def get_paged(self, path: str, headers: dict[str, str] | None = None) -> list[dict]:
-        url: str | None = f"{self.base_url}{path}"
-        results = []
-        while url:
-            response = self._with_504_retry(
-                lambda u=url: self.github.get(u, headers=headers)
-            )
-            data = response.json()
-            logger.debug(f"{url}: {len(data)}")
-            results.extend(data)
-            url = None
-            if response.headers.get("link"):
-                links = response.headers.get("link")
-                for link in links.split(","):
-                    if 'rel="next"' in link:
-                        url = link.split(";")[0].strip().strip("<>")
-                        logger.debug(f"paging to: {url}")
-                        break
-        return results
-
-    def search_issue_items(
-        self, search_query: str, headers: dict[str, str] | None = None
-    ) -> list[dict]:
-        """Run ``GET /search/issues`` with pagination; returns the ``items`` array union."""
-        q_param = quote_plus(search_query)
-        url: str | None = f"{self.base_url}/search/issues?q={q_param}&per_page=100"
-        results: list[dict] = []
-        while url:
-            response = self._with_504_retry(
-                lambda u=url: self.github.get(u, headers=headers)
-            )
-            data = response.json()
-            items = data.get("items")
-            if isinstance(items, list):
-                results.extend(items)
-            url = None
-            link_header = response.headers.get("link")
-            if link_header:
-                for link in link_header.split(","):
-                    if 'rel="next"' in link:
-                        url = link.split(";")[0].strip().strip("<>")
-                        logger.debug("search/issues paging to: %s", url)
-                        break
-        return results
-
-    def patch(
-        self, path: str, data: dict[str, Any], headers: dict[str, str] | None = None
-    ) -> dict:
-        response = self._with_504_retry(
-            lambda: self.github.patch(
-                f"{self.base_url}{path}", json=data, headers=headers
-            )
-        )
-        return response.json()
-
-    def post(
-        self, path: str, data: dict[str, Any], headers: dict[str, str] | None = None
-    ) -> dict:
-        response = self._with_504_retry(
-            lambda: self.github.post(
-                f"{self.base_url}{path}", json=data, headers=headers
-            )
-        )
-        return response.json() if response.content else {}
-
-    def post_text(
-        self, path: str, text: str, headers: dict[str, str] | None = None
-    ) -> str:
-        """POST plain text (e.g. ``/markdown/raw``); returns response body as text.
-
-        Generated-by: Cursor
-        """
-        request_headers = {"Content-Type": "text/plain; charset=utf-8"}
-        if headers:
-            request_headers.update(headers)
-        response = self._with_504_retry(
-            lambda: self.github.post(
-                f"{self.base_url}{path}",
-                data=text.encode("utf-8"),
-                headers=request_headers,
-            )
-        )
-        return response.text
-
-    def delete(
-        self,
-        path: str,
-        data: dict[str, Any] | None = None,
-        headers: dict[str, str] | None = None,
-    ) -> dict:
-        response = self._with_504_retry(
-            lambda: self.github.delete(
-                f"{self.base_url}{path}", json=data, headers=headers
-            )
-        )
-        return response.json() if response.content else {}
 
 
 def _github_http_error_detail(exc: requests.HTTPError) -> str:
@@ -244,7 +86,9 @@ async def connection() -> AsyncGenerator[Connector]:
     """FastAPI Dependency to open & close Github connections"""
     connector = None
     try:
-        connector = Connector(github_token=context.github_token)
+        connector = Connector(
+            github_token=context.github_token, github_repo=context.github_repo
+        )
     except Exception as e:
         logger.exception(f"Error opening GitHub service: {e}")
         raise HTTPException(
@@ -264,10 +108,13 @@ async def connection() -> AsyncGenerator[Connector]:
         raise HTTPException(
             status_code=400, detail=f"Can't open repository: {str(e)!r}"
         )
+    finally:
+        connector.close()
 
 
 @api_router.get("/project")
-async def get_project():
+@offload
+def get_project():
     return {
         "app_name": context.app_name,
         "github_repo": context.github_repo,
@@ -295,7 +142,8 @@ def _sort_items_by_labels(items: list[dict], sort_by: list[str]) -> list[dict]:
 
 
 @api_router.get("/issues/{milestone_number}")
-async def get_issues(
+@offload
+def get_issues(
     gitctx: Annotated[Connector, Depends(connection)],
     milestone_number: Annotated[int, Path(title="Milestone")],
     sort: Annotated[
@@ -319,34 +167,12 @@ async def get_issues(
         f"/repos/{context.github_repo}/issues?milestone={milestone}&state=open",
         headers=_GITHUB_BODY_ACCEPT,
     )
-    issues: list[dict] = []
-    pull_requests: list[dict] = []
-    for i in raw_items:
-        if "pull_request" in i:
-            pull_requests.append(i)
-            continue
-        try:
-            response = gitctx.post(
-                "/graphql",
-                data={
-                    "query": ISSUE_HIERARCHY_GRAPHQL,
-                    "variables": {
-                        "owner": gitctx.owner,
-                        "repo": gitctx.repo,
-                        "issue": i["number"],
-                    },
-                },
-            )
-            data = response["data"]
-            issue_node = data["repository"]["issue"]
-            apply_graphql_links(i, issue_node)
-            apply_graphql_hierarchy(i, issue_node)
-        except Exception as e:
-            logger.exception(
-                f"Error enriching hierarchy/PRs for issue {i['number']}: {e!r}"
-            )
-            continue
-        issues.append(i)
+    issues = [item for item in raw_items if "pull_request" not in item]
+    pull_requests = [item for item in raw_items if "pull_request" in item]
+    enriched = pr.enrich_issues(gitctx, issues)
+    for issue in issues:
+        apply_graphql_links(issue, enriched[issue["number"]])
+        apply_graphql_hierarchy(issue, enriched[issue["number"]])
     forest = build_issue_forest(issues, sort_by, _sort_items_by_labels)
     sorted_prs = _sort_items_by_labels(pull_requests, sort_by)
     logger.debug(
@@ -360,7 +186,8 @@ async def get_issues(
 
 
 @api_router.get("/issue/{issue_number}")
-async def get_issue(
+@offload
+def get_issue(
     gitctx: Annotated[Connector, Depends(connection)],
     issue_number: Annotated[int, Path(title="Issue")],
 ):
@@ -369,30 +196,14 @@ async def get_issue(
         headers=_GITHUB_BODY_ACCEPT,
     )
     if "pull_request" not in issue:
-        try:
-            response = gitctx.post(
-                "/graphql",
-                data={
-                    "query": ISSUE_HIERARCHY_GRAPHQL,
-                    "variables": {
-                        "owner": gitctx.owner,
-                        "repo": gitctx.repo,
-                        "issue": issue["number"],
-                    },
-                },
-            )
-            data = response["data"]
-            issue_node = data["repository"]["issue"]
-            apply_graphql_links(issue, issue_node)
-        except Exception as e:
-            logger.exception(
-                f"Error finding linked PRs/dependencies for issue {issue['number']}: {e!r}"
-            )
+        node = pr.enrich_issues(gitctx, [issue])[issue["number"]]
+        apply_graphql_links(issue, node)
     return issue
 
 
 @api_router.get("/comments/{issue_number}")
-async def get_comments(
+@offload
+def get_comments(
     gitctx: Annotated[Connector, Depends(connection)],
     issue_number: Annotated[int, Path(title="Issue")],
 ):
@@ -404,7 +215,7 @@ async def get_comments(
     logger.debug(
         f"{len(comments)} issue {issue_number} comments: {time.time() - start:.3f} seconds"
     )
-    return comments
+    return pr.comment_reactions(gitctx, comments)
 
 
 class CreateComment(BaseModel):
@@ -417,7 +228,8 @@ class CreateComment(BaseModel):
 
 
 @api_router.post("/comments/{issue_number}")
-async def create_comment(
+@offload
+def create_comment(
     gitctx: Annotated[Connector, Depends(connection)],
     issue_number: Annotated[int, Path(title="Issue")],
     comment: Annotated[CreateComment, Body(title="Comment")],
@@ -445,7 +257,8 @@ class UpdateComment(BaseModel):
 
 
 @api_router.patch("/comments/{comment_id}/body")
-async def update_comment(
+@offload
+def update_comment(
     gitctx: Annotated[Connector, Depends(connection)],
     comment_id: Annotated[int, Path(title="Comment ID")],
     comment: Annotated[UpdateComment, Body(title="Comment")],
@@ -473,7 +286,8 @@ class UpdateIssueBody(BaseModel):
 
 
 @api_router.patch("/issues/{issue_number}/body")
-async def update_issue_body(
+@offload
+def update_issue_body(
     gitctx: Annotated[Connector, Depends(connection)],
     issue_number: Annotated[int, Path(title="Issue")],
     payload: Annotated[UpdateIssueBody, Body(title="Issue Body")],
@@ -501,7 +315,8 @@ class UpdateIssueTitle(BaseModel):
 
 
 @api_router.patch("/issues/{issue_number}/title")
-async def update_issue_title(
+@offload
+def update_issue_title(
     gitctx: Annotated[Connector, Depends(connection)],
     issue_number: Annotated[int, Path(title="Issue")],
     payload: Annotated[UpdateIssueTitle, Body(title="Issue Title")],
@@ -528,7 +343,8 @@ class UpdateIssueType(BaseModel):
 
 # Assisted-by: openai-code-assist
 @api_router.patch("/issues/{issue_number}/type")
-async def update_issue_type(
+@offload
+def update_issue_type(
     gitctx: Annotated[Connector, Depends(connection)],
     issue_number: Annotated[int, Path(title="Issue")],
     payload: Annotated[UpdateIssueType, Body(title="Issue Type")],
@@ -554,7 +370,8 @@ class CloseIssueRequest(BaseModel):
 
 
 @api_router.post("/issues/{issue_number}/close-with-comment")
-async def close_issue_with_comment(
+@offload
+def close_issue_with_comment(
     gitctx: Annotated[Connector, Depends(connection)],
     issue_number: Annotated[int, Path(title="Issue")],
     comment: Annotated[CloseIssueRequest, Body(title="Comment")],
@@ -591,7 +408,8 @@ class RenderMarkdown(BaseModel):
 
 
 @api_router.post("/markdown")
-async def render_markdown(
+@offload
+def render_markdown(
     gitctx: Annotated[Connector, Depends(connection)],
     payload: Annotated[RenderMarkdown, Body(title="Markdown")],
 ):
@@ -627,7 +445,8 @@ class CreateIssue(BaseModel):
 
 
 @api_router.post("/issues")
-async def create_issue(
+@offload
+def create_issue(
     gitctx: Annotated[Connector, Depends(connection)],
     issue: Annotated[CreateIssue, Body(title="Issue")],
 ):
@@ -673,7 +492,8 @@ async def create_issue(
 
 
 @api_router.get("/issues/{issue_number}/reactions")
-async def get_issue_reactions(
+@offload
+def get_issue_reactions(
     gitctx: Annotated[Connector, Depends(connection)],
     issue_number: Annotated[int, Path(title="Issue")],
 ):
@@ -689,7 +509,8 @@ async def get_issue_reactions(
 
 
 @api_router.get("/comments/{comment_id}/reactions")
-async def get_comment_reactions(
+@offload
+def get_comment_reactions(
     gitctx: Annotated[Connector, Depends(connection)],
     comment_id: Annotated[int, Path(title="Comment")],
 ):
@@ -704,17 +525,15 @@ async def get_comment_reactions(
 
 
 @api_router.get("/milestones")
-async def get_milestones(
+@offload
+def get_milestones(
     gitctx: Annotated[Connector, Depends(connection)],
     state: Annotated[
         Literal["open", "closed"],
         Query(title="Milestone State"),
     ] = "open",
 ):
-    milestones = gitctx.get_paged(
-        f"/repos/{context.github_repo}/milestones?state={state}",
-        headers=_GITHUB_BODY_ACCEPT,
-    )
+    milestones = catalog(gitctx, "milestones", state=state)
     milestones = sorted(milestones, key=_milestone_sort_key)
     if state == "open":
         milestones.append(
@@ -747,7 +566,8 @@ class UpdateMilestoneState(BaseModel):
 
 
 @api_router.post("/milestones")
-async def create_milestone(
+@offload
+def create_milestone(
     gitctx: Annotated[Connector, Depends(connection)],
     milestone: Annotated[CreateMilestone, Body(title="Milestone")],
 ):
@@ -766,7 +586,8 @@ async def create_milestone(
 
 
 @api_router.patch("/milestones/{milestone_number}")
-async def update_milestone(
+@offload
+def update_milestone(
     gitctx: Annotated[Connector, Depends(connection)],
     milestone_number: Annotated[int, Path(title="Milestone")],
     milestone: Annotated[UpdateMilestone, Body(title="Milestone")],
@@ -783,25 +604,40 @@ async def update_milestone(
 
 # Assisted-by: openai-code-assist
 @api_router.get("/milestones/{milestone_number}/open-counts")
-async def get_milestone_open_counts(
+@offload
+def get_milestone_open_counts(
     gitctx: Annotated[Connector, Depends(connection)],
     milestone_number: Annotated[int, Path(title="Milestone")],
 ):
     """Return open issue and pull-request counts for a milestone."""
-    items = gitctx.get_paged(
-        f"/repos/{context.github_repo}/issues?milestone={milestone_number}&state=open",
-        headers=_GITHUB_BODY_ACCEPT,
+    data = execute(
+        pr._post(gitctx),
+        """
+query($owner:String!,$repo:String!,$number:Int!) {
+  repository(owner:$owner,name:$repo) {
+    milestone(number:$number) {
+      issues(states:[OPEN],first:1) { totalCount }
+      pullRequests(states:[OPEN],first:1) { totalCount }
+    }
+  }
+  rateLimit { cost }
+}
+""",
+        {"owner": gitctx.owner, "repo": gitctx.repo, "number": milestone_number},
     )
-    open_pull_requests = sum("pull_request" in item for item in items)
+    milestone = (data.get("repository") or {}).get("milestone")
+    if milestone is None:
+        raise HTTPException(status_code=404, detail="Milestone not found")
     return {
-        "open_issues": len(items) - open_pull_requests,
-        "open_pull_requests": open_pull_requests,
+        "open_issues": milestone["issues"]["totalCount"],
+        "open_pull_requests": milestone["pullRequests"]["totalCount"],
     }
 
 
 # Assisted-by: openai-code-assist
 @api_router.patch("/milestones/{milestone_number}/state")
-async def update_milestone_state(
+@offload
+def update_milestone_state(
     gitctx: Annotated[Connector, Depends(connection)],
     milestone_number: Annotated[int, Path(title="Milestone")],
     milestone: Annotated[UpdateMilestoneState, Body(title="Milestone State")],
@@ -814,7 +650,8 @@ async def update_milestone_state(
 
 
 @api_router.delete("/milestones/{milestone_number}")
-async def delete_milestone(
+@offload
+def delete_milestone(
     gitctx: Annotated[Connector, Depends(connection)],
     milestone_number: Annotated[int, Path(title="Milestone")],
 ):
@@ -823,7 +660,8 @@ async def delete_milestone(
 
 
 @api_router.post("/issues/{issue_number}/milestone/{milestone_number}")
-async def add_milestone_to_issue(
+@offload
+def add_milestone_to_issue(
     gitctx: Annotated[Connector, Depends(connection)],
     issue_number: Annotated[int, Path(title="Issue")],
     milestone_number: Annotated[int, Path(title="Milestone")],
@@ -836,7 +674,8 @@ async def add_milestone_to_issue(
 
 
 @api_router.delete("/issues/{issue_number}/milestone/{milestone_number}")
-async def remove_milestone_from_issue(
+@offload
+def remove_milestone_from_issue(
     gitctx: Annotated[Connector, Depends(connection)],
     issue_number: Annotated[int, Path(title="Issue")],
     milestone_number: Annotated[int, Path(title="Milestone")],
@@ -848,63 +687,47 @@ async def remove_milestone_from_issue(
     return issue
 
 
-def _list_sub_issue_numbers(gitctx: Connector, issue_number: int) -> list[int]:
-    """List child issue numbers via REST; fall back to empty on failure.
-
-    Generated-by: Cursor
-    """
-    try:
-        items = gitctx.get_paged(
-            f"/repos/{context.github_repo}/issues/{issue_number}/sub_issues"
-        )
-        return [item["number"] for item in items if "number" in item]
-    except Exception as e:
-        logger.exception("Failed listing sub-issues for #%s: %r", issue_number, e)
-        return []
-
-
 def _cascade_milestone(
     gitctx: Connector,
     root_number: int,
     milestone_number: int | None,
+    descendants: list[int] | None = None,
 ) -> list[int]:
     """Set milestone on root and all GitHub descendants. Returns updated numbers.
 
     Generated-by: Cursor
     """
 
-    def list_children(n: int) -> list[int]:
-        return _list_sub_issue_numbers(gitctx, n)
-
-    numbers = [root_number] + collect_descendant_numbers(list_children, root_number)
+    numbers = [root_number] + (
+        pr.descendants(gitctx, root_number) if descendants is None else descendants
+    )
     updated: list[int] = []
     for number in numbers:
-        gitctx.patch(
-            f"/repos/{context.github_repo}/issues/{number}",
-            data={"milestone": milestone_number},
-        )
+        try:
+            gitctx.patch(
+                f"/repos/{context.github_repo}/issues/{number}",
+                data={"milestone": milestone_number},
+            )
+        except Exception as error:
+            # GitHub cascades are not transactional; an ambiguous failed write
+            # can also have applied. Reload both columns rather than roll back.
+            raise HTTPException(
+                status_code=502,
+                detail={
+                    "message": f"Milestone update stopped at issue #{number}: {error}",
+                    "updated_issue_numbers": updated,
+                    "failed_issue_number": number,
+                    "refresh_required": True,
+                },
+            ) from error
         updated.append(number)
     return updated
 
 
 def _graphql_issue_node(gitctx: Connector, issue_number: int) -> dict:
-    response = gitctx.post(
-        "/graphql",
-        data={
-            "query": PARENT_ONLY_GRAPHQL,
-            "variables": {
-                "owner": gitctx.owner,
-                "repo": gitctx.repo,
-                "issue": issue_number,
-            },
-        },
-    )
-    data = response.get("data") or {}
-    repo = data.get("repository") or {}
-    issue_node = repo.get("issue")
-    if not issue_node:
-        raise HTTPException(status_code=404, detail=f"Issue #{issue_number} not found")
-    return issue_node
+    return pr.issue_nodes(
+        gitctx, [issue_number], pr.IDENTITY + " " + pr.PARENT, issue_only=True
+    )[issue_number]
 
 
 class SetIssueParent(BaseModel):
@@ -912,7 +735,8 @@ class SetIssueParent(BaseModel):
 
 
 @api_router.put("/issues/{issue_number}/parent")
-async def set_issue_parent(
+@offload
+def set_issue_parent(
     gitctx: Annotated[Connector, Depends(connection)],
     issue_number: Annotated[int, Path(title="Issue")],
     body: Annotated[SetIssueParent, Body(title="Parent")],
@@ -925,17 +749,14 @@ async def set_issue_parent(
     if parent_number == issue_number:
         raise HTTPException(status_code=422, detail="An issue cannot be its own parent")
 
-    def list_children(n: int) -> list[int]:
-        return _list_sub_issue_numbers(gitctx, n)
-
-    if is_ancestor(list_children, issue_number, parent_number):
+    descendant_numbers = pr.descendants(gitctx, issue_number)
+    if parent_number in descendant_numbers:
         raise HTTPException(
-            status_code=422,
-            detail="Cannot link an issue under one of its descendants",
+            status_code=422, detail="Cannot link an issue under one of its descendants"
         )
-
-    child = gitctx.get(f"/repos/{context.github_repo}/issues/{issue_number}")
-    parent = gitctx.get(f"/repos/{context.github_repo}/issues/{parent_number}")
+    nodes = pr.issue_nodes(gitctx, [issue_number, parent_number], issue_only=True)
+    child = pr.rest_identity(nodes[issue_number])
+    parent = pr.rest_identity(nodes[parent_number])
 
     gitctx.post(
         f"/repos/{context.github_repo}/issues/{parent_number}/sub_issues",
@@ -947,7 +768,9 @@ async def set_issue_parent(
     updated_issue_numbers: list[int] = []
     if child_ms != parent_ms:
         # parent_ms may be None (no milestone); still cascade to match parent.
-        updated_issue_numbers = _cascade_milestone(gitctx, issue_number, parent_ms)
+        updated_issue_numbers = _cascade_milestone(
+            gitctx, issue_number, parent_ms, descendant_numbers
+        )
 
     return {
         "issue_number": issue_number,
@@ -959,7 +782,8 @@ async def set_issue_parent(
 
 
 @api_router.delete("/issues/{issue_number}/parent")
-async def clear_issue_parent(
+@offload
+def clear_issue_parent(
     gitctx: Annotated[Connector, Depends(connection)],
     issue_number: Annotated[int, Path(title="Issue")],
 ):
@@ -967,8 +791,8 @@ async def clear_issue_parent(
 
     Generated-by: Cursor
     """
-    child = gitctx.get(f"/repos/{context.github_repo}/issues/{issue_number}")
     issue_node = _graphql_issue_node(gitctx, issue_number)
+    child = pr.rest_identity(issue_node)
     parent = issue_node.get("parent")
     if not parent or parent.get("number") is None:
         raise HTTPException(
@@ -987,7 +811,8 @@ async def clear_issue_parent(
 
 
 @api_router.post("/issues/{issue_number}/adopt-parent-milestone")
-async def adopt_parent_milestone(
+@offload
+def adopt_parent_milestone(
     gitctx: Annotated[Connector, Depends(connection)],
     issue_number: Annotated[int, Path(title="Issue")],
 ):
@@ -995,8 +820,8 @@ async def adopt_parent_milestone(
 
     Generated-by: Cursor
     """
-    issue = gitctx.get(f"/repos/{context.github_repo}/issues/{issue_number}")
     issue_node = _graphql_issue_node(gitctx, issue_number)
+    issue = pr.rest_identity(issue_node)
     parent = issue_node.get("parent")
     if not parent or parent.get("number") is None:
         raise HTTPException(
@@ -1075,20 +900,13 @@ def _get_issue_for_dependency(gitctx: Connector, issue_number: int) -> dict:
     return issue
 
 
-def _get_issue_or_pull_request(gitctx: Connector, number: int) -> dict:
-    """Fetch an issue or pull request and translate a missing item to 404.
-
-    Generated-by: openai-code-assist
-    """
-    try:
-        return gitctx.get(f"/repos/{context.github_repo}/issues/{number}")
-    except requests.HTTPError as exc:
-        status = getattr(exc.response, "status_code", None)
-        if status == 404:
-            raise HTTPException(
-                status_code=404, detail=f"Issue #{number} not found"
-            ) from exc
-        raise
+def _dependency_pair(gitctx, first, second):
+    nodes = pr.issue_nodes(gitctx, [first, second])
+    if any(n["__typename"] != "Issue" for n in nodes.values()):
+        raise HTTPException(
+            status_code=422, detail="Dependencies require issues, not pull requests"
+        )
+    return {number: pr.rest_identity(node) for number, node in nodes.items()}
 
 
 def _close_reference_payload(pull_request: dict) -> dict:
@@ -1144,7 +962,8 @@ mutation($issueId: ID!, $pullRequestIds: [ID!]!) {
 
 
 @api_router.post("/issues/{issue_number}/close-references")
-async def add_close_reference(
+@offload
+def add_close_reference(
     gitctx: Annotated[Connector, Depends(connection)],
     issue_number: Annotated[int, Path(title="Issue")],
     body: Annotated[AddCloseReference, Body(title="Closing Reference")],
@@ -1153,7 +972,8 @@ async def add_close_reference(
 
     Generated-by: openai-code-assist
     """
-    issue = _get_issue_or_pull_request(gitctx, issue_number)
+    nodes = pr.issue_nodes(gitctx, [issue_number, body.pull_request_number])
+    issue = pr.rest_identity(nodes[issue_number])
     if "pull_request" in issue:
         raise HTTPException(
             status_code=422,
@@ -1162,7 +982,7 @@ async def add_close_reference(
                 "closing references require issues"
             ),
         )
-    pull_request = _get_issue_or_pull_request(gitctx, body.pull_request_number)
+    pull_request = pr.rest_identity(nodes[body.pull_request_number])
     if "pull_request" not in pull_request:
         raise HTTPException(
             status_code=422,
@@ -1207,7 +1027,8 @@ def _post_blocked_by_dependency(
 
 
 @api_router.post("/issues/{issue_number}/dependencies/blocked_by")
-async def add_blocked_by(
+@offload
+def add_blocked_by(
     gitctx: Annotated[Connector, Depends(connection)],
     issue_number: Annotated[int, Path(title="Issue")],
     body: Annotated[AddDependency, Body(title="Dependency")],
@@ -1220,8 +1041,8 @@ async def add_blocked_by(
         raise HTTPException(
             status_code=422, detail="An issue cannot be blocked by itself"
         )
-    _get_issue_for_dependency(gitctx, issue_number)
-    blocker = _get_issue_for_dependency(gitctx, body.issue_number)
+    nodes = _dependency_pair(gitctx, issue_number, body.issue_number)
+    blocker = nodes[body.issue_number]
     linked = _post_blocked_by_dependency(gitctx, issue_number, blocker["id"])
     return {
         "issue_number": issue_number,
@@ -1233,7 +1054,8 @@ async def add_blocked_by(
 @api_router.delete(
     "/issues/{issue_number}/dependencies/blocked_by/{blocking_issue_number}"
 )
-async def remove_blocked_by(
+@offload
+def remove_blocked_by(
     gitctx: Annotated[Connector, Depends(connection)],
     issue_number: Annotated[int, Path(title="Issue")],
     blocking_issue_number: Annotated[int, Path(title="Blocking Issue Number")],
@@ -1259,7 +1081,8 @@ async def remove_blocked_by(
 
 
 @api_router.post("/issues/{issue_number}/dependencies/blocking")
-async def add_blocking(
+@offload
+def add_blocking(
     gitctx: Annotated[Connector, Depends(connection)],
     issue_number: Annotated[int, Path(title="Issue")],
     body: Annotated[AddDependency, Body(title="Dependency")],
@@ -1270,8 +1093,8 @@ async def add_blocking(
     """
     if body.issue_number == issue_number:
         raise HTTPException(status_code=422, detail="An issue cannot block itself")
-    current = _get_issue_for_dependency(gitctx, issue_number)
-    blocked = _get_issue_for_dependency(gitctx, body.issue_number)
+    nodes = _dependency_pair(gitctx, issue_number, body.issue_number)
+    current, blocked = nodes[issue_number], nodes[body.issue_number]
     _post_blocked_by_dependency(gitctx, body.issue_number, current["id"])
     return {
         "issue_number": issue_number,
@@ -1283,7 +1106,8 @@ async def add_blocking(
 @api_router.delete(
     "/issues/{issue_number}/dependencies/blocking/{blocked_issue_number}"
 )
-async def remove_blocking(
+@offload
+def remove_blocking(
     gitctx: Annotated[Connector, Depends(connection)],
     issue_number: Annotated[int, Path(title="Issue")],
     blocked_issue_number: Annotated[int, Path(title="Blocked Issue Number")],
@@ -1312,12 +1136,9 @@ async def remove_blocking(
 
 
 @api_router.get("/labels")
-async def get_labels(gitctx: Annotated[Connector, Depends(connection)]):
-    labels = gitctx.get_paged(
-        f"/repos/{context.github_repo}/labels",
-        headers=_GITHUB_BODY_ACCEPT,
-    )
-    return labels
+@offload
+def get_labels(gitctx: Annotated[Connector, Depends(connection)]):
+    return catalog(gitctx, "labels")
 
 
 class CreateLabel(BaseModel):
@@ -1338,7 +1159,8 @@ class UpdateLabel(BaseModel):
 
 
 @api_router.post("/labels")
-async def create_label(
+@offload
+def create_label(
     gitctx: Annotated[Connector, Depends(connection)],
     label: Annotated[CreateLabel, Body(title="Label")],
 ):
@@ -1353,8 +1175,9 @@ async def create_label(
     return response
 
 
-@api_router.patch("/labels/{label_name}")
-async def update_label(
+@api_router.patch("/labels/{label_name:path}")
+@offload
+def update_label(
     gitctx: Annotated[Connector, Depends(connection)],
     label_name: str,
     label: Annotated[UpdateLabel, Body(title="Label")],
@@ -1365,7 +1188,7 @@ async def update_label(
     """
 
     response = gitctx.patch(
-        f"/repos/{context.github_repo}/labels/{label_name}",
+        f"/repos/{context.github_repo}/labels/{quote(label_name, safe='')}",
         data={
             "new_name": label.name,
             "color": label.color,
@@ -1375,63 +1198,65 @@ async def update_label(
     return response
 
 
-@api_router.delete("/labels/{label_name}")
-async def delete_label(
-    gitctx: Annotated[Connector, Depends(connection)], label_name: str
-):
-    gitctx.delete(f"/repos/{context.github_repo}/labels/{label_name}")
+@api_router.delete("/labels/{label_name:path}")
+@offload
+def delete_label(gitctx: Annotated[Connector, Depends(connection)], label_name: str):
+    gitctx.delete(f"/repos/{context.github_repo}/labels/{quote(label_name, safe='')}")
     return {"message": f"{label_name} label deleted"}
 
 
-@api_router.post("/issues/{issue_number}/labels/{label_name}")
-async def add_label_to_issue(
+@api_router.post("/issues/{issue_number}/labels/{label_name:path}")
+@offload
+def add_label_to_issue(
     gitctx: Annotated[Connector, Depends(connection)],
     issue_number: Annotated[int, Path(title="Issue")],
     label_name: Annotated[str, Path(title="Label")],
 ):
-    issue = gitctx.get(f"/repos/{context.github_repo}/issues/{issue_number}")
-    labels = set([label["name"] for label in issue["labels"]])
-    if label_name not in labels:
-        labels.add(label_name)
-        issue = gitctx.patch(
-            f"/repos/{context.github_repo}/issues/{issue_number}",
-            data={"labels": list(labels)},
+    return {
+        "labels": gitctx.post(
+            f"/repos/{context.github_repo}/issues/{issue_number}/labels",
+            data={"labels": [label_name]},
         )
-    return issue
+    }
 
 
-@api_router.delete("/issues/{issue_number}/labels/{label_name}")
-async def remove_label_from_issue(
+@api_router.delete("/issues/{issue_number}/labels/{label_name:path}")
+@offload
+def remove_label_from_issue(
     gitctx: Annotated[Connector, Depends(connection)],
     issue_number: Annotated[int, Path(title="Issue")],
     label_name: Annotated[str, Path(title="Label")],
 ):
-    issue = gitctx.get(f"/repos/{context.github_repo}/issues/{issue_number}")
-    labels = set([label["name"] for label in issue["labels"]])
-    if label_name in labels:
-        labels.remove(label_name)
-        issue = gitctx.patch(
-            f"/repos/{context.github_repo}/issues/{issue_number}",
-            data={"labels": list(labels)},
+    try:
+        labels = gitctx.delete(
+            f"/repos/{context.github_repo}/issues/{issue_number}/labels/{quote(label_name, safe='')}"
         )
-    return issue
+    except requests.HTTPError as exc:
+        if exc.response is None or exc.response.status_code != 404:
+            raise
+        # An absent label remains a successful no-op, but an inaccessible issue
+        # must not be mistaken for one. This exceptional path needs one read.
+        issue = gitctx.get(f"/repos/{context.github_repo}/issues/{issue_number}")
+        if any(label["name"] == label_name for label in issue["labels"]):
+            raise
+        labels = issue["labels"]
+    return {"labels": labels}
 
 
 # Assignee Management
 
 
 @api_router.get("/assignees")
-async def get_assignees(gitctx: Annotated[Connector, Depends(connection)]):
+@offload
+def get_assignees(gitctx: Annotated[Connector, Depends(connection)]):
     """Get all allowed assignees for the repository"""
-    assignees = gitctx.get_paged(
-        f"/repos/{context.github_repo}/assignees",
-        headers=_GITHUB_BODY_ACCEPT,
-    )
+    assignees = catalog(gitctx, "assignees")
     return sorted(assignees, key=lambda x: x["login"])
 
 
 @api_router.post("/issues/{issue_number}/assignees")
-async def add_assignee_to_issue(
+@offload
+def add_assignee_to_issue(
     gitctx: Annotated[Connector, Depends(connection)],
     issue_number: Annotated[int, Path(title="Issue")],
     assignees: Annotated[list[str], Body(title="Assignees")],
@@ -1448,7 +1273,8 @@ async def add_assignee_to_issue(
 
 
 @api_router.delete("/issues/{issue_number}/assignees")
-async def remove_assignee_from_issue(
+@offload
+def remove_assignee_from_issue(
     gitctx: Annotated[Connector, Depends(connection)],
     issue_number: Annotated[int, Path(title="Issue")],
     assignees: Annotated[list[str], Body(title="Assignees")],

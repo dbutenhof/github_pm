@@ -1,19 +1,9 @@
-// Generated-by: Cursor
-// Shared labels cache - loaded once and shared across all components
-let labelsCache = {
-  data: [],
-  loading: false,
-  error: null,
-  promise: null,
-};
-
+// Generated-by: Codex
+import { createMetadataCache, invalidateQueries } from './queryCache';
+const labelsCache = createMetadataCache();
 export const getLabelsCache = () => labelsCache;
-
 export const clearLabelsCache = () => {
-  labelsCache.data = [];
-  labelsCache.loading = false;
-  labelsCache.error = null;
-  labelsCache.promise = null;
+  labelsCache.clear();
+  invalidateQueries('/labels');
 };
-
 export default labelsCache;

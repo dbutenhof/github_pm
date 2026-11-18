@@ -1,3 +1,4 @@
+# Assisted-by: Codex
 """Unit tests for sdlc_metrics helpers.
 
 Generated-by: Cursor
@@ -8,6 +9,7 @@ import re
 
 import pytest
 
+from github_pm import report_queries as rq
 from github_pm import sdlc_metrics as sm
 from github_pm.context import Settings
 
@@ -114,12 +116,12 @@ def test_aggregate_throughput_and_cycle():
 
 
 def test_label_or_clause():
-    assert "label:bug" in sm._label_or_clause(frozenset({"bug"}))
-    assert "OR" in sm._label_or_clause(frozenset({"a", "b"}))
+    assert "label:bug" in rq._label_or_clause(frozenset({"bug"}))
+    assert "OR" in rq._label_or_clause(frozenset({"a", "b"}))
 
 
 def test_milestone_query_escapes_quotes():
-    q = sm.milestone_merged_prs_query("o/r", 'v1.0.0"')
+    q = rq.milestone_merged_prs_query("o/r", 'v1.0.0"')
     assert '\\"' in q or "v1.0.0" in q
 
 
@@ -170,7 +172,7 @@ def test_build_semver_milestone_previous_map():
 
 
 def test_escape_labeled_issues_query():
-    q = sm.escape_labeled_issues_query("acme/rocket", "escape")
+    q = rq.escape_labeled_issues_query("acme/rocket", "escape")
     assert "repo:acme/rocket" in q
     assert "is:issue" in q
     assert "label:escape" in q
