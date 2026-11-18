@@ -86,6 +86,7 @@ class Connector:
         """Perform one HTTP call, retrying on 504 with a short capped backoff."""
         for attempt in range(_GITHUB_504_MAX_ATTEMPTS):
             response = request()
+            logger.info("GOT %s: %s", response.status_code, response.url)
             if response.status_code == 504 and attempt < _GITHUB_504_MAX_ATTEMPTS - 1:
                 delay = _GITHUB_504_BACKOFF_SEC * (attempt + 1)
                 logger.warning(

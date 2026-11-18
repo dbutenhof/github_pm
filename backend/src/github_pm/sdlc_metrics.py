@@ -502,7 +502,7 @@ def graphql_search_timeline_nodes(
     """Paginate GraphQL ``search(type: ISSUE)`` returning Issue and PullRequest nodes.
 
     Used when REST ``GET /search/issues`` rejects the same query string (422). Request only
-    fields common to both types.
+    basic fields plus PR state and draft status and issue closure dates.
     """
     nodes: list[dict[str, Any]] = []
     cursor: str | None = None
@@ -518,12 +518,14 @@ def graphql_search_timeline_nodes(
             url
             createdAt
             state
+            isDraft
           }
           ... on Issue {
             number
             title
             url
             createdAt
+            closedAt
           }
         }
       }
