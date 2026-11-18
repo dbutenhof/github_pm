@@ -1,3 +1,4 @@
+// Assisted-by: Codex
 // Generated-by: Cursor
 // Assisted-by: Cursor
 import React, { useState, useEffect } from 'react';
@@ -6,14 +7,23 @@ import { PencilAltIcon } from '@patternfly/react-icons';
 import { getDaysSince, formatDate } from '../utils/dateUtils';
 import { fetchCommentReactions, updateComment } from '../services/api';
 import Reactions from './Reactions';
+import { useReactions } from '../utils/useReactions';
 import UserAvatar from './UserAvatar';
 import MarkdownInputModal from './MarkdownInputModal';
 
 const CommentCard = ({ comment, onCommentUpdated }) => {
   const daysSince = getDaysSince(comment.created_at);
-  const [reactions, setReactions] = useState([]);
-  const [reactionsLoading, setReactionsLoading] = useState(false);
-  const [reactionsError, setReactionsError] = useState(null);
+  const {
+    data: reactions,
+    loading: reactionsLoading,
+    error: reactionsError,
+  } = useReactions(
+    comment.id,
+    comment.reactions?.total_count,
+    true,
+    fetchCommentReactions,
+    comment.reaction_details
+  );
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [body, setBody] = useState(comment.body || '');
   const [bodyHtml, setBodyHtml] = useState(comment.body_html || '');
@@ -22,40 +32,6 @@ const CommentCard = ({ comment, onCommentUpdated }) => {
     setBody(comment.body || '');
     setBodyHtml(comment.body_html || '');
   }, [comment.body, comment.body_html, comment.id]);
-
-  // Reset reactions when comment changes
-  useEffect(() => {
-    if (comment.id) {
-      setReactions([]);
-      setReactionsError(null);
-    }
-  }, [comment.id]);
-
-  // Fetch reactions if total_count > 0
-  useEffect(() => {
-    if (
-      comment.reactions?.total_count > 0 &&
-      reactions.length === 0 &&
-      !reactionsLoading
-    ) {
-      setReactionsLoading(true);
-      setReactionsError(null);
-      fetchCommentReactions(comment.id)
-        .then((data) => {
-          setReactions(data);
-          setReactionsLoading(false);
-        })
-        .catch((err) => {
-          setReactionsError(err.message);
-          setReactionsLoading(false);
-        });
-    }
-  }, [
-    comment.reactions?.total_count,
-    comment.id,
-    reactions.length,
-    reactionsLoading,
-  ]);
 
   const handleUpdateComment = async (nextBody) => {
     const updated = await updateComment(comment.id, nextBody);

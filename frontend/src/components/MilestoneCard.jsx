@@ -1,6 +1,13 @@
+// Assisted-by: Codex
 // Generated-by: Cursor
 // Assisted-by: Cursor
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, {
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+  useMemo,
+} from 'react';
 import {
   Card,
   CardHeader,
@@ -23,6 +30,7 @@ import MarkdownInputModal from './MarkdownInputModal';
 import { usePlanningDnD } from './PlanningDnDContext';
 import {
   flattenVisibleIssues,
+  sortIssueForest,
   collectSubtreeNumbers,
   removeIssueFromForest,
   removeClosedIssueFromForest,
@@ -81,6 +89,13 @@ const MilestoneCard = ({
   const prevMilestoneNumberRef = useRef(milestone.number);
   const lastAppliedHierarchyKeyRef = useRef(null);
   const dnd = usePlanningDnD();
+  const loadRevision = useRef(0);
+  useEffect(
+    () => () => {
+      loadRevision.current += 1;
+    },
+    []
+  );
 
   const openMilestoneEditor = () => {
     setEditMilestone({
@@ -126,19 +141,25 @@ const MilestoneCard = ({
     setPullRequests(data.pull_requests || []);
   }, []);
 
-  const refetchIssues = useCallback(() => {
-    setLoading(true);
-    setError(null);
-    return fetchIssues(milestone.number, sortOrder)
-      .then((data) => {
-        applyFetchedData(data);
-        setLoading(false);
-      })
-      .catch((err) => {
-        setError(err.message);
-        setLoading(false);
-      });
-  }, [milestone.number, sortOrder, applyFetchedData]);
+  const refetchIssues = useCallback(
+    (force = false) => {
+      const revision = ++loadRevision.current;
+      setLoading(true);
+      setError(null);
+      return fetchIssues(milestone.number, [], { force })
+        .then((data) => {
+          if (revision !== loadRevision.current) return;
+          applyFetchedData(data);
+          setLoading(false);
+        })
+        .catch((err) => {
+          if (revision !== loadRevision.current) return;
+          setError(err.message);
+          setLoading(false);
+        });
+    },
+    [milestone.number, applyFetchedData]
+  );
 
   // Reset loaded state when milestone changes
   useEffect(() => {
@@ -159,13 +180,16 @@ const MilestoneCard = ({
     if (isIssuesExpanded && !hasLoadedOnce && !loading) {
       setLoading(true);
       setError(null);
-      fetchIssues(milestone.number, sortOrder)
+      const revision = ++loadRevision.current;
+      fetchIssues(milestone.number)
         .then((data) => {
+          if (revision !== loadRevision.current) return;
           applyFetchedData(data);
           setLoading(false);
           setHasLoadedOnce(true);
         })
         .catch((err) => {
+          if (revision !== loadRevision.current) return;
           setError(err.message);
           setLoading(false);
           setHasLoadedOnce(true);
@@ -180,26 +204,21 @@ const MilestoneCard = ({
     applyFetchedData,
   ]);
 
-  // Re-fetch issues when sort order changes (if already loaded)
-  const prevSortOrderRef = useRef(sortOrder);
-  useEffect(() => {
-    const sortOrderChanged =
-      JSON.stringify(prevSortOrderRef.current) !== JSON.stringify(sortOrder);
-    if (isIssuesExpanded && hasLoadedOnce && !loading && sortOrderChanged) {
-      prevSortOrderRef.current = sortOrder;
-      refetchIssues();
-    } else {
-      prevSortOrderRef.current = sortOrder;
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sortOrder]);
+  const sortedIssues = useMemo(
+    () => sortIssueForest(issues, sortOrder),
+    [issues, sortOrder]
+  );
+  const sortedPrs = useMemo(
+    () => sortIssueForest(pullRequests, sortOrder),
+    [pullRequests, sortOrder]
+  );
 
   useEffect(() => {
     // Loaded cards own the visible issue data; unopened cards fetch current
     // data when expanded instead of doing work that cannot be displayed yet.
     if (issueMilestoneRefresh === 0) return;
     if (!hasLoadedOnce) return;
-    refetchIssues();
+    refetchIssues(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [issueMilestoneRefresh]);
 
@@ -218,6 +237,15 @@ const MilestoneCard = ({
       targetMilestoneNumber,
       issueSnapshot,
     } = hierarchyAction;
+
+    if (type === 'error' || type === 'adopt') {
+      if (
+        sourceMilestoneNumber === milestone.number ||
+        targetMilestoneNumber === milestone.number
+      )
+        refetchIssues(true);
+      return;
+    }
 
     if (type === 'unlink') {
       if (sourceMilestoneNumber !== milestone.number) return;
@@ -393,7 +421,7 @@ const MilestoneCard = ({
   };
 
   const renderIssueTable = () => {
-    const visible = flattenVisibleIssues(issues, expandedHierarchy);
+    const visible = flattenVisibleIssues(sortedIssues, expandedHierarchy);
     return (
       <table
         style={{
@@ -433,6 +461,20 @@ const MilestoneCard = ({
               onDragEndIssue={() => {
                 dnd?.finishDrag();
               }}
+              onAdoptParentMilestone={({
+                fromMilestoneNumber,
+                toMilestoneNumber,
+                error,
+              }) => {
+                const action = {
+                  type: error ? 'error' : 'adopt',
+                  message: error,
+                  sourceMilestoneNumber: fromMilestoneNumber,
+                  targetMilestoneNumber: toMilestoneNumber,
+                };
+                if (dnd) dnd.notifyHierarchyChanged(action);
+                else refetchIssues(true);
+              }}
               onIssueUpdate={updateItemInForest(setIssues)}
               onIssueCreated={handleIssueCreated}
               onIssueClosed={handleIssueClosed}
@@ -454,7 +496,7 @@ const MilestoneCard = ({
     >
       {itemTableHeader(false)}
       <tbody>
-        {pullRequests.map((issue) => (
+        {sortedPrs.map((issue) => (
           <IssueCard
             key={issue.id}
             issue={issue}

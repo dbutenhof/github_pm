@@ -1,3 +1,4 @@
+// Assisted-by: Codex
 // Generated-by: Cursor
 // Assisted-by: Cursor
 // Assisted-by: openai-code-assist
@@ -63,6 +64,7 @@ import {
 } from '../services/api';
 import CommentCard from './CommentCard';
 import Reactions from './Reactions';
+import { useReactions } from '../utils/useReactions';
 import UserAvatar from './UserAvatar';
 import MarkdownInputModal from './MarkdownInputModal';
 import LabelColorInput from './LabelColorInput';
@@ -166,9 +168,16 @@ const IssueCard = ({
   const milestoneToggleRef = useRef(null);
   const menuRef = useRef(null);
   const toggleRef = useRef(null);
-  const [reactions, setReactions] = useState([]);
-  const [reactionsLoading, setReactionsLoading] = useState(false);
-  const [reactionsError, setReactionsError] = useState(null);
+  const {
+    data: reactions,
+    loading: reactionsLoading,
+    error: reactionsError,
+  } = useReactions(
+    issue.number,
+    issue.reactions?.total_count,
+    isDescriptionExpanded,
+    fetchIssueReactions
+  );
   const [availableAssignees, setAvailableAssignees] = useState([]);
   const [isAssigneesMenuOpen, setIsAssigneesMenuOpen] = useState(false);
   const [assigneesLoading, setAssigneesLoading] = useState(false);
@@ -325,44 +334,10 @@ const IssueCard = ({
       });
   }, [isCloseMenuOpen, closeActiveTab, closeComment]);
 
-  // Fetch reactions if total_count > 0
-  useEffect(() => {
-    // Reset reactions when issue changes
-    if (issue.number) {
-      setReactions([]);
-      setReactionsError(null);
-    }
-  }, [issue.number]);
-
-  useEffect(() => {
-    if (
-      issue.reactions?.total_count > 0 &&
-      reactions.length === 0 &&
-      !reactionsLoading
-    ) {
-      setReactionsLoading(true);
-      setReactionsError(null);
-      fetchIssueReactions(issue.number)
-        .then((data) => {
-          setReactions(data);
-          setReactionsLoading(false);
-        })
-        .catch((err) => {
-          setReactionsError(err.message);
-          setReactionsLoading(false);
-        });
-    }
-  }, [
-    issue.reactions?.total_count,
-    issue.number,
-    reactions.length,
-    reactionsLoading,
-  ]);
-
   // Preload assignees when component mounts (shared cache) - non-blocking
   useEffect(() => {
     // If assignees are already cached, use them
-    if (assigneesCache.data.length > 0) {
+    if (assigneesCache.loaded) {
       setAvailableAssignees(assigneesCache.data);
       setAssigneesLoading(false);
       setAssigneesError(assigneesCache.error);
@@ -415,7 +390,7 @@ const IssueCard = ({
   useEffect(() => {
     if (isAssigneesMenuOpen) {
       // If assignees are already cached, use them immediately
-      if (assigneesCache.data.length > 0) {
+      if (assigneesCache.loaded) {
         setAvailableAssignees(assigneesCache.data);
         setAssigneesLoading(false);
         setAssigneesError(assigneesCache.error);
@@ -436,7 +411,7 @@ const IssueCard = ({
             setAssigneesLoading(false);
             setAssigneesError(assigneesCache.error);
           });
-      } else if (!assigneesCache.loading && assigneesCache.data.length === 0) {
+      } else if (!assigneesCache.loading && !assigneesCache.loaded) {
         // Assignees haven't been fetched yet, start fetching now
         setAssigneesLoading(true);
         assigneesCache.loading = true;
@@ -467,7 +442,7 @@ const IssueCard = ({
   // useEffect runs after render, so this won't block the initial render
   useEffect(() => {
     // If labels are already cached, use them
-    if (labelsCache.data.length > 0) {
+    if (labelsCache.loaded) {
       setAvailableLabels(labelsCache.data);
       setLabelsLoading(false);
       setLabelsError(labelsCache.error);
@@ -521,7 +496,7 @@ const IssueCard = ({
   useEffect(() => {
     if (isLabelMenuOpen) {
       // If labels are already cached, use them immediately
-      if (labelsCache.data.length > 0) {
+      if (labelsCache.loaded) {
         setAvailableLabels(labelsCache.data);
         setLabelsLoading(false);
         setLabelsError(labelsCache.error);
@@ -543,7 +518,7 @@ const IssueCard = ({
             setLabelsLoading(false);
             setLabelsError(labelsCache.error);
           });
-      } else if (!labelsCache.loading && labelsCache.data.length === 0) {
+      } else if (!labelsCache.loading && !labelsCache.loaded) {
         // Labels haven't been fetched yet, start fetching now
         setLabelsLoading(true);
         labelsCache.loading = true;
@@ -719,13 +694,19 @@ const IssueCard = ({
     onLabelsChange({ milestoneNumber });
   };
 
+  const commitLabels = (labels) => {
+    setCurrentLabels(labels);
+    onIssueUpdate?.({ id: issue.id, labels });
+    notifyLabelsChanged();
+  };
+
   const handleRemoveLabel = async (labelName) => {
     try {
-      await removeLabel(issue.number, labelName);
-      setCurrentLabels(
-        currentLabels.filter((label) => label.name !== labelName)
+      const result = await removeLabel(issue.number, labelName);
+      commitLabels(
+        result.labels ??
+          currentLabels.filter((label) => label.name !== labelName)
       );
-      notifyLabelsChanged();
     } catch (err) {
       console.error('Failed to remove label:', err);
       setLabelsError(err.message);
@@ -734,19 +715,19 @@ const IssueCard = ({
 
   const handleToggleLabel = async (labelName, isChecked) => {
     try {
-      if (isChecked) {
-        await addLabel(issue.number, labelName);
-        const labelToAdd = availableLabels.find((l) => l.name === labelName);
-        if (labelToAdd) {
-          setCurrentLabels([...currentLabels, labelToAdd]);
-        }
-      } else {
-        await removeLabel(issue.number, labelName);
-        setCurrentLabels(
-          currentLabels.filter((label) => label.name !== labelName)
-        );
-      }
-      notifyLabelsChanged();
+      const result = await (isChecked
+        ? addLabel(issue.number, labelName)
+        : removeLabel(issue.number, labelName));
+      const labelToAdd = availableLabels.find(
+        (label) => label.name === labelName
+      );
+      const fallback = isChecked
+        ? [
+            ...currentLabels.filter((label) => label.name !== labelName),
+            ...(labelToAdd ? [labelToAdd] : []),
+          ]
+        : currentLabels.filter((label) => label.name !== labelName);
+      commitLabels(result.labels ?? fallback);
     } catch (err) {
       console.error('Failed to toggle label:', err);
       setLabelsError(err.message);
@@ -1552,6 +1533,11 @@ const IssueCard = ({
       });
     } catch (err) {
       console.error('Failed to adopt parent milestone:', err);
+      onAdoptParentMilestone?.({
+        fromMilestoneNumber: currentMilestone?.number ?? milestoneNumber,
+        toMilestoneNumber: issue.external_parent?.milestone?.number,
+        error: err.message || String(err),
+      });
     }
   };
 

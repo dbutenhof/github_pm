@@ -1,3 +1,4 @@
+// Assisted-by: Codex
 // Generated-by: Cursor
 // Assisted-by: openai-code-assist
 import React, { useState, useEffect } from 'react';
@@ -44,7 +45,7 @@ const ManageLabels = ({ isOpen, onClose, onLabelChange }) => {
 
   const loadLabels = () => {
     // Use cached data if available
-    if (labelsCache.data.length > 0) {
+    if (labelsCache.loaded) {
       setLabels(labelsCache.data);
       setLoading(false);
       setError(labelsCache.error);
@@ -90,7 +91,7 @@ const ManageLabels = ({ isOpen, onClose, onLabelChange }) => {
 
   const refreshLabelsInBackground = () => {
     // Refresh in background without showing loading state
-    fetchLabels()
+    fetchLabels({ revalidate: true })
       .then((data) => {
         labelsCache.data = data;
         labelsCache.loading = false;

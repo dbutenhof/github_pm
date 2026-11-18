@@ -1,3 +1,4 @@
+# Assisted-by: Codex
 """SDLC KPI REST endpoints (GitHub-backed).
 
 Generated-by: Cursor
@@ -10,10 +11,13 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query
 
 from github_pm import sdlc_service
-from github_pm.api import connection, Connector
+from github_pm.api import connection
 from github_pm.context import context
+from github_pm.execution import offload
+from github_pm.github_client import Connector
 from github_pm.sdlc_models import (
     BugBacklogSeriesResponse,
+    DashboardResponse,
     DeliverySeriesResponse,
     EscapedDefectSeriesResponse,
 )
@@ -22,7 +26,8 @@ sdlc_router = APIRouter(prefix="/sdlc", tags=["sdlc"])
 
 
 @sdlc_router.get("/delivery", response_model=DeliverySeriesResponse)
-async def get_sdlc_delivery(
+@offload
+def get_sdlc_delivery(
     gitctx: Annotated[Connector, Depends(connection)],
     weeks: Annotated[int, Query(ge=1, le=52)] = 4,
     week_days: Annotated[int, Query(ge=1, le=90)] = 7,
@@ -40,7 +45,8 @@ async def get_sdlc_delivery(
 
 
 @sdlc_router.get("/escaped-defect-rate", response_model=EscapedDefectSeriesResponse)
-async def get_escaped_defect_rate(
+@offload
+def get_escaped_defect_rate(
     gitctx: Annotated[Connector, Depends(connection)],
     weeks: Annotated[int, Query(ge=1, le=52)] = 4,
     week_days: Annotated[int, Query(ge=1, le=90)] = 7,
@@ -57,12 +63,26 @@ async def get_escaped_defect_rate(
 
 
 @sdlc_router.get("/bug-backlog-delta", response_model=BugBacklogSeriesResponse)
-async def get_bug_backlog_delta(
+@offload
+def get_bug_backlog_delta(
     gitctx: Annotated[Connector, Depends(connection)],
     weeks: Annotated[int, Query(ge=1, le=52)] = 4,
     week_days: Annotated[int, Query(ge=1, le=90)] = 7,
 ):
     """Bug issues opened, closed, and net per week (``weeks`` slices of ``week_days``, oldest first)."""
     return sdlc_service.compute_bug_backlog_delta_series(
+        gitctx, context, weeks=weeks, week_days=week_days
+    )
+
+
+@sdlc_router.get("/dashboard", response_model=DashboardResponse)
+@offload
+def get_sdlc_dashboard(
+    gitctx: Annotated[Connector, Depends(connection)],
+    weeks: Annotated[int, Query(ge=1, le=52)] = 4,
+    week_days: Annotated[int, Query(ge=1, le=90)] = 7,
+):
+    """Collect shared dashboard facts once. Generated-by: Codex."""
+    return sdlc_service.compute_sdlc_dashboard(
         gitctx, context, weeks=weeks, week_days=week_days
     )

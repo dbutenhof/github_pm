@@ -1,3 +1,4 @@
+// Assisted-by: Codex
 // Generated-by: Cursor
 /**
  * Flatten a nested issue forest into visible rows based on hierarchy expand state.
@@ -141,3 +142,23 @@ export const reannotateDepths = (forest, depth = 0) =>
       child_count: children.length,
     };
   });
+
+// Generated-by: Codex
+export const sortIssueForest = (items, sortOrder = []) => {
+  const priorities = sortOrder.map((label) => label.trim());
+  const bucket = (item) => {
+    const labels = new Set(
+      (item.labels || []).map((label) => label.name.toLowerCase())
+    );
+    const index = priorities.findIndex((label) => labels.has(label));
+    return index < 0 ? priorities.length : index;
+  };
+  return (items || [])
+    .map((item) => ({
+      ...item,
+      ...(item.children
+        ? { children: sortIssueForest(item.children, sortOrder) }
+        : {}),
+    }))
+    .sort((a, b) => bucket(a) - bucket(b) || a.number - b.number);
+};

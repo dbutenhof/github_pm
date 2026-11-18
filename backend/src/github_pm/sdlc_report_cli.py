@@ -1,3 +1,4 @@
+# Assisted-by: Codex
 """Offline CLI: fetch SDLC KPIs from GitHub and write a static HTML report.
 
 Configuration uses the same environment variables as ``github_pm.context.Settings``:
@@ -60,8 +61,8 @@ def main(
 ) -> None:
     """Generate a static SDLC HTML report (same metrics as the /api/v1/sdlc REST API)."""
     from github_pm import sdlc_service
-    from github_pm.api import Connector
     from github_pm.context import Settings
+    from github_pm.github_client import Connector
     from github_pm.sdlc_html_render import render_sdlc_report_html
 
     settings = Settings()
@@ -79,16 +80,11 @@ def main(
     days_v = 7 if week_days is None else week_days
     out = output if output is not None else Path.cwd() / "sdlc-report.html"
 
-    gitctx = Connector(token, github_repo=settings.github_repo)
-    delivery = sdlc_service.compute_sdlc_delivery_series(
-        gitctx, settings, weeks=weeks_v, week_days=days_v
-    )
-    escaped = sdlc_service.compute_escaped_defect_rate_series(
-        gitctx, settings, weeks=weeks_v, week_days=days_v
-    )
-    bugs = sdlc_service.compute_bug_backlog_delta_series(
-        gitctx, settings, weeks=weeks_v, week_days=days_v
-    )
+    with Connector(token, github_repo=settings.github_repo) as gitctx:
+        dashboard = sdlc_service.compute_sdlc_dashboard(
+            gitctx, settings, weeks=weeks_v, week_days=days_v
+        )
+    delivery, escaped, bugs = dashboard.delivery, dashboard.escaped, dashboard.backlog
 
     html_doc = render_sdlc_report_html(
         repo=settings.github_repo,

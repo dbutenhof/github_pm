@@ -1,3 +1,4 @@
+// Assisted-by: Codex
 // Generated-by: Cursor
 import React, {
   createContext,
@@ -217,6 +218,11 @@ export const PlanningDnDProvider = ({
     }
   }, []);
 
+  const notifyHierarchyChanged = useCallback((action) => {
+    if (action.type === 'error') setError(action.message);
+    onHierarchyChangedRef.current?.(action);
+  }, []);
+
   const value = useMemo(
     () => ({
       planningBoundsRef,
@@ -225,6 +231,7 @@ export const PlanningDnDProvider = ({
       isUnlinkZone,
       error,
       clearError: () => setError(null),
+      notifyHierarchyChanged,
       beginDrag,
       pointerOverParent,
       pointerOverPlanning,
@@ -241,6 +248,7 @@ export const PlanningDnDProvider = ({
       pointerOverPlanning,
       finishDrag,
       setHoverParent,
+      notifyHierarchyChanged,
     ]
   );
 

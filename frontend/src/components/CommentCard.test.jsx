@@ -1,5 +1,6 @@
 // Generated-by: Cursor
 // Assisted-by: Cursor
+// Assisted-by: Codex
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -98,8 +99,11 @@ describe('CommentCard', () => {
 
     await user.click(screen.getByRole('button', { name: 'Edit comment' }));
     const textarea = screen.getByPlaceholderText('Write markdown…');
+    expect(textarea).toHaveValue(mockComment.body);
     await user.clear(textarea);
+    expect(textarea).toHaveValue('');
     await user.type(textarea, 'Updated body');
+    expect(textarea).toHaveValue('Updated body');
     await user.click(screen.getByRole('button', { name: 'OK' }));
 
     await waitFor(() => {

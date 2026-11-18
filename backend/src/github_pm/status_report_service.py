@@ -1,3 +1,4 @@
+# Assisted-by: Codex
 """Project status report via GraphQL ``search``
 
 Generated-by: Cursor
@@ -8,8 +9,9 @@ from __future__ import annotations
 from datetime import date, datetime, UTC
 from typing import Any
 
+from github_pm import report_queries as rq
 from github_pm import sdlc_metrics as sm
-from github_pm.api import Connector
+from github_pm.github_client import Connector
 from github_pm.status_report_models import (
     PrBacklogItem,
     ProjectStatusReportResponse,
@@ -194,20 +196,33 @@ def build_project_status_report(
     def post_gql(payload: dict[str, Any]) -> dict[str, Any]:
         return gitctx.post("/graphql", payload)
 
-    merged_q = sm.merged_prs_query_between(repo, start_date, end_date)
-    merged_nodes = sm.graphql_search_pull_requests(
+    fetched = rq.search_many(
         post_gql,
-        merged_q,
-        filter_bot_authors=False,
+        {
+            "merged": rq.Search(
+                rq.merged_prs_query_between(repo, start_date, end_date),
+                "id number title url mergedAt",
+            ),
+            "opened_prs": rq.Search(
+                rq.opened_prs_between_query(repo, start_date, end_date),
+                "id number title url createdAt state isDraft",
+            ),
+            "opened_issues": rq.Search(
+                rq.opened_issues_between_query(repo, start_date, end_date),
+                "id number title url createdAt closedAt",
+                "Issue",
+            ),
+        },
     )
+    attention_nodes = rq.open_prs(post_gql, gitctx.owner, gitctx.repo)
+    merged_nodes = fetched["merged"]
     merged_in_window = [
         n for n in merged_nodes if _merged_calendar_in_window(n, start_date, end_date)
     ]
     merged_in_window.sort(key=lambda n: int(n["number"]))
     merged_items = [_item_from_gql_node(n) for n in merged_in_window]
 
-    opened_pr_q = sm.opened_prs_between_query(repo, start_date, end_date) + " is:open"
-    opened_pr_nodes = sm.graphql_search_timeline_nodes(post_gql, opened_pr_q)
+    opened_pr_nodes = fetched["opened_prs"]
     opened_pr_filtered = [
         n
         for n in opened_pr_nodes
@@ -224,8 +239,7 @@ def build_project_status_report(
             item.title += " (draft)"
         opened_pr_items.append(item)
 
-    opened_issue_q = sm.opened_issues_between_query(repo, start_date, end_date)
-    opened_issue_nodes = sm.graphql_search_timeline_nodes(post_gql, opened_issue_q)
+    opened_issue_nodes = fetched["opened_issues"]
     opened_issue_filtered = [
         n
         for n in opened_issue_nodes
@@ -235,12 +249,7 @@ def build_project_status_report(
     ]
     opened_issue_filtered.sort(key=lambda n: int(n["number"]))
 
-    recently_q = sm.open_prs_updated_between_query(repo, start_date, end_date)
-    recently_nodes = sm.graphql_search_pull_requests(
-        post_gql,
-        recently_q,
-        filter_bot_authors=False,
-    )
+    recently_nodes = attention_nodes
     recently_filtered = [
         n
         for n in recently_nodes
@@ -253,22 +262,11 @@ def build_project_status_report(
     recently_filtered.sort(key=lambda n: int(n["number"]))
     recently_items = [_item_from_gql_node(n) for n in recently_filtered]
 
-    attention_q = sm.open_pull_requests_for_attention_query(repo)
-    attention_nodes = sm.graphql_search_open_pull_requests_attention(
-        post_gql,
-        attention_q,
-        filter_bot_authors=False,
-    )
     reviewer_attention, second_approval, creator_attention = (
         _partition_attention_open_prs(attention_nodes)
     )
 
-    backlog_q = sm.open_pr_backlog_query(repo, start_date)
-    backlog_nodes = sm.graphql_search_pull_requests(
-        post_gql,
-        backlog_q,
-        filter_bot_authors=False,
-    )
+    backlog_nodes = attention_nodes
     backlog_filtered = [
         n
         for n in backlog_nodes

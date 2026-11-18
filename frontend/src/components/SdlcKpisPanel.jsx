@@ -1,5 +1,6 @@
+// Assisted-by: Codex
 // Generated-by: Cursor
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   Card,
   CardHeader,
@@ -13,11 +14,7 @@ import {
   TextInput,
   Tooltip,
 } from '@patternfly/react-core';
-import {
-  fetchSdlcDelivery,
-  fetchEscapedDefectRate,
-  fetchBugBacklogDelta,
-} from '../services/api';
+import { fetchSdlcDashboard } from '../services/api';
 
 /** Format a duration as whole days and hours only (no minutes/seconds). */
 export const formatDaysAndHours = (sec) => {
@@ -251,7 +248,8 @@ const readWeeksFromStorage = () => {
   return DEFAULT_WEEKS;
 };
 
-const SdlcKpisPanel = () => {
+const SdlcKpisPanel = ({ refreshKey = 0 }) => {
+  const requestId = useRef(0);
   const [weeksInput, setWeeksInput] = useState(() =>
     String(readWeeksFromStorage())
   );
@@ -263,27 +261,29 @@ const SdlcKpisPanel = () => {
   const [backlog, setBacklog] = useState(null);
 
   const load = useCallback(() => {
+    const id = ++requestId.current;
     setLoading(true);
     setError(null);
-    return Promise.all([
-      fetchSdlcDelivery(weeks, 7),
-      fetchEscapedDefectRate(weeks, 7),
-      fetchBugBacklogDelta(weeks, 7),
-    ])
-      .then(([d, e, b]) => {
+    return fetchSdlcDashboard(weeks, 7, { force: refreshKey > 0 })
+      .then(({ delivery: d, escaped: e, backlog: b }) => {
+        if (id !== requestId.current) return;
         setDelivery(d);
         setEscaped(e);
         setBacklog(b);
         setLoading(false);
       })
       .catch((err) => {
+        if (id !== requestId.current) return;
         setError(err.message || String(err));
         setLoading(false);
       });
-  }, [weeks]);
+  }, [weeks, refreshKey]);
 
   useEffect(() => {
     load();
+    return () => {
+      requestId.current += 1;
+    };
   }, [load]);
 
   useEffect(() => {

@@ -1,3 +1,4 @@
+// Assisted-by: Codex
 // Generated-by: Cursor
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, act } from '@testing-library/react';
@@ -50,6 +51,11 @@ describe('App', () => {
     api.fetchLabels.mockResolvedValue([]);
     // Default mock for fetchAssignees (preloaded in background)
     api.fetchAssignees.mockResolvedValue([]);
+    api.fetchSdlcDashboard.mockResolvedValue({
+      delivery: { slices: [] },
+      escaped: { slices: [] },
+      backlog: { slices: [] },
+    });
     api.fetchProjectStatusReport = vi.fn().mockResolvedValue({
       start_date: '2025-01-01',
       end_date: '2025-01-07',
@@ -421,10 +427,10 @@ describe('App', () => {
       expect(api.fetchIssues).toHaveBeenCalledTimes(4);
     });
     expect(api.fetchIssues.mock.calls).toEqual([
-      [6, []],
-      [10, []],
-      [6, []],
-      [10, []],
+      [6],
+      [10],
+      [6, [], { force: true }],
+      [10, [], { force: true }],
     ]);
   });
 
