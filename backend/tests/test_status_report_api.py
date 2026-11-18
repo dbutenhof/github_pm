@@ -61,6 +61,7 @@ def mock_connector_graphql():
             "createdAt": "2025-04-04T12:00:00Z",
         }
     ]
+    gitctx.status_opened_issue_nodes = issue_nodes
 
     def post_side(path: str, data=None, **kwargs):
         body = data
@@ -77,11 +78,12 @@ def mock_connector_graphql():
                 }
             }
         if "is:issue" in q and "created:" in q:
+            assert "closedAt" in body["query"]
             return {
                 "data": {
                     "search": {
                         "pageInfo": {"hasNextPage": False, "endCursor": None},
-                        "nodes": issue_nodes,
+                        "nodes": list(gitctx.status_opened_issue_nodes),
                     }
                 }
             }
@@ -158,6 +160,46 @@ class TestProjectStatusReport:
         assert body["reviewer_attention_needed"] == []
         assert body["creator_attention_needed"] == []
         assert body["pr_backlog"] == []
+
+    @pytest.mark.parametrize(
+        ("created_at", "closed_at", "included"),
+        [
+            ("2025-04-03T00:00:00Z", None, True),
+            ("2025-04-10T23:59:59Z", None, True),
+            ("2025-04-03T00:00:00Z", "2025-04-03T00:00:00Z", False),
+            ("2025-04-04T12:00:00Z", "2025-04-06T12:00:00Z", False),
+            ("2025-04-04T12:00:00Z", "2025-04-10T23:59:59Z", False),
+            ("2025-04-04T12:00:00Z", "2025-04-11T00:00:00Z", True),
+            ("2025-04-04T12:00:00Z", "2025-04-11T01:00:00+02:00", False),
+            ("2025-04-02T23:59:59Z", None, False),
+            ("2025-04-11T00:00:00Z", None, False),
+        ],
+    )
+    def test_opened_issues_exclude_closures_during_report_period(
+        self, client, mock_connector_graphql, created_at, closed_at, included
+    ):
+        """Keep new issues unless their closure falls in the reporting interval.
+
+        Generated-by: Codex
+        """
+        issue = mock_connector_graphql.status_opened_issue_nodes[0]
+        issue.update(createdAt=created_at, closedAt=closed_at)
+
+        async def override_conn():
+            yield mock_connector_graphql
+
+        app.dependency_overrides[connection] = override_conn
+        try:
+            response = client.get(
+                "/api/v1/project-status",
+                params={"start_date": "2025-04-03", "end_date": "2025-04-10"},
+            )
+        finally:
+            app.dependency_overrides.clear()
+
+        assert response.status_code == 200
+        numbers = [item["number"] for item in response.json()["opened_issues"]]
+        assert numbers == ([12] if included else [])
 
     def test_report_single_calendar_day(self, client, mock_connector_graphql):
         async def override_conn():
@@ -659,8 +701,8 @@ class TestProjectStatusReport:
         assert [row["number"] for row in backlog] == [100, 50]
         assert [row["days_since_update"] for row in backlog] == [9, 7]
 
-    def test_opened_prs_exclude_closed_without_merge(self, client):
-        """PRs with GitHub state CLOSED (not merged) must not appear in opened_pull_requests."""
+    def test_opened_prs_exclude_closed_and_merged(self, client):
+        """Only PRs with GitHub state OPEN appear in opened_pull_requests."""
         gitctx = MagicMock()
         gitctx.owner = "test"
         gitctx.repo = "repo"
@@ -774,7 +816,7 @@ class TestProjectStatusReport:
         assert r.status_code == 200
         opened = r.json()["opened_pull_requests"]
         numbers = {p["number"] for p in opened}
-        assert numbers == {20, 21}
+        assert numbers == {20}
         assert r.json()["recently_updated_pull_requests"] == []
         assert r.json()["reviewer_attention_needed"] == []
         assert r.json()["creator_attention_needed"] == []

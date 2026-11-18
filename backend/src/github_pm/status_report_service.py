@@ -56,6 +56,19 @@ def _updated_calendar_in_window(
     return start_d <= ud <= end_d
 
 
+def _closed_calendar_in_window(
+    node: dict[str, Any], start_d: date, end_d: date
+) -> bool:
+    """Check the issue closure date against the inclusive UTC reporting window.
+
+    Generated-by: Codex
+    """
+    closed = sm.parse_github_ts(node.get("closedAt"))
+    if not closed:
+        return False
+    return start_d <= closed.astimezone(UTC).date() <= end_d
+
+
 def _updated_strictly_before_start_date(node: dict[str, Any], start_d: date) -> bool:
     """True if ``updatedAt`` exists and its UTC calendar date is before ``start_d``."""
     u = sm.parse_github_ts(node.get("updatedAt"))
@@ -193,16 +206,23 @@ def build_project_status_report(
     merged_in_window.sort(key=lambda n: int(n["number"]))
     merged_items = [_item_from_gql_node(n) for n in merged_in_window]
 
-    opened_pr_q = sm.opened_prs_between_query(repo, start_date, end_date)
+    opened_pr_q = sm.opened_prs_between_query(repo, start_date, end_date) + " is:open"
     opened_pr_nodes = sm.graphql_search_timeline_nodes(post_gql, opened_pr_q)
     opened_pr_filtered = [
         n
         for n in opened_pr_nodes
         if n.get("__typename") == "PullRequest"
         and _created_calendar_in_window(n, start_date, end_date)
-        and n.get("state") != "CLOSED"
+        and n.get("state") == "OPEN"
     ]
     opened_pr_filtered.sort(key=lambda n: int(n["number"]))
+    opened_pr_items = []
+    for n in opened_pr_filtered:
+        item = _item_from_gql_node(n)
+        # Keep display and clipboard titles identical for newly opened drafts.
+        if n.get("isDraft"):
+            item.title += " (draft)"
+        opened_pr_items.append(item)
 
     opened_issue_q = sm.opened_issues_between_query(repo, start_date, end_date)
     opened_issue_nodes = sm.graphql_search_timeline_nodes(post_gql, opened_issue_q)
@@ -211,6 +231,7 @@ def build_project_status_report(
         for n in opened_issue_nodes
         if n.get("__typename") == "Issue"
         and _created_calendar_in_window(n, start_date, end_date)
+        and not _closed_calendar_in_window(n, start_date, end_date)
     ]
     opened_issue_filtered.sort(key=lambda n: int(n["number"]))
 
@@ -268,7 +289,7 @@ def build_project_status_report(
         start_date=start_date,
         end_date=end_date,
         merged_pull_requests=merged_items,
-        opened_pull_requests=[_item_from_gql_node(n) for n in opened_pr_filtered],
+        opened_pull_requests=opened_pr_items,
         opened_issues=[_item_from_gql_node(n) for n in opened_issue_filtered],
         second_approval_needed=second_approval,
         recently_updated_pull_requests=recently_items,
