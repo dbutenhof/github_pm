@@ -99,6 +99,12 @@ to a new milestone using the pulldown. You can also remove assigned labels by
 clicking the label chiclet's "x" icon, or add new labels to the issue with the "+"
 icon.
 
+If the repository defines GitHub issue fields named "Priority" or "Effort", they
+appear as columns between Milestone and Labels. Click a field value to open a
+pulldown and choose a new option, or choose "No value" to clear it. Fields are
+read from the repository owner's issue field definitions, so projects without
+those fields simply show no extra columns.
+
 If the issue is assigned to one or more team members, the display will display
 their GitHub login names. You can change the list of assignees using the pulldown.
 

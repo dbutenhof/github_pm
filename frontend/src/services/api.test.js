@@ -1,5 +1,6 @@
 // Assisted-by: Codex
 // Generated-by: Cursor
+// Assisted-by: Cline
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   fetchMilestones,
@@ -27,6 +28,8 @@ import {
   updateIssueBody,
   updateIssueTitle,
   updateIssueType,
+  fetchIssueFields,
+  setIssueFieldValue,
   updateLabel,
   updateMilestoneState,
 } from './api';
@@ -517,6 +520,46 @@ describe('api', () => {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ type: 'Task' }),
+      });
+    });
+
+    it('fetchIssueFields reads the repository issue-field catalog', async () => {
+      const catalog = {
+        can_view: true,
+        fields: [{ id: 'F1', name: 'Priority', options: [] }],
+      };
+      global.fetch.mockResolvedValue({
+        ok: true,
+        json: async () => catalog,
+      });
+      await expect(fetchIssueFields()).resolves.toEqual(catalog);
+      expect(global.fetch).toHaveBeenCalledWith('/api/v1/issue-fields');
+    });
+
+    it('setIssueFieldValue PUTs the selected option', async () => {
+      const result = { issue_field_values: [] };
+      global.fetch.mockResolvedValue({
+        ok: true,
+        json: async () => result,
+      });
+      await expect(setIssueFieldValue(42, 'F1', 'O1')).resolves.toEqual(result);
+      expect(global.fetch).toHaveBeenCalledWith('/api/v1/issues/42/fields/F1', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ option_id: 'O1' }),
+      });
+    });
+
+    it('setIssueFieldValue sends a null option to clear the value', async () => {
+      global.fetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({ issue_field_values: [] }),
+      });
+      await setIssueFieldValue(42, 'F1', null);
+      expect(global.fetch).toHaveBeenCalledWith('/api/v1/issues/42/fields/F1', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ option_id: null }),
       });
     });
 

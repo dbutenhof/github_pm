@@ -25,6 +25,8 @@ import {
 } from '@patternfly/react-core';
 import { fetchIssues, createIssue, updateMilestone } from '../services/api';
 import milestonesCache from '../utils/milestonesCache';
+import { findPlanningIssueFields } from '../utils/issueFields';
+import { loadIssueFields } from '../utils/issueFieldsCache';
 import IssueCard from './IssueCard';
 import MarkdownInputModal from './MarkdownInputModal';
 import { usePlanningDnD } from './PlanningDnDContext';
@@ -47,7 +49,7 @@ const thStyle = {
   textTransform: 'uppercase',
 };
 
-const itemTableHeader = (includeType) => (
+const itemTableHeader = (includeType, fields = []) => (
   <thead>
     <tr style={{ borderBottom: '2px solid #0066cc' }}>
       <th style={{ ...thStyle, width: '2rem' }} />
@@ -56,6 +58,11 @@ const itemTableHeader = (includeType) => (
       <th style={thStyle}>Author</th>
       <th style={thStyle}>Links</th>
       <th style={thStyle}>Milestone</th>
+      {fields.map((field) => (
+        <th key={field.id} style={thStyle}>
+          {field.name}
+        </th>
+      ))}
       <th style={thStyle}>Labels</th>
       <th style={thStyle}>Title</th>
     </tr>
@@ -76,6 +83,7 @@ const MilestoneCard = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  const [planningFields, setPlanningFields] = useState([]);
   const [expandedHierarchy, setExpandedHierarchy] = useState(() => new Set());
   const [isCreateIssueOpen, setIsCreateIssueOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
@@ -96,6 +104,17 @@ const MilestoneCard = ({
     },
     []
   );
+
+  // Assisted-by: Cline
+  useEffect(() => {
+    let active = true;
+    loadIssueFields().then((fields) => {
+      if (active) setPlanningFields(findPlanningIssueFields(fields));
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const openMilestoneEditor = () => {
     setEditMilestone({
@@ -431,14 +450,15 @@ const MilestoneCard = ({
           border: '1px solid #d2d2d2',
         }}
       >
-        {itemTableHeader(true)}
+        {itemTableHeader(true, planningFields)}
         <tbody>
           {visible.map((issue) => (
             <IssueCard
               key={issue.id}
               issue={issue}
               enableHierarchy
-              columnCount={8}
+              columnCount={8 + planningFields.length}
+              issueFields={planningFields}
               milestoneNumber={milestone.number}
               isHierarchyExpanded={expandedHierarchy.has(issue.number)}
               onToggleHierarchy={() => toggleHierarchy(issue.number)}

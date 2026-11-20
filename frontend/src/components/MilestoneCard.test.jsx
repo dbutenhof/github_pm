@@ -1,12 +1,14 @@
 // Assisted-by: Codex
 // Generated-by: Cursor
 // Assisted-by: Cursor
+// Assisted-by: Cline
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import MilestoneCard from './MilestoneCard';
 import * as api from '../services/api';
 import assigneesCache from '../utils/assigneesCache';
+import issueFieldsCache from '../utils/issueFieldsCache';
 
 vi.mock('../services/api');
 
@@ -47,6 +49,7 @@ describe('MilestoneCard', () => {
     vi.clearAllMocks();
     api.fetchLabels.mockResolvedValue([]);
     api.fetchAssignees.mockResolvedValue([]);
+    issueFieldsCache.clear();
     // Clear assignees cache before each test
     assigneesCache.data = [];
     assigneesCache.loading = false;
@@ -55,6 +58,7 @@ describe('MilestoneCard', () => {
   });
 
   afterEach(() => {
+    issueFieldsCache.clear();
     // Clear assignees cache after each test
     assigneesCache.data = [];
     assigneesCache.loading = false;
@@ -650,5 +654,53 @@ describe('MilestoneCard', () => {
     await waitFor(() => {
       expect(screen.getAllByText(/Relinked Child/)).toHaveLength(1);
     });
+  });
+
+  it('shows Priority and Effort columns between Milestone and Labels', async () => {
+    const user = userEvent.setup();
+    api.fetchIssueFields.mockResolvedValue({
+      can_view: true,
+      fields: [
+        {
+          id: 'F1',
+          name: 'Priority',
+          data_type: 'SINGLE_SELECT',
+          options: [{ id: 'O1', name: 'High', color: 'RED', priority: 1 }],
+        },
+        {
+          id: 'F2',
+          name: 'Effort',
+          data_type: 'SINGLE_SELECT',
+          options: [{ id: 'O2', name: 'Medium', color: 'YELLOW', priority: 1 }],
+        },
+        {
+          id: 'F3',
+          name: 'Start date',
+          data_type: 'DATE',
+        },
+      ],
+    });
+    api.fetchIssues.mockResolvedValue({
+      issues: [{ ...mockIssue, issue_field_values: [] }],
+      pull_requests: [],
+    });
+    await act(async () => {
+      render(<MilestoneCard milestone={mockMilestone} />);
+    });
+    await user.click(screen.getByRole('button', { name: /show issues/i }));
+    await screen.findByText(/Test Issue/);
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: 'Change Priority for issue #459' })
+      ).toBeInTheDocument();
+    });
+
+    const headers = screen
+      .getAllByRole('columnheader')
+      .map((header) => header.textContent);
+    expect(
+      headers.slice(headers.indexOf('Milestone') + 1, headers.indexOf('Labels'))
+    ).toEqual(['Priority', 'Effort']);
+    expect(headers).not.toContain('Start date');
   });
 });

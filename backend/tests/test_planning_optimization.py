@@ -1,6 +1,7 @@
 """Planning equivalence, batching, mutation validation, and pagination regressions.
 
 Generated-by: Codex
+Assisted-by: Cline
 """
 
 from copy import deepcopy
@@ -11,7 +12,12 @@ import pytest
 import requests
 
 from github_pm import api
-from github_pm.planning_reader import comment_reactions, descendants, enrich_issues
+from github_pm.planning_reader import (
+    comment_reactions,
+    descendants,
+    enrich_issues,
+    issue_fields,
+)
 
 
 def page(nodes=(), more=False, cursor=None):
@@ -35,6 +41,7 @@ def issue(number, **overrides):
         "blockedBy": page(),
         "blocking": page(),
         "closedByPullRequestsReferences": page(),
+        "issueFieldValues": page(),
         "subIssues": page(),
         **overrides,
     }
@@ -132,6 +139,191 @@ async def test_board_batches_100_issues_and_keeps_relationships():
     assert result["issues"][0]["closed_by"][0]["number"] == 88
     assert result["issues"][1]["external_parent"]["number"] == 999
     assert "subIssues(" not in git.post.call_args.args[1]["query"]
+
+
+async def test_board_attaches_normalized_issue_field_values():
+    value = {
+        "__typename": "IssueFieldSingleSelectValue",
+        "name": "High",
+        "value": "High",
+        "optionId": "O1",
+        "color": "RED",
+        "field": {
+            "__typename": "IssueFieldSingleSelect",
+            "id": "F1",
+            "name": "Priority",
+            "dataType": "SINGLE_SELECT",
+        },
+    }
+    git = connector({1: issue(1, issueFieldValues=page([value]))})
+    git.get_paged.return_value = [dict(number=1, id=1, labels=[])]
+    result = await api.get_issues(git, 1)
+    assert result["issues"][0]["issue_field_values"] == [
+        {
+            "field_id": "F1",
+            "field_name": "Priority",
+            "data_type": "SINGLE_SELECT",
+            "value": "High",
+            "option_id": "O1",
+            "color": "RED",
+        }
+    ]
+
+
+def test_issue_fields_normalize_options_and_paginate():
+    git = connector()
+    git.post.side_effect = [
+        {
+            "data": {
+                "repository": {
+                    "viewerCanSeeIssueFields": True,
+                    "issueFields": page(
+                        [
+                            {
+                                "__typename": "IssueFieldSingleSelect",
+                                "id": "F1",
+                                "name": "Priority",
+                                "dataType": "SINGLE_SELECT",
+                                "options": [
+                                    {
+                                        "id": "O2",
+                                        "name": "Low",
+                                        "color": "GREEN",
+                                        "priority": 2,
+                                    },
+                                    {
+                                        "id": "O1",
+                                        "name": "High",
+                                        "color": "RED",
+                                        "priority": 1,
+                                    },
+                                ],
+                            }
+                        ],
+                        True,
+                        "next",
+                    ),
+                }
+            }
+        },
+        {
+            "data": {
+                "repository": {
+                    "viewerCanSeeIssueFields": True,
+                    "issueFields": page(
+                        [
+                            {
+                                "__typename": "IssueFieldNumber",
+                                "id": "F2",
+                                "name": "Estimate",
+                                "dataType": "NUMBER",
+                            }
+                        ]
+                    ),
+                }
+            }
+        },
+    ]
+    can_view, fields = issue_fields(git)
+    assert can_view is True
+    assert [field["id"] for field in fields] == ["F1", "F2"]
+    assert [option["name"] for option in fields[0]["options"]] == ["High", "Low"]
+    assert "options" not in fields[1]
+    assert git.post.call_args_list[1].args[1]["variables"]["after"] == "next"
+
+
+async def test_issue_field_updates_set_and_clear_values():
+    normalized = [
+        {
+            "field_id": "F1",
+            "field_name": "Priority",
+            "data_type": "SINGLE_SELECT",
+            "value": "High",
+            "option_id": "O1",
+            "color": "RED",
+        },
+        {
+            "field_id": "F2",
+            "field_name": "Effort",
+            "data_type": "SINGLE_SELECT",
+            "value": "Medium",
+            "option_id": "O2",
+            "color": "YELLOW",
+        },
+    ]
+    git = connector()
+
+    def post(path, data=None):
+        if data["query"].lstrip().startswith("mutation"):
+            return {
+                "data": {
+                    "setIssueFieldValue": {
+                        "issue": {
+                            "issueFieldValues": {
+                                "nodes": [
+                                    {
+                                        "__typename": "IssueFieldSingleSelectValue",
+                                        "name": "High",
+                                        "value": "High",
+                                        "optionId": "O1",
+                                        "color": "RED",
+                                        "field": {
+                                            "__typename": "IssueFieldSingleSelect",
+                                            "id": "F1",
+                                            "name": "Priority",
+                                            "dataType": "SINGLE_SELECT",
+                                        },
+                                    },
+                                    {
+                                        "__typename": "IssueFieldSingleSelectValue",
+                                        "name": "Medium",
+                                        "value": "Medium",
+                                        "optionId": "O2",
+                                        "color": "YELLOW",
+                                        "field": {
+                                            "__typename": "IssueFieldSingleSelect",
+                                            "id": "F2",
+                                            "name": "Effort",
+                                            "dataType": "SINGLE_SELECT",
+                                        },
+                                    },
+                                ]
+                            }
+                        }
+                    }
+                }
+            }
+        return {"data": {"repository": {"i0": {"__typename": "Issue", "id": "I1"}}}}
+
+    git.post.side_effect = post
+    assert await api.update_issue_field_value(
+        git, 1, "F1", api.UpdateIssueFieldValue(option_id="O1")
+    ) == {"issue_field_values": normalized}
+    set_call = git.post.call_args_list[-1].args[1]
+    assert set_call["variables"] == {
+        "issueId": "I1",
+        "fieldId": "F1",
+        "optionId": "O1",
+    }
+    assert await api.update_issue_field_value(
+        git, 1, "F1", api.UpdateIssueFieldValue(option_id=None)
+    ) == {"issue_field_values": normalized}
+    clear_call = git.post.call_args_list[-1].args[1]
+    assert clear_call["variables"] == {"issueId": "I1", "fieldId": "F1"}
+    assert "delete:true" in clear_call["query"]
+
+
+async def test_issue_field_catalog_reports_visibility():
+    git = connector()
+    git.post.side_effect = lambda *args: {
+        "data": {
+            "repository": {
+                "viewerCanSeeIssueFields": False,
+                "issueFields": None,
+            }
+        }
+    }
+    assert await api.get_issue_fields(git) == {"can_view": False, "fields": []}
 
 
 def test_nested_links_finish_every_page():

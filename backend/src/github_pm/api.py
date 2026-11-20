@@ -15,6 +15,7 @@ from github_pm.context import context
 from github_pm.execution import offload
 from github_pm.github_client import Connector
 from github_pm.issue_hierarchy import (
+    apply_graphql_field_values,
     apply_graphql_hierarchy,
     apply_graphql_links,
     build_issue_forest,
@@ -173,6 +174,7 @@ def get_issues(
     for issue in issues:
         apply_graphql_links(issue, enriched[issue["number"]])
         apply_graphql_hierarchy(issue, enriched[issue["number"]])
+        apply_graphql_field_values(issue, enriched[issue["number"]])
     forest = build_issue_forest(issues, sort_by, _sort_items_by_labels)
     sorted_prs = _sort_items_by_labels(pull_requests, sort_by)
     logger.debug(
@@ -198,6 +200,7 @@ def get_issue(
     if "pull_request" not in issue:
         node = pr.enrich_issues(gitctx, [issue])[issue["number"]]
         apply_graphql_links(issue, node)
+        apply_graphql_field_values(issue, node)
     return issue
 
 
@@ -357,6 +360,43 @@ def update_issue_type(
     )
     logger.info("Updated type for issue #%s", issue_number)
     return updated
+
+
+@api_router.get("/issue-fields")
+@offload
+def get_issue_fields(gitctx: Annotated[Connector, Depends(connection)]):
+    """List the repository's issue fields and their single-select options.
+
+    Generated-by: Cline
+    """
+    can_view, fields = pr.issue_fields(gitctx)
+    return {"can_view": can_view, "fields": fields}
+
+
+class UpdateIssueFieldValue(BaseModel):
+    """Body for setting or clearing a single-select issue field.
+
+    Generated-by: Cline
+    """
+
+    option_id: str | None = Field(default=None, title="Issue Field Option")
+
+
+@api_router.put("/issues/{issue_number}/fields/{field_id}")
+@offload
+def update_issue_field_value(
+    gitctx: Annotated[Connector, Depends(connection)],
+    issue_number: Annotated[int, Path(title="Issue")],
+    field_id: Annotated[str, Path(title="Issue Field")],
+    payload: Annotated[UpdateIssueFieldValue, Body(title="Issue Field Value")],
+):
+    """Set an issue's single-select field, or clear it without an option.
+
+    Generated-by: Cline
+    """
+    values = pr.set_issue_field_value(gitctx, issue_number, field_id, payload.option_id)
+    logger.info("Updated field %s for issue #%s", field_id, issue_number)
+    return {"issue_field_values": values}
 
 
 class CloseIssueRequest(BaseModel):

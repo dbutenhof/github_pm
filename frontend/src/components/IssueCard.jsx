@@ -64,6 +64,7 @@ import {
 } from '../services/api';
 import CommentCard from './CommentCard';
 import Reactions from './Reactions';
+import IssueFieldSelect from './IssueFieldSelect';
 import { useReactions } from '../utils/useReactions';
 import UserAvatar from './UserAvatar';
 import MarkdownInputModal from './MarkdownInputModal';
@@ -71,6 +72,7 @@ import LabelColorInput from './LabelColorInput';
 import labelsCache, { clearLabelsCache } from '../utils/labelsCache';
 import milestonesCache from '../utils/milestonesCache';
 import assigneesCache from '../utils/assigneesCache';
+import { findIssueFieldValue } from '../utils/issueFields';
 import { copyIssueReferenceToClipboard } from '../utils/clipboard';
 
 // Assisted-by: openai-code-assist
@@ -132,6 +134,7 @@ const IssueCard = ({
   onIssueClosed,
   onIssueCreated,
   milestoneNumber = null,
+  issueFields = [],
 }) => {
   const daysSince = getDaysSince(issue.created_at);
   const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false);
@@ -158,6 +161,9 @@ const IssueCard = ({
   const [createLabelError, setCreateLabelError] = useState(null);
   const [isCreatingLabel, setIsCreatingLabel] = useState(false);
   const [currentMilestone, setCurrentMilestone] = useState(issue.milestone);
+  const [currentFieldValues, setCurrentFieldValues] = useState(
+    issue.issue_field_values || []
+  );
   const [isMilestoneMenuOpen, setIsMilestoneMenuOpen] = useState(false);
   const [milestoneTab, setMilestoneTab] = useState(0);
   const [closedMilestones, setClosedMilestones] = useState([]);
@@ -240,6 +246,10 @@ const IssueCard = ({
     setTitleError(null);
     setTitleBusy(false);
   }, [issue.title, issue.id]);
+
+  useEffect(() => {
+    setCurrentFieldValues(issue.issue_field_values || []);
+  }, [issue.issue_field_values, issue.id]);
 
   useEffect(() => {
     if (!isEditingTitle || !titleInputRef.current) return;
@@ -698,6 +708,12 @@ const IssueCard = ({
     setCurrentLabels(labels);
     onIssueUpdate?.({ id: issue.id, labels });
     notifyLabelsChanged();
+  };
+
+  // Assisted-by: Cline
+  const handleIssueFieldChanged = (fieldValues) => {
+    setCurrentFieldValues(fieldValues);
+    onIssueUpdate?.({ id: issue.id, issue_field_values: fieldValues });
   };
 
   const handleRemoveLabel = async (labelName) => {
@@ -2165,6 +2181,18 @@ const IssueCard = ({
             )}
           </div>
         </td>
+
+        {/* Issue field controls: Priority, Effort, ... */}
+        {issueFields.map((field) => (
+          <td key={field.id} style={cellStyle}>
+            <IssueFieldSelect
+              field={field}
+              value={findIssueFieldValue(currentFieldValues, field)}
+              issueNumber={issue.number}
+              onChanged={handleIssueFieldChanged}
+            />
+          </td>
+        ))}
 
         {/* Column 6: Label chiclets - flow side-by-side when they fit */}
         <td style={cellStyle}>

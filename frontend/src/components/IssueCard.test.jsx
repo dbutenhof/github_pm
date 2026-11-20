@@ -1,5 +1,6 @@
 // Assisted-by: Codex
 // Generated-by: Cursor
+// Assisted-by: Cline
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -1196,6 +1197,137 @@ describe('IssueCard', () => {
         fromMilestoneNumber: 1,
         toMilestoneNumber: 2,
       });
+    });
+  });
+
+  describe('issue fields', () => {
+    const priorityField = {
+      id: 'IFSS_priority',
+      name: 'Priority',
+      data_type: 'SINGLE_SELECT',
+      options: [
+        { id: 'opt-high', name: 'High', color: 'RED', priority: 1 },
+        { id: 'opt-low', name: 'Low', color: 'GREEN', priority: 2 },
+      ],
+    };
+    const effortField = {
+      id: 'IFSS_effort',
+      name: 'Effort',
+      data_type: 'SINGLE_SELECT',
+      options: [{ id: 'opt-medium', name: 'Medium', color: 'YELLOW' }],
+    };
+
+    it('renders field columns and updates a selected option', async () => {
+      const user = userEvent.setup();
+      const onIssueUpdate = vi.fn();
+      api.setIssueFieldValue.mockResolvedValue({
+        issue_field_values: [
+          {
+            field_id: 'IFSS_priority',
+            field_name: 'Priority',
+            data_type: 'SINGLE_SELECT',
+            value: 'High',
+            option_id: 'opt-high',
+            color: 'RED',
+          },
+        ],
+      });
+      await act(async () => {
+        render(
+          <table>
+            <tbody>
+              <IssueCard
+                issue={mockIssue}
+                issueFields={[priorityField, effortField]}
+                columnCount={10}
+                onIssueUpdate={onIssueUpdate}
+              />
+            </tbody>
+          </table>
+        );
+      });
+
+      const priorityToggle = screen.getByRole('button', {
+        name: 'Change Priority for issue #459',
+      });
+      expect(
+        screen.getByRole('button', { name: 'Change Effort for issue #459' })
+      ).toBeInTheDocument();
+      expect(priorityToggle).toHaveTextContent('Not set');
+
+      await user.click(priorityToggle);
+      await user.click(screen.getByRole('menuitem', { name: 'High' }));
+
+      await waitFor(() => {
+        expect(api.setIssueFieldValue).toHaveBeenCalledWith(
+          459,
+          'IFSS_priority',
+          'opt-high'
+        );
+        expect(onIssueUpdate).toHaveBeenCalledWith({
+          id: mockIssue.id,
+          issue_field_values: [
+            expect.objectContaining({
+              field_id: 'IFSS_priority',
+              option_id: 'opt-high',
+            }),
+          ],
+        });
+      });
+      expect(priorityToggle).toHaveTextContent('High');
+    });
+
+    it('clears a field with the no-value option', async () => {
+      const user = userEvent.setup();
+      const onIssueUpdate = vi.fn();
+      const issue = {
+        ...mockIssue,
+        issue_field_values: [
+          {
+            field_id: 'IFSS_priority',
+            field_name: 'Priority',
+            data_type: 'SINGLE_SELECT',
+            value: 'Low',
+            option_id: 'opt-low',
+            color: 'GREEN',
+          },
+        ],
+      };
+      api.setIssueFieldValue.mockResolvedValue({ issue_field_values: [] });
+      await act(async () => {
+        render(
+          <table>
+            <tbody>
+              <IssueCard
+                issue={issue}
+                issueFields={[priorityField]}
+                columnCount={9}
+                onIssueUpdate={onIssueUpdate}
+              />
+            </tbody>
+          </table>
+        );
+      });
+
+      const toggle = screen.getByRole('button', {
+        name: 'Change Priority for issue #459',
+      });
+      expect(toggle).toHaveTextContent('Low');
+      await user.click(toggle);
+      await user.click(screen.getByRole('menuitem', { name: 'No value' }));
+
+      await waitFor(() => {
+        expect(api.setIssueFieldValue).toHaveBeenCalledWith(
+          459,
+          'IFSS_priority',
+          null
+        );
+        expect(onIssueUpdate).toHaveBeenCalledWith({
+          id: mockIssue.id,
+          issue_field_values: [],
+        });
+      });
+      expect(toggle).toHaveTextContent('Not set');
     });
   });
 });
