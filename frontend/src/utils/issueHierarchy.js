@@ -1,5 +1,6 @@
 // Assisted-by: Codex
 // Generated-by: Cursor
+// Assisted-by: Cline
 /**
  * Flatten a nested issue forest into visible rows based on hierarchy expand state.
  */
@@ -34,10 +35,38 @@ export const collectSubtreeNumbers = (issue) => {
 };
 
 /**
+ * Keep the GitHub sub-issue total in sync with optimistic forest edits.
+ *
+ * The total counts all sub-issues, including closed ones and ones outside the
+ * current milestone, so closing an issue must not decrement it.
+ *
+ * Generated-by: Cline
+ */
+const _subIssueTotal = (node) => {
+  const total = Number(node?.sub_issues_summary?.total);
+  return Number.isFinite(total) ? total : (node.children || []).length;
+};
+
+const _withSubIssueTotal = (node, total) => ({
+  ...node,
+  sub_issues_summary: {
+    ...(node.sub_issues_summary || {}),
+    total: Math.max(0, total),
+  },
+});
+
+/**
  * Remove an issue (by number) from a forest; returns { forest, removed }.
  * The removed node retains its children subtree (used by DnD unlink/relink).
+ *
+ * `keepSubIssueTotal` skips parent total adjustments for close operations,
+ * which remove the row but leave the sub-issue relationship intact.
  */
-export const removeIssueFromForest = (forest, issueNumber) => {
+export const removeIssueFromForest = (
+  forest,
+  issueNumber,
+  { keepSubIssueTotal = false } = {}
+) => {
   let removed = null;
   const filterNodes = (nodes) => {
     const next = [];
@@ -46,12 +75,21 @@ export const removeIssueFromForest = (forest, issueNumber) => {
         removed = node;
         continue;
       }
-      const children = filterNodes(node.children || []);
-      next.push({
+      const originalChildren = node.children || [];
+      const children = filterNodes(originalChildren);
+      const removedChildren = originalChildren.length - children.length;
+      let nextNode = {
         ...node,
         children,
         child_count: children.length,
-      });
+      };
+      if (!keepSubIssueTotal && removedChildren > 0) {
+        nextNode = _withSubIssueTotal(
+          nextNode,
+          _subIssueTotal(node) - removedChildren
+        );
+      }
+      next.push(nextNode);
     }
     return next;
   };
@@ -64,7 +102,9 @@ export const removeIssueFromForest = (forest, issueNumber) => {
  * display roots with external_parent pointing at the closed parent.
  */
 export const removeClosedIssueFromForest = (forest, issueNumber) => {
-  const { forest: next, removed } = removeIssueFromForest(forest, issueNumber);
+  const { forest: next, removed } = removeIssueFromForest(forest, issueNumber, {
+    keepSubIssueTotal: true,
+  });
   if (!removed) {
     return { forest: next, removed: null };
   }
@@ -114,11 +154,14 @@ export const insertIssueInForest = (forest, issue, parentNumber) => {
           ...(n.children || []),
           { ...node, hierarchy_depth: depth + 1 },
         ];
-        return {
-          ...n,
-          children,
-          child_count: children.length,
-        };
+        return _withSubIssueTotal(
+          {
+            ...n,
+            children,
+            child_count: children.length,
+          },
+          _subIssueTotal(n) + 1
+        );
       }
       return {
         ...n,

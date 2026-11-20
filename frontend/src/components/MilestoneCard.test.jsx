@@ -489,6 +489,11 @@ describe('MilestoneCard', () => {
     const user = userEvent.setup();
     const parent = {
       ...mockIssue,
+      type: {
+        name: 'Feature',
+        color: 'blue',
+        description: 'A request, idea, or new functionality',
+      },
       hierarchy_depth: 0,
       child_count: 0,
       children: [],
@@ -518,6 +523,7 @@ describe('MilestoneCard', () => {
     await waitFor(() => {
       expect(screen.getByText(/Test Issue/)).toBeInTheDocument();
     });
+    expect(screen.getByTitle('Feature')).toBeInTheDocument();
 
     const fetchCountAfterLoad = api.fetchIssues.mock.calls.length;
 
@@ -539,8 +545,73 @@ describe('MilestoneCard', () => {
     });
     await waitFor(() => {
       expect(screen.getByText(/Fresh Sub-issue/)).toBeInTheDocument();
+      expect(screen.getByTitle('Epic')).toBeInTheDocument();
     });
+    expect(screen.queryByTitle('Feature')).not.toBeInTheDocument();
     expect(api.fetchIssues.mock.calls.length).toBe(fetchCountAfterLoad);
+  });
+
+  it('returns the parent to its issue type when the last sub-issue is removed', async () => {
+    const user = userEvent.setup();
+    const child = {
+      id: 901,
+      number: 901,
+      title: 'Linked Child',
+      html_url: 'https://github.com/test/issue/901',
+      user: { login: 'testuser', avatar_url: 'https://avatar.url' },
+      created_at: '2025-01-01T00:00:00Z',
+      labels: [],
+      comments: 0,
+      parent_number: mockIssue.number,
+      hierarchy_depth: 1,
+      child_count: 0,
+      children: [],
+    };
+    const parent = {
+      ...mockIssue,
+      type: { name: 'Feature', color: 'blue' },
+      hierarchy_depth: 0,
+      child_count: 1,
+      children: [child],
+      sub_issues_summary: {
+        total: 1,
+        completed: 0,
+        percent_completed: 0,
+      },
+    };
+    api.fetchIssues.mockResolvedValue({
+      issues: [parent],
+      pull_requests: [],
+    });
+
+    const { rerender } = await act(async () =>
+      render(<MilestoneCard milestone={mockMilestone} hierarchyAction={null} />)
+    );
+
+    await user.click(screen.getByRole('button', { name: /show issues/i }));
+    await waitFor(() => {
+      expect(screen.getByText(/Test Issue/)).toBeInTheDocument();
+    });
+    expect(screen.getByTitle('Epic')).toBeInTheDocument();
+
+    await act(async () => {
+      rerender(
+        <MilestoneCard
+          milestone={mockMilestone}
+          hierarchyAction={{
+            key: 12345,
+            type: 'unlink',
+            issueNumber: child.number,
+            sourceMilestoneNumber: mockMilestone.number,
+          }}
+        />
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTitle('Feature')).toBeInTheDocument();
+    });
+    expect(screen.queryByTitle('Epic')).not.toBeInTheDocument();
   });
 
   it('removes a closed issue from the milestone view immediately', async () => {
@@ -563,7 +634,10 @@ describe('MilestoneCard', () => {
       expect(screen.getByText(/Test Issue/)).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole('button', { name: 'Close issue #459' }));
+    await user.click(
+      screen.getByRole('button', { name: 'Actions for issue #459' })
+    );
+    await user.click(screen.getByRole('menuitem', { name: 'Close issue' }));
     await user.click(screen.getByRole('button', { name: 'Proceed' }));
 
     await waitFor(() => {
@@ -656,7 +730,7 @@ describe('MilestoneCard', () => {
     });
   });
 
-  it('shows Priority and Effort columns between Milestone and Labels', async () => {
+  it('shows Priority and Effort columns between Links and Labels', async () => {
     const user = userEvent.setup();
     api.fetchIssueFields.mockResolvedValue({
       can_view: true,
@@ -699,8 +773,9 @@ describe('MilestoneCard', () => {
       .getAllByRole('columnheader')
       .map((header) => header.textContent);
     expect(
-      headers.slice(headers.indexOf('Milestone') + 1, headers.indexOf('Labels'))
+      headers.slice(headers.indexOf('Links') + 1, headers.indexOf('Labels'))
     ).toEqual(['Priority', 'Effort']);
+    expect(headers).not.toContain('Milestone');
     expect(headers).not.toContain('Start date');
   });
 });

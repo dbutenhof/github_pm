@@ -1,6 +1,7 @@
 // Assisted-by: Codex
 // Generated-by: Cursor
 // Assisted-by: Cline
+import { useState } from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -423,7 +424,7 @@ describe('IssueCard', () => {
     });
   });
 
-  it('renders type chiclet when type is present', async () => {
+  it('does not render a type badge in the title', async () => {
     const issueWithType = {
       ...mockIssue,
       type: {
@@ -433,89 +434,16 @@ describe('IssueCard', () => {
       },
     };
     await act(async () => {
-      render(<IssueCard issue={issueWithType} />);
-    });
-    await waitFor(() => {
-      expect(screen.getByText('Feature')).toBeInTheDocument();
-    });
-  });
-
-  it('does not render type chiclet when type is null', async () => {
-    const issueWithoutType = { ...mockIssue, type: null };
-    await act(async () => {
-      render(<IssueCard issue={issueWithoutType} />);
-    });
-    await waitFor(() => {
-      expect(screen.queryByText('Feature')).not.toBeInTheDocument();
-    });
-  });
-
-  it('renders type chiclet with correct name and styling', async () => {
-    const issueWithType = {
-      ...mockIssue,
-      type: {
-        name: 'Feature',
-        color: 'blue',
-        description: 'A request, idea, or new functionality',
-      },
-    };
-    await act(async () => {
-      render(<IssueCard issue={issueWithType} />);
-    });
-    await waitFor(() => {
-      const typeChiclet = screen.getByText('Feature');
-      // Verify the type chiclet is present
-      expect(typeChiclet).toBeInTheDocument();
-      // Verify it's wrapped in a span (the chiclet container)
-      const typeSpan = typeChiclet.closest('span');
-      expect(typeSpan).toBeInTheDocument();
-      // Verify the span has a background color style (exact format may vary)
-      expect(typeSpan).toHaveAttribute('style');
-      expect(typeSpan?.getAttribute('style')).toContain('blue');
-    });
-  });
-
-  it('updates the issue type from the planning view', async () => {
-    const user = userEvent.setup();
-    const onIssueUpdate = vi.fn();
-    const issueWithType = {
-      ...mockIssue,
-      type: {
-        name: 'Feature',
-        color: 'blue',
-        description: 'A request, idea, or new functionality',
-      },
-    };
-    api.updateIssueType.mockResolvedValue({
-      type: {
-        name: 'Task',
-        color: 'green',
-        description: 'A unit of work',
-      },
-    });
-
-    render(
-      <table>
-        <tbody>
-          <IssueCard issue={issueWithType} onIssueUpdate={onIssueUpdate} />
-        </tbody>
-      </table>
-    );
-
-    await user.click(
-      screen.getByRole('button', { name: 'Change issue type for #459' })
-    );
-    await user.click(screen.getByRole('button', { name: 'Task' }));
-    await user.click(screen.getByRole('button', { name: 'Save' }));
-
-    await waitFor(() => {
-      expect(api.updateIssueType).toHaveBeenCalledWith(459, 'Task');
-      expect(onIssueUpdate).toHaveBeenCalledWith(
-        expect.objectContaining({
-          type: expect.objectContaining({ name: 'Task' }),
-        })
+      render(
+        <table>
+          <tbody>
+            <IssueCard issue={issueWithType} enableHierarchy columnCount={8} />
+          </tbody>
+        </table>
       );
     });
+    expect(screen.queryByText('Feature')).not.toBeInTheDocument();
+    expect(screen.getByTitle('Feature')).toBeInTheDocument();
   });
 
   it('does not show comments control when description is not expanded', async () => {
@@ -626,6 +554,52 @@ describe('IssueCard', () => {
     });
   });
 
+  it('offers close and milestone actions for issues', async () => {
+    const user = userEvent.setup();
+    await act(async () => {
+      render(
+        <table>
+          <tbody>
+            <IssueCard issue={mockIssue} />
+          </tbody>
+        </table>
+      );
+    });
+
+    await user.click(
+      screen.getByRole('button', { name: 'Actions for issue #459' })
+    );
+    expect(
+      screen.getByRole('menuitem', { name: 'Close issue' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('menuitem', { name: 'Change milestone' })
+    ).toBeInTheDocument();
+  });
+
+  it('does not offer close for pull requests', async () => {
+    const user = userEvent.setup();
+    await act(async () => {
+      render(
+        <table>
+          <tbody>
+            <IssueCard issue={{ ...mockIssue, pull_request: {} }} />
+          </tbody>
+        </table>
+      );
+    });
+
+    await user.click(
+      screen.getByRole('button', { name: 'Actions for issue #459' })
+    );
+    expect(
+      screen.getByRole('menuitem', { name: 'Change milestone' })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('menuitem', { name: 'Close issue' })
+    ).not.toBeInTheDocument();
+  });
+
   it('calls onMilestoneChange with from/to when milestone is set', async () => {
     const user = userEvent.setup();
     const onMilestoneChange = vi.fn();
@@ -649,7 +623,12 @@ describe('IssueCard', () => {
       );
     });
 
-    await user.click(screen.getByRole('button', { name: 'Current' }));
+    await user.click(
+      screen.getByRole('button', { name: 'Actions for issue #459' })
+    );
+    await user.click(
+      screen.getByRole('menuitem', { name: 'Change milestone' })
+    );
     await user.click(screen.getByText('Next release'));
 
     await waitFor(() => {
@@ -686,7 +665,12 @@ describe('IssueCard', () => {
       );
     });
 
-    await user.click(screen.getByRole('button', { name: 'No Milestone' }));
+    await user.click(
+      screen.getByRole('button', { name: 'Actions for issue #459' })
+    );
+    await user.click(
+      screen.getByRole('menuitem', { name: 'Change milestone' })
+    );
     expect(screen.getByRole('tab', { name: 'Open' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Closed' })).toBeInTheDocument();
 
@@ -704,9 +688,7 @@ describe('IssueCard', () => {
         fromMilestoneNumber: null,
         toMilestoneNumber: 11,
       });
-      expect(
-        screen.getByRole('button', { name: 'Completed release' })
-      ).toBeInTheDocument();
+      expect(screen.queryByRole('menu')).not.toBeInTheDocument();
     });
   });
 
@@ -733,7 +715,12 @@ describe('IssueCard', () => {
       );
     });
 
-    await user.click(screen.getByRole('button', { name: 'Current' }));
+    await user.click(
+      screen.getByRole('button', { name: 'Actions for issue #459' })
+    );
+    await user.click(
+      screen.getByRole('menuitem', { name: 'Change milestone' })
+    );
     await user.click(screen.getByText('No Milestone', { selector: 'span' }));
 
     await waitFor(() => {
@@ -837,7 +824,7 @@ describe('IssueCard', () => {
         </table>
       );
     });
-    expect(screen.getByLabelText('Epic')).toBeInTheDocument();
+    expect(screen.getByTitle('Epic')).toBeInTheDocument();
     expect(screen.getByText('2')).toBeInTheDocument();
     expect(
       screen.getByRole('button', { name: 'Show sub-issues' })
@@ -1027,7 +1014,10 @@ describe('IssueCard', () => {
       );
     });
 
-    await user.click(screen.getByRole('button', { name: 'Close issue #459' }));
+    await user.click(
+      screen.getByRole('button', { name: 'Actions for issue #459' })
+    );
+    await user.click(screen.getByRole('menuitem', { name: 'Close issue' }));
     expect(screen.getByLabelText('Done')).toBeChecked();
     expect(screen.getByLabelText('Obsolete')).not.toBeChecked();
     expect(screen.getByText('Edit')).toBeInTheDocument();
@@ -1072,7 +1062,10 @@ describe('IssueCard', () => {
       );
     });
 
-    await user.click(screen.getByRole('button', { name: 'Close issue #459' }));
+    await user.click(
+      screen.getByRole('button', { name: 'Actions for issue #459' })
+    );
+    await user.click(screen.getByRole('menuitem', { name: 'Close issue' }));
     expect(screen.getByLabelText('Closing comment')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Cancel' }));
 
@@ -1130,13 +1123,22 @@ describe('IssueCard', () => {
     });
   });
 
-  it('shows Story and Sub-story icons by depth', async () => {
+  it('shows Feature, Bug, and Task icons from the GitHub issue type', async () => {
     await act(async () => {
       render(
         <table>
           <tbody>
             <IssueCard
-              issue={{ ...mockIssue, hierarchy_depth: 1, child_count: 0 }}
+              issue={{
+                ...mockIssue,
+                type: {
+                  name: 'Feature',
+                  color: 'blue',
+                  description: 'A request, idea, or new functionality',
+                },
+                hierarchy_depth: 0,
+                child_count: 0,
+              }}
               enableHierarchy
               columnCount={8}
             />
@@ -1145,7 +1147,28 @@ describe('IssueCard', () => {
                 ...mockIssue,
                 id: 2,
                 number: 460,
-                hierarchy_depth: 2,
+                type: {
+                  name: 'Bug',
+                  color: 'red',
+                  description: 'An unexpected problem or behavior',
+                },
+                hierarchy_depth: 0,
+                child_count: 0,
+              }}
+              enableHierarchy
+              columnCount={8}
+            />
+            <IssueCard
+              issue={{
+                ...mockIssue,
+                id: 3,
+                number: 461,
+                type: {
+                  name: 'Task',
+                  color: 'green',
+                  description: 'A unit of work',
+                },
+                hierarchy_depth: 0,
                 child_count: 0,
               }}
               enableHierarchy
@@ -1155,8 +1178,116 @@ describe('IssueCard', () => {
         </table>
       );
     });
-    expect(screen.getByLabelText('Story')).toBeInTheDocument();
-    expect(screen.getByLabelText('Sub-story')).toBeInTheDocument();
+    expect(screen.getByTitle('Feature')).toBeInTheDocument();
+    expect(screen.getByTitle('Bug')).toBeInTheDocument();
+    expect(screen.getByTitle('Task')).toBeInTheDocument();
+  });
+
+  it('shows Epic instead of the issue type when sub-issues exist', async () => {
+    await act(async () => {
+      render(
+        <table>
+          <tbody>
+            <IssueCard
+              issue={{
+                ...mockIssue,
+                type: { name: 'Bug', color: 'red' },
+                hierarchy_depth: 0,
+                child_count: 1,
+                children: [{ number: 700 }],
+              }}
+              enableHierarchy
+              columnCount={8}
+            />
+          </tbody>
+        </table>
+      );
+    });
+    expect(screen.getByTitle('Epic')).toBeInTheDocument();
+    expect(screen.queryByTitle('Bug')).not.toBeInTheDocument();
+  });
+
+  it('shows generic icons for custom and missing issue types', async () => {
+    await act(async () => {
+      render(
+        <table>
+          <tbody>
+            <IssueCard
+              issue={{
+                ...mockIssue,
+                type: { name: 'Research', color: 'purple' },
+                hierarchy_depth: 0,
+                child_count: 0,
+              }}
+              enableHierarchy
+              columnCount={8}
+            />
+            <IssueCard
+              issue={{
+                ...mockIssue,
+                id: 2,
+                number: 460,
+                type: null,
+                hierarchy_depth: 0,
+                child_count: 0,
+              }}
+              enableHierarchy
+              columnCount={8}
+            />
+          </tbody>
+        </table>
+      );
+    });
+    expect(screen.getByTitle('Research')).toBeInTheDocument();
+    expect(screen.getByTitle('No issue type')).toBeInTheDocument();
+  });
+
+  it('updates the type icon after changing the issue type', async () => {
+    const user = userEvent.setup();
+    api.updateIssueType.mockResolvedValue({
+      type: {
+        name: 'Task',
+        color: 'green',
+        description: 'A unit of work',
+      },
+    });
+    const initial = {
+      ...mockIssue,
+      type: {
+        name: 'Feature',
+        color: 'blue',
+        description: 'A request, idea, or new functionality',
+      },
+    };
+    const Harness = () => {
+      const [issue, setIssue] = useState(initial);
+      return (
+        <table>
+          <tbody>
+            <IssueCard
+              issue={issue}
+              enableHierarchy
+              columnCount={8}
+              onIssueUpdate={setIssue}
+            />
+          </tbody>
+        </table>
+      );
+    };
+
+    render(<Harness />);
+    expect(screen.getByTitle('Feature')).toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole('button', { name: /Change issue type for #459/ })
+    );
+    await user.click(screen.getByRole('menuitem', { name: 'Task' }));
+
+    await waitFor(() => {
+      expect(api.updateIssueType).toHaveBeenCalledWith(459, 'Task');
+      expect(screen.getByTitle('Task')).toBeInTheDocument();
+      expect(screen.queryByTitle('Feature')).not.toBeInTheDocument();
+    });
   });
 
   it('calls adoptParentMilestone for external parent', async () => {

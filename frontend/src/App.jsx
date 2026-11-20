@@ -1,6 +1,7 @@
 // Assisted-by: Codex
 // Generated-by: Cursor
 // Assisted-by: Cursor
+// Assisted-by: Cline
 import React, { useState, useEffect } from 'react';
 import {
   Page,
@@ -258,6 +259,11 @@ const App = () => {
     setIssueMilestoneRefresh((key) => key + 1);
   };
 
+  // Reload loaded milestone cards after moving an issue between milestones.
+  const handleIssueMilestoneChange = () => {
+    setIssueMilestoneRefresh((key) => key + 1);
+  };
+
   const handleLabelChange = () => {
     // Labels are cached in IssueCard, so we don't need to do anything here
     // but we can add a callback if needed in the future
@@ -304,6 +310,7 @@ const App = () => {
                 issueMilestoneRefresh={issueMilestoneRefresh}
                 hierarchyAction={hierarchyAction}
                 onMilestoneUpdated={handleMilestoneUpdated}
+                onMilestoneChange={handleIssueMilestoneChange}
               />
             ))}
         </PlanningBoard>

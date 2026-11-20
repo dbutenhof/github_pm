@@ -94,16 +94,26 @@ to see all of the available milestones and labels for the project. Here you can
 delete any item by clicking the "x" in the chiclet, or create new items using the
 "+" icon.
 
-Each expanded issue is shown with its current milestone: you can assign that issue
-to a new milestone using the pulldown. You can also remove assigned labels by
-clicking the label chiclet's "x" icon, or add new labels to the issue with the "+"
-icon.
+Issues and PRs are grouped under their milestone headers, so the table does not
+repeat a separate Milestone column. Each issue or PR row has an Actions menu
+(the compact ellipsis icon next to the title). Use it to close an issue or move
+it to another milestone. Moving an issue refreshes the loaded milestone cards so
+it appears under its new milestone. Labels can be removed with the label
+chiclet's "x" icon or added with the "+" icon.
 
 If the repository defines GitHub issue fields named "Priority" or "Effort", they
-appear as columns between Milestone and Labels. Click a field value to open a
+appear as columns between Links and Labels. Click a field value to open a
 pulldown and choose a new option, or choose "No value" to clear it. Fields are
 read from the repository owner's issue field definitions, so projects without
 those fields simply show no extra columns.
+
+The Type column shows an Epic icon when an issue has sub-issues. Otherwise it
+reflects the GitHub issue type: a rocket for Feature, a bug for Bug, and a
+task/clipboard for Task. Issues without a type show a neutral placeholder, and
+custom type names get a generic icon with the type name in the tooltip. Click a
+non-Epic type icon to open a pulldown showing the available type names and
+icons. Epic is derived from sub-issues and cannot be selected directly; clicking
+its icon explains how to change it.
 
 If the issue is assigned to one or more team members, the display will display
 their GitHub login names. You can change the list of assignees using the pulldown.

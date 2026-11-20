@@ -1,6 +1,7 @@
 // Assisted-by: Codex
 // Generated-by: Cursor
 // Assisted-by: Cursor
+// Assisted-by: Cline
 import React, {
   useState,
   useEffect,
@@ -54,10 +55,16 @@ const itemTableHeader = (includeType, fields = []) => (
     <tr style={{ borderBottom: '2px solid #0066cc' }}>
       <th style={{ ...thStyle, width: '2rem' }} />
       <th style={thStyle}>Number</th>
-      {includeType && <th style={thStyle}>Type</th>}
+      {includeType && (
+        <th
+          style={thStyle}
+          title="Epic = has sub-issues; otherwise the GitHub issue type"
+        >
+          Type
+        </th>
+      )}
       <th style={thStyle}>Author</th>
       <th style={thStyle}>Links</th>
-      <th style={thStyle}>Milestone</th>
       {fields.map((field) => (
         <th key={field.id} style={thStyle}>
           {field.name}
@@ -75,6 +82,7 @@ const MilestoneCard = ({
   issueMilestoneRefresh = 0,
   hierarchyAction,
   onMilestoneUpdated,
+  onMilestoneChange,
 }) => {
   const [isIssuesExpanded, setIsIssuesExpanded] = useState(false);
   const [isPrsExpanded, setIsPrsExpanded] = useState(false);
@@ -457,9 +465,10 @@ const MilestoneCard = ({
               key={issue.id}
               issue={issue}
               enableHierarchy
-              columnCount={8 + planningFields.length}
+              columnCount={7 + planningFields.length}
               issueFields={planningFields}
               milestoneNumber={milestone.number}
+              onMilestoneChange={onMilestoneChange}
               isHierarchyExpanded={expandedHierarchy.has(issue.number)}
               onToggleHierarchy={() => toggleHierarchy(issue.number)}
               isDropTarget={
@@ -521,7 +530,8 @@ const MilestoneCard = ({
             key={issue.id}
             issue={issue}
             enableHierarchy={false}
-            columnCount={7}
+            columnCount={6}
+            onMilestoneChange={onMilestoneChange}
             onIssueUpdate={updateItemInForest(setPullRequests)}
           />
         ))}
