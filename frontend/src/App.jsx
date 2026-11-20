@@ -38,6 +38,49 @@ import './icon.css';
 
 const MAIN_VIEW_TAB_STORAGE_KEY = 'pmStatsMainViewTab';
 const VALID_MAIN_VIEW_TABS = new Set(['planning', 'sdlc', 'project-status']);
+const COLUMN_SORT_STORAGE_KEY = 'planningColumnSort';
+const SORT_MODE_STORAGE_KEY = 'planningSortMode';
+const DEFAULT_COLUMN_SORT = { key: 'number', direction: 'asc' };
+const VALID_COLUMN_SORT_KEYS = new Set([
+  'number',
+  'type',
+  'author',
+  'title',
+  'field:priority',
+  'field:effort',
+]);
+
+const loadColumnSort = () => {
+  try {
+    const saved = localStorage.getItem(COLUMN_SORT_STORAGE_KEY);
+    if (!saved) return DEFAULT_COLUMN_SORT;
+    const parsed = JSON.parse(saved);
+    if (
+      parsed &&
+      VALID_COLUMN_SORT_KEYS.has(parsed.key) &&
+      (parsed.direction === 'asc' || parsed.direction === 'desc')
+    ) {
+      return { key: parsed.key, direction: parsed.direction };
+    }
+  } catch (error) {
+    console.error('Failed to load column sort from localStorage:', error);
+  }
+  return DEFAULT_COLUMN_SORT;
+};
+
+const loadSortMode = () => {
+  try {
+    const saved = localStorage.getItem(SORT_MODE_STORAGE_KEY);
+    if (saved === 'column') return 'column';
+    // Preserve the pre-column-sort behavior for existing users: a configured
+    // label order starts in labels mode until they choose a column header.
+    const order = JSON.parse(localStorage.getItem('issueSortOrder') || '[]');
+    return Array.isArray(order) && order.length > 0 ? 'labels' : 'column';
+  } catch (error) {
+    console.error('Failed to load sort mode from localStorage:', error);
+  }
+  return 'column';
+};
 
 const App = () => {
   // Initialize with cached data if available
@@ -71,6 +114,8 @@ const App = () => {
       return [];
     }
   });
+  const [columnSort, setColumnSort] = useState(loadColumnSort);
+  const [sortMode, setSortMode] = useState(loadSortMode);
 
   // A refresh cycle is global so it also catches changes made outside this UI.
   const [issueMilestoneRefresh, setIssueMilestoneRefresh] = useState(0);
@@ -215,6 +260,22 @@ const App = () => {
 
   useEffect(() => {
     try {
+      localStorage.setItem(COLUMN_SORT_STORAGE_KEY, JSON.stringify(columnSort));
+    } catch (error) {
+      console.error('Failed to save column sort to localStorage:', error);
+    }
+  }, [columnSort]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(SORT_MODE_STORAGE_KEY, sortMode);
+    } catch (error) {
+      console.error('Failed to save sort mode to localStorage:', error);
+    }
+  }, [sortMode]);
+
+  useEffect(() => {
+    try {
       localStorage.setItem(MAIN_VIEW_TAB_STORAGE_KEY, activeViewTab);
     } catch (error) {
       console.error('Failed to save main view tab to localStorage:', error);
@@ -257,6 +318,28 @@ const App = () => {
   const handleRefresh = () => {
     invalidateQueries();
     setIssueMilestoneRefresh((key) => key + 1);
+  };
+
+  const handleSortColumn = (key) => {
+    const wasColumnMode = sortMode === 'column';
+    setSortMode('column');
+    setColumnSort((previous) =>
+      wasColumnMode && previous.key === key
+        ? {
+            key,
+            direction: previous.direction === 'asc' ? 'desc' : 'asc',
+          }
+        : { key, direction: 'asc' }
+    );
+  };
+
+  const handleLabelSortChange = (nextOrder) => {
+    setSortOrder(nextOrder);
+    setSortMode(nextOrder.length > 0 ? 'labels' : 'column');
+  };
+
+  const openLabelSort = () => {
+    setIsManageSortOpen(true);
   };
 
   // Reload loaded milestone cards after moving an issue between milestones.
@@ -307,6 +390,10 @@ const App = () => {
                 key={milestone.number}
                 milestone={milestone}
                 sortOrder={sortOrder}
+                sortMode={sortMode}
+                columnSort={columnSort}
+                onSortColumn={handleSortColumn}
+                onOpenSort={openLabelSort}
                 issueMilestoneRefresh={issueMilestoneRefresh}
                 hierarchyAction={hierarchyAction}
                 onMilestoneUpdated={handleMilestoneUpdated}
@@ -377,12 +464,6 @@ const App = () => {
             >
               Manage Labels
             </Button>
-            <Button
-              variant="secondary"
-              onClick={() => setIsManageSortOpen(true)}
-            >
-              Sort
-            </Button>
           </div>
         </div>
         <Tabs
@@ -427,7 +508,7 @@ const App = () => {
         isOpen={isManageSortOpen}
         onClose={() => setIsManageSortOpen(false)}
         sortOrder={sortOrder}
-        onSortChange={setSortOrder}
+        onSortChange={handleLabelSortChange}
       />
     </Page>
   );

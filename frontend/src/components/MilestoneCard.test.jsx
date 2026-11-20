@@ -73,13 +73,51 @@ describe('MilestoneCard', () => {
       pull_requests: [],
     });
     const { rerender } = render(
-      <MilestoneCard milestone={mockMilestone} sortOrder={[]} />
+      <MilestoneCard
+        milestone={mockMilestone}
+        sortOrder={[]}
+        sortMode="labels"
+      />
     );
     await user.click(screen.getByRole('button', { name: /show issues/i }));
     await screen.findByText(/Test Issue/);
-    rerender(<MilestoneCard milestone={mockMilestone} sortOrder={['bug']} />);
+    rerender(
+      <MilestoneCard
+        milestone={mockMilestone}
+        sortOrder={['bug']}
+        sortMode="labels"
+      />
+    );
     expect(screen.getByText(/Test Issue/)).toBeInTheDocument();
     expect(api.fetchIssues).toHaveBeenCalledTimes(1);
+  });
+
+  it('invokes column and label sort actions from the table headers', async () => {
+    const user = userEvent.setup();
+    const onSortColumn = vi.fn();
+    const onOpenSort = vi.fn();
+    api.fetchIssues.mockResolvedValue({
+      issues: [mockIssue],
+      pull_requests: [],
+    });
+    render(
+      <MilestoneCard
+        milestone={mockMilestone}
+        columnSort={{ key: 'number', direction: 'asc' }}
+        onSortColumn={onSortColumn}
+        onOpenSort={onOpenSort}
+      />
+    );
+    await user.click(screen.getByRole('button', { name: /show issues/i }));
+    await screen.findByText(/Test Issue/);
+
+    await user.click(screen.getByRole('button', { name: /Sort by Number/ }));
+    expect(onSortColumn).toHaveBeenCalledWith('number');
+
+    await user.click(
+      screen.getByRole('button', { name: 'Sort issues by labels' })
+    );
+    expect(onOpenSort).toHaveBeenCalled();
   });
 
   it('reloads authoritative data after a partially failed hierarchy edit', async () => {
@@ -442,7 +480,7 @@ describe('MilestoneCard', () => {
       expect(screen.getByText(/Brand New Epic/)).toBeInTheDocument();
     });
     // Creating before expand still loads the list (then inserts from POST).
-    expect(api.fetchIssues).toHaveBeenCalledWith(6, []);
+    expect(api.fetchIssues).toHaveBeenCalledWith(6);
   });
 
   it('loads existing issues when creating before the list is expanded', async () => {
@@ -482,7 +520,7 @@ describe('MilestoneCard', () => {
       expect(screen.getByText(/Brand New Epic/)).toBeInTheDocument();
       expect(screen.getByText(/Already Open Issue/)).toBeInTheDocument();
     });
-    expect(api.fetchIssues).toHaveBeenCalledWith(6, []);
+    expect(api.fetchIssues).toHaveBeenCalledWith(6);
   });
 
   it('shows a newly created sub-issue under its parent immediately', async () => {

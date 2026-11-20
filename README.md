@@ -118,11 +118,17 @@ its icon explains how to change it.
 If the issue is assigned to one or more team members, the display will display
 their GitHub login names. You can change the list of assignees using the pulldown.
 
-Issues are listed by default in the order they come from GitHub. The tool allows
-you to sort issues under each milestone by a hierarchy of labels, which you can
-select and reorder from the "Sort" pulldown at the top of the page. For example,
-you can show "bugs" first, or "high priority" followed by "medium priority"
-followed by "low priority".
+Issues are sorted by number by default. Click the sort icon in the Number,
+Type, Author, Priority, Effort, or Title header to sort siblings within each
+hierarchy level; click the same header again to reverse the direction. The
+selected column sort is remembered between sessions. Priority and Effort
+ascending run from the lowest option to the highest, and rows without a value
+sort last.
+
+The Labels header has its own sort icon. It opens the label-order editor used to
+put selected labels ahead of other issues. Choosing a column header switches
+back to column sorting; changing the label order switches to label sorting.
+Unlisted labels sort after the configured labels.
 
 ______________________________________________________________________
 

@@ -1,5 +1,6 @@
 // Assisted-by: Codex
 // Generated-by: Cursor
+// Assisted-by: Cline
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -311,7 +312,33 @@ describe('App', () => {
   });
 
   it('saves sort order to localStorage when changed', async () => {
-    api.fetchMilestones.mockResolvedValue([]);
+    const user = userEvent.setup();
+    api.fetchMilestones.mockResolvedValue([
+      {
+        number: 6,
+        title: 'v0.6.0',
+        description: '',
+        due_on: null,
+      },
+    ]);
+    api.fetchIssues.mockResolvedValue({
+      issues: [
+        {
+          id: 1,
+          number: 459,
+          title: 'Test Issue',
+          body: '',
+          html_url: 'https://github.com/test/issue/459',
+          user: { login: 'testuser', avatar_url: 'https://avatar.url' },
+          created_at: '2025-01-01T00:00:00Z',
+          labels: [],
+          comments: 0,
+          milestone: { number: 6, title: 'v0.6.0' },
+          assignees: [],
+        },
+      ],
+      pull_requests: [],
+    });
     api.fetchLabels.mockResolvedValue([
       { name: 'label1', color: 'ff0000', description: 'Label 1' },
       { name: 'label2', color: '00ff00', description: 'Label 2' },
@@ -321,31 +348,75 @@ describe('App', () => {
       render(<App />);
     });
 
-    await waitFor(() => {
-      expect(screen.getByText('Sort')).toBeInTheDocument();
-    });
-
-    // Open the Sort modal
-    const sortButton = screen.getByText('Sort');
-    await act(async () => {
-      sortButton.click();
-    });
+    await user.click(
+      await screen.findByRole('button', { name: /show issues/i })
+    );
+    await screen.findByText(/Test Issue/);
+    await user.click(
+      screen.getByRole('button', { name: 'Sort issues by labels' })
+    );
 
     await waitFor(() => {
       expect(screen.getByText(/Sort Issues by Labels/i)).toBeInTheDocument();
     });
 
-    // Add a label to the sort order
-    const addLabelButton = screen.getByText('+ label1');
-    await act(async () => {
-      addLabelButton.click();
-    });
+    await user.click(screen.getByText('+ label1'));
 
-    // Verify localStorage.setItem was called with the new sort order
     await waitFor(() => {
       expect(localStorageMock.setItem).toHaveBeenCalledWith(
         'issueSortOrder',
         JSON.stringify(['label1'])
+      );
+    });
+  });
+
+  it('persists column sort state', async () => {
+    const user = userEvent.setup();
+    api.fetchMilestones.mockResolvedValue([
+      {
+        number: 6,
+        title: 'v0.6.0',
+        description: '',
+        due_on: null,
+      },
+    ]);
+    api.fetchIssues.mockResolvedValue({
+      issues: [
+        {
+          id: 1,
+          number: 459,
+          title: 'Test Issue',
+          body: '',
+          html_url: 'https://github.com/test/issue/459',
+          user: { login: 'testuser', avatar_url: 'https://avatar.url' },
+          created_at: '2025-01-01T00:00:00Z',
+          labels: [],
+          comments: 0,
+          milestone: { number: 6, title: 'v0.6.0' },
+          assignees: [],
+        },
+      ],
+      pull_requests: [],
+    });
+
+    await act(async () => {
+      render(<App />);
+    });
+
+    await user.click(
+      await screen.findByRole('button', { name: /show issues/i })
+    );
+    await screen.findByText(/Test Issue/);
+    await user.click(screen.getByRole('button', { name: /Sort by Title/ }));
+
+    await waitFor(() => {
+      expect(localStorageMock.setItem).toHaveBeenCalledWith(
+        'planningColumnSort',
+        JSON.stringify({ key: 'title', direction: 'asc' })
+      );
+      expect(localStorageMock.setItem).toHaveBeenCalledWith(
+        'planningSortMode',
+        'column'
       );
     });
   });

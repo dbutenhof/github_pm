@@ -1,6 +1,7 @@
 // Assisted-by: Codex
 // Generated-by: Cursor
 // Assisted-by: Cline
+import { sortIssueForestByLabels } from './issueSort';
 /**
  * Flatten a nested issue forest into visible rows based on hierarchy expand state.
  */
@@ -187,21 +188,6 @@ export const reannotateDepths = (forest, depth = 0) =>
   });
 
 // Generated-by: Codex
-export const sortIssueForest = (items, sortOrder = []) => {
-  const priorities = sortOrder.map((label) => label.trim());
-  const bucket = (item) => {
-    const labels = new Set(
-      (item.labels || []).map((label) => label.name.toLowerCase())
-    );
-    const index = priorities.findIndex((label) => labels.has(label));
-    return index < 0 ? priorities.length : index;
-  };
-  return (items || [])
-    .map((item) => ({
-      ...item,
-      ...(item.children
-        ? { children: sortIssueForest(item.children, sortOrder) }
-        : {}),
-    }))
-    .sort((a, b) => bucket(a) - bucket(b) || a.number - b.number);
-};
+// Assisted-by: Cline
+export const sortIssueForest = (items, sortOrder = []) =>
+  sortIssueForestByLabels(items, sortOrder);
