@@ -82,6 +82,16 @@ export const fetchIssues = (milestoneNumber, _sortOrder = [], options = {}) => {
   });
 };
 
+// Generated-by: Cline
+export const fetchIssueFields = (options = {}) => {
+  const path = '/issue-fields';
+  return cachedQuery(
+    path,
+    () => readJson(path, 'Failed to fetch issue fields'),
+    { ttl: 60000, ...options }
+  );
+};
+
 export const fetchComments = (issueNumber) =>
   cachedQuery(
     `/comments/${issueNumber}`,
@@ -156,6 +166,24 @@ export const updateIssueType = async (issueNumber, type) => {
   });
   if (!response.ok) {
     throw new Error(`Failed to update issue type: ${response.statusText}`);
+  }
+  return response.json();
+};
+
+// Generated-by: Cline
+export const setIssueFieldValue = async (issueNumber, fieldId, optionId) => {
+  const response = await apiFetch(
+    `${API_BASE}/issues/${issueNumber}/fields/${encodeURIComponent(fieldId)}`,
+    {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ option_id: optionId ?? null }),
+    }
+  );
+  if (!response.ok) {
+    throw new Error(`Failed to update issue field: ${response.statusText}`);
   }
   return response.json();
 };

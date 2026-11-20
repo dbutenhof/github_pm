@@ -2,6 +2,7 @@
 // Generated-by: Cursor
 // Assisted-by: Cursor
 // Assisted-by: openai-code-assist
+// Assisted-by: Cline
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   ExpandableSection,
@@ -24,15 +25,16 @@ import {
   CodeBranchIcon,
   CaretDownIcon,
   CaretRightIcon,
-  LayerGroupIcon,
-  CatalogIcon,
-  TaskIcon,
   ExclamationTriangleIcon,
   PlusIcon,
   PencilAltIcon,
   LockIcon,
   ArrowRightIcon,
   OutlinedCopyIcon,
+  ArrowLeftIcon,
+  EllipsisVIcon,
+  FlagIcon,
+  TimesCircleIcon,
 } from '@patternfly/react-icons';
 import { getDaysSince, formatDate } from '../utils/dateUtils';
 import {
@@ -55,7 +57,6 @@ import {
   renderMarkdown,
   updateIssueBody,
   updateIssueTitle,
-  updateIssueType,
   addBlockedBy,
   removeBlockedBy,
   addBlocking,
@@ -64,6 +65,8 @@ import {
 } from '../services/api';
 import CommentCard from './CommentCard';
 import Reactions from './Reactions';
+import IssueFieldSelect from './IssueFieldSelect';
+import IssueTypeSelect from './IssueTypeSelect';
 import { useReactions } from '../utils/useReactions';
 import UserAvatar from './UserAvatar';
 import MarkdownInputModal from './MarkdownInputModal';
@@ -71,11 +74,10 @@ import LabelColorInput from './LabelColorInput';
 import labelsCache, { clearLabelsCache } from '../utils/labelsCache';
 import milestonesCache from '../utils/milestonesCache';
 import assigneesCache from '../utils/assigneesCache';
+import { findIssueFieldValue } from '../utils/issueFields';
 import { copyIssueReferenceToClipboard } from '../utils/clipboard';
 
 // Assisted-by: openai-code-assist
-const ISSUE_TYPES = ['Bug', 'Feature', 'Task'];
-
 const getContrastColor = (hexColor) => {
   // Convert hex to RGB
   const r = parseInt(hexColor.substring(0, 2), 16);
@@ -87,32 +89,58 @@ const getContrastColor = (hexColor) => {
   return luminance > 0.5 ? '#000000' : '#ffffff';
 };
 
-const getTypeContrastColor = (colorName) => {
-  // Common dark HTML color names that need white text
-  const darkColors = [
-    'blue',
-    'red',
-    'green',
-    'purple',
-    'navy',
-    'maroon',
-    'olive',
-    'teal',
-    'black',
-    'darkblue',
-    'darkgreen',
-    'darkred',
-    'darkviolet',
-    'indigo',
-  ];
-  // Check if it's a hex color (starts with # or is 6 hex digits)
-  if (colorName.startsWith('#') || /^[0-9A-Fa-f]{6}$/.test(colorName)) {
-    const hex = colorName.startsWith('#') ? colorName.substring(1) : colorName;
-    return getContrastColor(hex);
-  }
-  // For named colors, use white for dark colors, black for light colors
-  return darkColors.includes(colorName.toLowerCase()) ? '#ffffff' : '#000000';
+// Assisted-by: Cline
+const actionMenuItemStyle = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.5rem',
+  width: '100%',
+  padding: '0.5rem',
+  border: 0,
+  background: 'transparent',
+  cursor: 'pointer',
+  fontSize: '0.875rem',
+  textAlign: 'left',
 };
+
+const actionMenuStyle = {
+  position: 'absolute',
+  top: '100%',
+  right: 0,
+  marginTop: '0.25rem',
+  zIndex: 1000,
+  backgroundColor: '#fff',
+  border: '1px solid #d2d2d2',
+  borderRadius: '0.25rem',
+  boxShadow: '0 0.25rem 0.5rem rgba(0,0,0,0.15)',
+  minWidth: '280px',
+  maxHeight: '500px',
+  overflowY: 'auto',
+};
+
+/**
+ * Generated-by: Cline
+ */
+const ActionMenuHeader = ({ title, onBack }) => (
+  <div
+    style={{
+      display: 'flex',
+      alignItems: 'center',
+      gap: '0.4rem',
+      marginBottom: '0.5rem',
+    }}
+  >
+    <Button
+      variant="plain"
+      onClick={onBack}
+      aria-label="Back to actions"
+      style={{ padding: '0.125rem' }}
+    >
+      <ArrowLeftIcon style={{ fontSize: '0.875rem' }} />
+    </Button>
+    <span style={{ fontSize: '0.875rem', fontWeight: '600' }}>{title}</span>
+  </div>
+);
 
 const IssueCard = ({
   issue,
@@ -120,7 +148,7 @@ const IssueCard = ({
   onLabelsChange,
   onIssueUpdate,
   enableHierarchy = false,
-  columnCount = 7,
+  columnCount = 6,
   isHierarchyExpanded = false,
   onToggleHierarchy,
   isDropTarget = false,
@@ -132,6 +160,7 @@ const IssueCard = ({
   onIssueClosed,
   onIssueCreated,
   milestoneNumber = null,
+  issueFields = [],
 }) => {
   const daysSince = getDaysSince(issue.created_at);
   const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false);
@@ -158,14 +187,17 @@ const IssueCard = ({
   const [createLabelError, setCreateLabelError] = useState(null);
   const [isCreatingLabel, setIsCreatingLabel] = useState(false);
   const [currentMilestone, setCurrentMilestone] = useState(issue.milestone);
+  const [currentFieldValues, setCurrentFieldValues] = useState(
+    issue.issue_field_values || []
+  );
   const [isMilestoneMenuOpen, setIsMilestoneMenuOpen] = useState(false);
   const [milestoneTab, setMilestoneTab] = useState(0);
   const [closedMilestones, setClosedMilestones] = useState([]);
   const [closedMilestonesLoaded, setClosedMilestonesLoaded] = useState(false);
   const [closedMilestonesLoading, setClosedMilestonesLoading] = useState(false);
   const [closedMilestonesError, setClosedMilestonesError] = useState(null);
-  const milestoneMenuRef = useRef(null);
-  const milestoneToggleRef = useRef(null);
+  const actionMenuRef = useRef(null);
+  const actionToggleRef = useRef(null);
   const menuRef = useRef(null);
   const toggleRef = useRef(null);
   const {
@@ -194,10 +226,6 @@ const IssueCard = ({
   const [titleDraft, setTitleDraft] = useState(issue.title || '');
   const [titleError, setTitleError] = useState(null);
   const [titleBusy, setTitleBusy] = useState(false);
-  const [isTypeDialogOpen, setIsTypeDialogOpen] = useState(false);
-  const [typeDraft, setTypeDraft] = useState(issue.type?.name || 'Feature');
-  const [typeError, setTypeError] = useState(null);
-  const [typeBusy, setTypeBusy] = useState(false);
   const [isCreateSubIssueOpen, setIsCreateSubIssueOpen] = useState(false);
   const [commentCount, setCommentCount] = useState(issue.comments || 0);
   const [descriptionBody, setDescriptionBody] = useState(issue.body || '');
@@ -215,6 +243,7 @@ const IssueCard = ({
   const [removingLinkKey, setRemovingLinkKey] = useState(null);
   const linkMenuRef = useRef(null);
   const linkToggleRef = useRef(null);
+  const [isActionMenuOpen, setIsActionMenuOpen] = useState(false);
   const [isCloseMenuOpen, setIsCloseMenuOpen] = useState(false);
   const [closeReason, setCloseReason] = useState('done');
   const [closeComment, setCloseComment] = useState('');
@@ -224,8 +253,6 @@ const IssueCard = ({
   const [closePreviewHtml, setClosePreviewHtml] = useState('');
   const [closePreviewLoading, setClosePreviewLoading] = useState(false);
   const [closePreviewError, setClosePreviewError] = useState(null);
-  const closeMenuRef = useRef(null);
-  const closeToggleRef = useRef(null);
   const closePreviewRequestId = useRef(0);
   const titleInputRef = useRef(null);
 
@@ -240,6 +267,10 @@ const IssueCard = ({
     setTitleError(null);
     setTitleBusy(false);
   }, [issue.title, issue.id]);
+
+  useEffect(() => {
+    setCurrentFieldValues(issue.issue_field_values || []);
+  }, [issue.issue_field_values, issue.id]);
 
   useEffect(() => {
     if (!isEditingTitle || !titleInputRef.current) return;
@@ -625,15 +656,6 @@ const IssueCard = ({
         setLabelSearchFilter('');
       }
       if (
-        isMilestoneMenuOpen &&
-        milestoneToggleRef.current &&
-        !milestoneToggleRef.current.contains(event.target) &&
-        milestoneMenuRef.current &&
-        !milestoneMenuRef.current.contains(event.target)
-      ) {
-        setIsMilestoneMenuOpen(false);
-      }
-      if (
         isAssigneesMenuOpen &&
         assigneesToggleRef.current &&
         !assigneesToggleRef.current.contains(event.target) &&
@@ -655,18 +677,19 @@ const IssueCard = ({
         setLinkIssueNumber('');
       }
       if (
-        isCloseMenuOpen &&
-        closeToggleRef.current &&
-        !closeToggleRef.current.contains(event.target) &&
-        closeMenuRef.current &&
-        !closeMenuRef.current.contains(event.target)
+        (isActionMenuOpen || isCloseMenuOpen || isMilestoneMenuOpen) &&
+        actionToggleRef.current &&
+        !actionToggleRef.current.contains(event.target) &&
+        actionMenuRef.current &&
+        !actionMenuRef.current.contains(event.target)
       ) {
-        resetCloseMenu();
+        closeActionsMenu();
       }
     };
 
     if (
       isLabelMenuOpen ||
+      isActionMenuOpen ||
       isMilestoneMenuOpen ||
       isAssigneesMenuOpen ||
       isLinkMenuOpen ||
@@ -679,12 +702,13 @@ const IssueCard = ({
     }
   }, [
     isLabelMenuOpen,
+    isActionMenuOpen,
     isMilestoneMenuOpen,
     isAssigneesMenuOpen,
     isLinkMenuOpen,
     isCloseMenuOpen,
     handleApplyAssignees,
-    resetCloseMenu,
+    closeActionsMenu,
   ]);
 
   const notifyLabelsChanged = () => {
@@ -698,6 +722,12 @@ const IssueCard = ({
     setCurrentLabels(labels);
     onIssueUpdate?.({ id: issue.id, labels });
     notifyLabelsChanged();
+  };
+
+  // Assisted-by: Cline
+  const handleIssueFieldChanged = (fieldValues) => {
+    setCurrentFieldValues(fieldValues);
+    onIssueUpdate?.({ id: issue.id, issue_field_values: fieldValues });
   };
 
   const handleRemoveLabel = async (labelName) => {
@@ -841,6 +871,13 @@ const IssueCard = ({
       // Restore previous milestone on error
       setCurrentMilestone(issue.milestone);
     }
+  };
+
+  // Assisted-by: Cline
+  const selectMilestone = (milestoneNumber) => {
+    handleMilestoneChange(milestoneNumber);
+    setIsMilestoneMenuOpen(false);
+    setIsActionMenuOpen(false);
   };
 
   // Assisted-by: openai-code-assist
@@ -995,52 +1032,6 @@ const IssueCard = ({
     }
   };
 
-  // Assisted-by: openai-code-assist
-  const beginTypeEdit = () => {
-    if (issue.pull_request) return;
-    setTypeDraft(issue.type?.name || 'Feature');
-    setTypeError(null);
-    setTypeBusy(false);
-    setIsTypeDialogOpen(true);
-  };
-
-  // Assisted-by: openai-code-assist
-  const cancelTypeEdit = () => {
-    setTypeDraft(issue.type?.name || 'Feature');
-    setTypeError(null);
-    setTypeBusy(false);
-    setIsTypeDialogOpen(false);
-  };
-
-  // Assisted-by: openai-code-assist
-  const handleUpdateType = async () => {
-    const nextTypeName = String(typeDraft || '').trim();
-    if (!nextTypeName) {
-      setTypeError('Type is required');
-      return;
-    }
-    if (nextTypeName === issue.type?.name) {
-      cancelTypeEdit();
-      return;
-    }
-
-    setTypeBusy(true);
-    setTypeError(null);
-    try {
-      const updated = await updateIssueType(issue.number, nextTypeName);
-      const nextType = updated?.type || {
-        ...(issue.type || {}),
-        name: nextTypeName,
-      };
-      setIsTypeDialogOpen(false);
-      onIssueUpdate?.({ ...issue, ...updated, type: nextType });
-    } catch (err) {
-      setTypeError(err.message);
-    } finally {
-      setTypeBusy(false);
-    }
-  };
-
   const handleCommentUpdated = (updatedComment) => {
     setComments((prev) =>
       prev.map((c) => (c.id === updatedComment.id ? updatedComment : c))
@@ -1059,6 +1050,34 @@ const IssueCard = ({
     setClosePreviewError(null);
   }
 
+  // Assisted-by: Cline
+  function closeActionsMenu() {
+    setIsActionMenuOpen(false);
+    setIsMilestoneMenuOpen(false);
+    resetCloseMenu();
+  }
+
+  function toggleActionsMenu() {
+    if (isActionMenuOpen) {
+      closeActionsMenu();
+      return;
+    }
+    setIsActionMenuOpen(true);
+    setIsMilestoneMenuOpen(false);
+    resetCloseMenu();
+  }
+
+  function showCloseAction() {
+    resetCloseMenu();
+    setIsCloseMenuOpen(true);
+  }
+
+  function showMilestoneAction() {
+    resetCloseMenu();
+    setMilestoneTab(0);
+    setIsMilestoneMenuOpen(true);
+  }
+
   const handleCloseIssue = async () => {
     setCloseBusy(true);
     setCloseError(null);
@@ -1067,7 +1086,7 @@ const IssueCard = ({
         reason: closeReason,
         body: closeComment,
       });
-      resetCloseMenu();
+      closeActionsMenu();
       onIssueUpdate?.({
         ...issue,
         ...result?.issue,
@@ -1541,17 +1560,8 @@ const IssueCard = ({
     }
   };
 
-  const renderHierarchyType = () => {
+  const renderTypeCell = () => {
     if (!enableHierarchy) return null;
-    let Icon = LayerGroupIcon;
-    let label = 'Epic';
-    if (depth === 1) {
-      Icon = CatalogIcon;
-      label = 'Story';
-    } else if (depth >= 2) {
-      Icon = TaskIcon;
-      label = 'Sub-story';
-    }
     return (
       <td style={cellStyle}>
         <div
@@ -1579,23 +1589,12 @@ const IssueCard = ({
               )}
             </Button>
           )}
-          <Tooltip content={label}>
-            <span
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '0.25rem',
-              }}
-              aria-label={label}
-            >
-              <Icon style={{ fontSize: '1rem' }} />
-              {depth === 0 && childCount > 0 && (
-                <span style={{ fontSize: '0.75rem', color: '#6a6e73' }}>
-                  {childCount}
-                </span>
-              )}
+          <IssueTypeSelect issue={issue} onChanged={onIssueUpdate} />
+          {depth === 0 && childCount > 0 && (
+            <span style={{ fontSize: '0.75rem', color: '#6a6e73' }}>
+              {childCount}
             </span>
-          </Tooltip>
+          )}
           <Tooltip content="Add sub-issue">
             <Button
               variant="plain"
@@ -1715,7 +1714,7 @@ const IssueCard = ({
           </div>
         </td>
 
-        {renderHierarchyType()}
+        {renderTypeCell()}
 
         {/* Column: Owner avatar, creation date, assigned chiclet stacked */}
         <td style={cellStyle}>
@@ -1987,184 +1986,17 @@ const IssueCard = ({
         {/* Column 4: Links (closed-by PRs, blocked-by / blocking) */}
         <td style={cellStyle}>{renderLinksColumn()}</td>
 
-        {/* Column 5: Milestone control */}
-        <td style={cellStyle}>
-          <div
-            ref={milestoneToggleRef}
-            style={{ position: 'relative', display: 'inline-block' }}
-          >
-            <Button
-              variant={currentMilestone ? 'primary' : 'secondary'}
-              onClick={() => {
-                setIsMilestoneMenuOpen(!isMilestoneMenuOpen);
-                if (!isMilestoneMenuOpen) {
-                  setMilestoneTab(0);
-                }
-              }}
-              style={{
-                padding: '0.25rem 0.75rem',
-                fontSize: '0.75rem',
-                minWidth: 'auto',
-              }}
-            >
-              {currentMilestone ? currentMilestone.title : 'No Milestone'}
-            </Button>
-            {isMilestoneMenuOpen && (
-              <div
-                ref={milestoneMenuRef}
-                style={{
-                  position: 'absolute',
-                  top: '100%',
-                  right: '0',
-                  marginTop: '0.25rem',
-                  backgroundColor: '#fff',
-                  border: '1px solid #d2d2d2',
-                  borderRadius: '0.25rem',
-                  boxShadow: '0 2px 8px rgba(0, 0, 0, 0.15)',
-                  zIndex: 1000,
-                  minWidth: '200px',
-                  maxHeight: '300px',
-                  overflowY: 'auto',
-                }}
-              >
-                <Tabs
-                  activeKey={milestoneTab}
-                  onSelect={handleMilestoneTabSelect}
-                  aria-label={`Milestone state for issue #${issue.number}`}
-                >
-                  <Tab eventKey={0} title={<TabTitleText>Open</TabTitleText>}>
-                    <div>
-                      <div
-                        style={{
-                          padding: '0.5rem',
-                          cursor: 'pointer',
-                          borderBottom: '1px solid #d2d2d2',
-                          backgroundColor:
-                            currentMilestone === null
-                              ? '#f0f0f0'
-                              : 'transparent',
-                        }}
-                        onClick={() => {
-                          handleMilestoneChange(null);
-                          setIsMilestoneMenuOpen(false);
-                        }}
-                        onMouseEnter={(e) => {
-                          if (currentMilestone !== null) {
-                            e.currentTarget.style.backgroundColor = '#f0f0f0';
-                          }
-                        }}
-                        onMouseLeave={(e) => {
-                          if (currentMilestone !== null) {
-                            e.currentTarget.style.backgroundColor =
-                              'transparent';
-                          }
-                        }}
-                      >
-                        <span
-                          style={{ fontSize: '0.875rem', fontStyle: 'italic' }}
-                        >
-                          No Milestone
-                        </span>
-                      </div>
-                      {milestonesCache.data
-                        .filter((milestone) => milestone.number !== 0)
-                        .map((milestone) => (
-                          <div
-                            key={milestone.number}
-                            style={{
-                              padding: '0.5rem',
-                              cursor: 'pointer',
-                              backgroundColor:
-                                currentMilestone?.number === milestone.number
-                                  ? '#f0f0f0'
-                                  : 'transparent',
-                            }}
-                            onClick={() => {
-                              handleMilestoneChange(milestone.number);
-                              setIsMilestoneMenuOpen(false);
-                            }}
-                            onMouseEnter={(e) => {
-                              if (
-                                currentMilestone?.number !== milestone.number
-                              ) {
-                                e.currentTarget.style.backgroundColor =
-                                  '#f0f0f0';
-                              }
-                            }}
-                            onMouseLeave={(e) => {
-                              if (
-                                currentMilestone?.number !== milestone.number
-                              ) {
-                                e.currentTarget.style.backgroundColor =
-                                  'transparent';
-                              }
-                            }}
-                          >
-                            <span style={{ fontSize: '0.875rem' }}>
-                              {milestone.title}
-                            </span>
-                          </div>
-                        ))}
-                    </div>
-                  </Tab>
-                  <Tab eventKey={1} title={<TabTitleText>Closed</TabTitleText>}>
-                    {closedMilestonesLoading && (
-                      <div style={{ padding: '1rem', textAlign: 'center' }}>
-                        <Spinner
-                          size="md"
-                          aria-label="Loading closed milestones"
-                        />
-                      </div>
-                    )}
-                    {closedMilestonesError && (
-                      <Alert
-                        variant="danger"
-                        isInline
-                        title="Error loading closed milestones"
-                      >
-                        {closedMilestonesError}
-                      </Alert>
-                    )}
-                    {!closedMilestonesLoading &&
-                      !closedMilestonesError &&
-                      closedMilestones.map((milestone) => (
-                        <div
-                          key={milestone.number}
-                          style={{
-                            padding: '0.5rem',
-                            cursor: 'pointer',
-                            backgroundColor:
-                              currentMilestone?.number === milestone.number
-                                ? '#f0f0f0'
-                                : 'transparent',
-                          }}
-                          onClick={() => {
-                            handleMilestoneChange(milestone.number);
-                            setIsMilestoneMenuOpen(false);
-                          }}
-                          onMouseEnter={(e) => {
-                            if (currentMilestone?.number !== milestone.number) {
-                              e.currentTarget.style.backgroundColor = '#f0f0f0';
-                            }
-                          }}
-                          onMouseLeave={(e) => {
-                            if (currentMilestone?.number !== milestone.number) {
-                              e.currentTarget.style.backgroundColor =
-                                'transparent';
-                            }
-                          }}
-                        >
-                          <span style={{ fontSize: '0.875rem' }}>
-                            {milestone.title}
-                          </span>
-                        </div>
-                      ))}
-                  </Tab>
-                </Tabs>
-              </div>
-            )}
-          </div>
-        </td>
+        {/* Issue field controls: Priority, Effort, ... */}
+        {issueFields.map((field) => (
+          <td key={field.id} style={cellStyle}>
+            <IssueFieldSelect
+              field={field}
+              value={findIssueFieldValue(currentFieldValues, field)}
+              issueNumber={issue.number}
+              onChanged={handleIssueFieldChanged}
+            />
+          </td>
+        ))}
 
         {/* Column 6: Label chiclets - flow side-by-side when they fit */}
         <td style={cellStyle}>
@@ -2453,66 +2285,6 @@ const IssueCard = ({
             }}
           >
             <div style={{ minWidth: 0, flex: 1 }}>
-              {issue.type && (
-                <Tooltip
-                  content={
-                    issue.type.description ||
-                    (!issue.pull_request ? 'Change issue type' : '')
-                  }
-                >
-                  <span
-                    role={issue.pull_request ? undefined : 'button'}
-                    tabIndex={issue.pull_request ? undefined : 0}
-                    aria-label={
-                      issue.pull_request
-                        ? undefined
-                        : `Change issue type for #${issue.number}`
-                    }
-                    onClick={beginTypeEdit}
-                    onKeyDown={(event) => {
-                      if (
-                        !issue.pull_request &&
-                        (event.key === 'Enter' || event.key === ' ')
-                      ) {
-                        event.preventDefault();
-                        beginTypeEdit();
-                      }
-                    }}
-                    style={{
-                      display: 'inline-block',
-                      marginRight: '0.5rem',
-                      padding: '0.125rem 0.5rem',
-                      fontSize: '0.75rem',
-                      fontWeight: '500',
-                      borderRadius: '0.25rem',
-                      backgroundColor: issue.type.color,
-                      color: getTypeContrastColor(issue.type.color),
-                      whiteSpace: 'nowrap',
-                      cursor: issue.pull_request
-                        ? issue.type.description
-                          ? 'help'
-                          : 'default'
-                        : 'pointer',
-                    }}
-                  >
-                    {issue.type.name}
-                  </span>
-                </Tooltip>
-              )}
-              {!issue.type && !issue.pull_request && (
-                <Button
-                  variant="secondary"
-                  onClick={beginTypeEdit}
-                  aria-label={`Set issue type for #${issue.number}`}
-                  style={{
-                    marginRight: '0.5rem',
-                    padding: '0.125rem 0.5rem',
-                    fontSize: '0.75rem',
-                  }}
-                >
-                  Set type
-                </Button>
-              )}
               {isEditingTitle ? (
                 <div
                   style={{
@@ -2617,190 +2389,373 @@ const IssueCard = ({
                 </span>
               )}
             </div>
-            {isClosableIssue && (
-              <div
-                ref={closeToggleRef}
-                style={{
-                  position: 'relative',
-                  display: 'inline-flex',
-                  alignItems: 'flex-start',
-                }}
+            <div
+              ref={actionToggleRef}
+              style={{
+                position: 'relative',
+                display: 'inline-flex',
+                alignItems: 'flex-start',
+              }}
+            >
+              <Button
+                variant="plain"
+                onClick={toggleActionsMenu}
+                style={{ padding: '0.125rem' }}
+                aria-expanded={isActionMenuOpen}
+                aria-haspopup="menu"
+                aria-label={`Actions for issue #${issue.number}`}
               >
-                <Button
-                  variant="secondary"
-                  onClick={() => {
-                    if (isCloseMenuOpen) {
-                      resetCloseMenu();
-                    } else {
-                      setIsCloseMenuOpen(true);
-                      setCloseReason('done');
-                      setCloseComment('');
-                      setCloseError(null);
-                    }
-                  }}
-                  style={{
-                    padding: '0.25rem 0.75rem',
-                    fontSize: '0.75rem',
-                    fontWeight: '600',
-                  }}
-                  aria-expanded={isCloseMenuOpen}
-                  aria-label={`Close issue #${issue.number}`}
+                <EllipsisVIcon style={{ fontSize: '1rem' }} />
+              </Button>
+              {isActionMenuOpen && (
+                <div
+                  ref={actionMenuRef}
+                  style={actionMenuStyle}
+                  onClick={(e) => e.stopPropagation()}
                 >
-                  CLOSE
-                </Button>
-                {isCloseMenuOpen && (
-                  <div
-                    ref={closeMenuRef}
-                    style={{
-                      position: 'absolute',
-                      top: '100%',
-                      right: 0,
-                      marginTop: '0.25rem',
-                      zIndex: 1000,
-                      backgroundColor: '#fff',
-                      border: '1px solid #d2d2d2',
-                      borderRadius: '0.25rem',
-                      boxShadow: '0 0.25rem 0.5rem rgba(0,0,0,0.15)',
-                      padding: '0.75rem',
-                      minWidth: '280px',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '0.75rem',
-                    }}
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <Form>
-                      <FormGroup
-                        label="Close reason"
-                        fieldId={`close-reason-${issue.number}`}
-                      >
-                        <div
-                          style={{
-                            display: 'flex',
-                            gap: '1rem',
-                            flexWrap: 'wrap',
-                          }}
-                        >
-                          <Radio
-                            id={`close-reason-done-${issue.number}`}
-                            name={`close-reason-${issue.number}`}
-                            label="Done"
-                            isChecked={closeReason === 'done'}
-                            onChange={() => setCloseReason('done')}
-                          />
-                          <Radio
-                            id={`close-reason-obsolete-${issue.number}`}
-                            name={`close-reason-${issue.number}`}
-                            label="Obsolete"
-                            isChecked={closeReason === 'obsolete'}
-                            onChange={() => setCloseReason('obsolete')}
-                          />
-                        </div>
-                      </FormGroup>
-                      <FormGroup
-                        label="Closing comment"
-                        fieldId={`close-comment-${issue.number}`}
-                      >
-                        <Tabs
-                          activeKey={closeActiveTab}
-                          onSelect={(_event, key) =>
-                            setCloseActiveTab(Number(key))
-                          }
-                          aria-label={`Close comment editor for issue #${issue.number}`}
-                        >
-                          <Tab
-                            eventKey={0}
-                            title={<TabTitleText>Edit</TabTitleText>}
-                          >
-                            <div style={{ paddingTop: '0.75rem' }}>
-                              <TextArea
-                                id={`close-comment-${issue.number}`}
-                                value={closeComment}
-                                onChange={(value) => {
-                                  const stringValue =
-                                    typeof value === 'string'
-                                      ? value
-                                      : value?.target?.value || '';
-                                  setCloseComment(stringValue);
-                                }}
-                                placeholder={`Leave empty to post "${
-                                  closeReason === 'obsolete'
-                                    ? 'Obsolete'
-                                    : 'Done'
-                                }".`}
-                                resizeOrientation="vertical"
-                              />
-                            </div>
-                          </Tab>
-                          <Tab
-                            eventKey={1}
-                            title={<TabTitleText>Preview</TabTitleText>}
-                          >
-                            <div style={{ paddingTop: '0.75rem' }}>
-                              {closePreviewLoading && (
-                                <div
-                                  style={{
-                                    textAlign: 'center',
-                                    padding: '1rem',
-                                  }}
-                                >
-                                  <Spinner size="md" />
-                                </div>
-                              )}
-                              {closePreviewError && (
-                                <Alert
-                                  variant="danger"
-                                  title="Error rendering preview"
-                                  isInline
-                                >
-                                  {closePreviewError}
-                                </Alert>
-                              )}
-                              {!closePreviewLoading && !closePreviewError && (
-                                <div
-                                  className="markdown-body"
-                                  dangerouslySetInnerHTML={{
-                                    __html:
-                                      closePreviewHtml ||
-                                      '<p><em>No comment preview.</em></p>',
-                                  }}
-                                />
-                              )}
-                            </div>
-                          </Tab>
-                        </Tabs>
-                      </FormGroup>
-                    </Form>
-                    {closeError && (
-                      <Alert variant="danger" title={closeError} isInline />
-                    )}
+                  {isCloseMenuOpen ? (
                     <div
                       style={{
+                        padding: '0.75rem',
                         display: 'flex',
-                        justifyContent: 'flex-end',
-                        gap: '0.5rem',
+                        flexDirection: 'column',
+                        gap: '0.75rem',
                       }}
                     >
-                      <Button
-                        variant="link"
-                        onClick={resetCloseMenu}
-                        isDisabled={closeBusy}
+                      <ActionMenuHeader
+                        title={`Close issue #${issue.number}`}
+                        onBack={resetCloseMenu}
+                      />
+                      <Form>
+                        <FormGroup
+                          label="Close reason"
+                          fieldId={`close-reason-${issue.number}`}
+                        >
+                          <div
+                            style={{
+                              display: 'flex',
+                              gap: '1rem',
+                              flexWrap: 'wrap',
+                            }}
+                          >
+                            <Radio
+                              id={`close-reason-done-${issue.number}`}
+                              name={`close-reason-${issue.number}`}
+                              label="Done"
+                              isChecked={closeReason === 'done'}
+                              onChange={() => setCloseReason('done')}
+                            />
+                            <Radio
+                              id={`close-reason-obsolete-${issue.number}`}
+                              name={`close-reason-${issue.number}`}
+                              label="Obsolete"
+                              isChecked={closeReason === 'obsolete'}
+                              onChange={() => setCloseReason('obsolete')}
+                            />
+                          </div>
+                        </FormGroup>
+                        <FormGroup
+                          label="Closing comment"
+                          fieldId={`close-comment-${issue.number}`}
+                        >
+                          <Tabs
+                            activeKey={closeActiveTab}
+                            onSelect={(_event, key) =>
+                              setCloseActiveTab(Number(key))
+                            }
+                            aria-label={`Close comment editor for issue #${issue.number}`}
+                          >
+                            <Tab
+                              eventKey={0}
+                              title={<TabTitleText>Edit</TabTitleText>}
+                            >
+                              <div style={{ paddingTop: '0.75rem' }}>
+                                <TextArea
+                                  id={`close-comment-${issue.number}`}
+                                  value={closeComment}
+                                  onChange={(value) => {
+                                    const stringValue =
+                                      typeof value === 'string'
+                                        ? value
+                                        : value?.target?.value || '';
+                                    setCloseComment(stringValue);
+                                  }}
+                                  placeholder={`Leave empty to post "${
+                                    closeReason === 'obsolete'
+                                      ? 'Obsolete'
+                                      : 'Done'
+                                  }".`}
+                                  resizeOrientation="vertical"
+                                />
+                              </div>
+                            </Tab>
+                            <Tab
+                              eventKey={1}
+                              title={<TabTitleText>Preview</TabTitleText>}
+                            >
+                              <div style={{ paddingTop: '0.75rem' }}>
+                                {closePreviewLoading && (
+                                  <div
+                                    style={{
+                                      textAlign: 'center',
+                                      padding: '1rem',
+                                    }}
+                                  >
+                                    <Spinner size="md" />
+                                  </div>
+                                )}
+                                {closePreviewError && (
+                                  <Alert
+                                    variant="danger"
+                                    title="Error rendering preview"
+                                    isInline
+                                  >
+                                    {closePreviewError}
+                                  </Alert>
+                                )}
+                                {!closePreviewLoading && !closePreviewError && (
+                                  <div
+                                    className="markdown-body"
+                                    dangerouslySetInnerHTML={{
+                                      __html:
+                                        closePreviewHtml ||
+                                        '<p><em>No comment preview.</em></p>',
+                                    }}
+                                  />
+                                )}
+                              </div>
+                            </Tab>
+                          </Tabs>
+                        </FormGroup>
+                      </Form>
+                      {closeError && (
+                        <Alert variant="danger" title={closeError} isInline />
+                      )}
+                      <div
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'flex-end',
+                          gap: '0.5rem',
+                        }}
                       >
-                        Cancel
-                      </Button>
-                      <Button
-                        variant="primary"
-                        onClick={handleCloseIssue}
-                        isLoading={closeBusy}
-                        isDisabled={closeBusy}
-                      >
-                        Proceed
-                      </Button>
+                        <Button
+                          variant="link"
+                          onClick={resetCloseMenu}
+                          isDisabled={closeBusy}
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          variant="primary"
+                          onClick={handleCloseIssue}
+                          isLoading={closeBusy}
+                          isDisabled={closeBusy}
+                        >
+                          Proceed
+                        </Button>
+                      </div>
                     </div>
-                  </div>
-                )}
-              </div>
-            )}
+                  ) : isMilestoneMenuOpen ? (
+                    <div style={{ padding: '0.5rem' }}>
+                      <ActionMenuHeader
+                        title="Change milestone"
+                        onBack={() => setIsMilestoneMenuOpen(false)}
+                      />
+                      <Tabs
+                        activeKey={milestoneTab}
+                        onSelect={handleMilestoneTabSelect}
+                        aria-label={`Milestone state for issue #${issue.number}`}
+                      >
+                        <Tab
+                          eventKey={0}
+                          title={<TabTitleText>Open</TabTitleText>}
+                        >
+                          <div>
+                            <div
+                              style={{
+                                padding: '0.5rem',
+                                cursor: 'pointer',
+                                borderBottom: '1px solid #d2d2d2',
+                                backgroundColor:
+                                  currentMilestone === null
+                                    ? '#f0f0f0'
+                                    : 'transparent',
+                              }}
+                              onClick={() => selectMilestone(null)}
+                              onMouseEnter={(e) => {
+                                if (currentMilestone !== null) {
+                                  e.currentTarget.style.backgroundColor =
+                                    '#f0f0f0';
+                                }
+                              }}
+                              onMouseLeave={(e) => {
+                                if (currentMilestone !== null) {
+                                  e.currentTarget.style.backgroundColor =
+                                    'transparent';
+                                }
+                              }}
+                            >
+                              <span
+                                style={{
+                                  fontSize: '0.875rem',
+                                  fontStyle: 'italic',
+                                }}
+                              >
+                                No Milestone
+                              </span>
+                            </div>
+
+                            {milestonesCache.data
+                              .filter((milestone) => milestone.number !== 0)
+                              .map((milestone) => (
+                                <div
+                                  key={milestone.number}
+                                  style={{
+                                    padding: '0.5rem',
+                                    cursor: 'pointer',
+                                    backgroundColor:
+                                      currentMilestone?.number ===
+                                      milestone.number
+                                        ? '#f0f0f0'
+                                        : 'transparent',
+                                  }}
+                                  onClick={() =>
+                                    selectMilestone(milestone.number)
+                                  }
+                                  onMouseEnter={(e) => {
+                                    if (
+                                      currentMilestone?.number !==
+                                      milestone.number
+                                    ) {
+                                      e.currentTarget.style.backgroundColor =
+                                        '#f0f0f0';
+                                    }
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    if (
+                                      currentMilestone?.number !==
+                                      milestone.number
+                                    ) {
+                                      e.currentTarget.style.backgroundColor =
+                                        'transparent';
+                                    }
+                                  }}
+                                >
+                                  <span style={{ fontSize: '0.875rem' }}>
+                                    {milestone.title}
+                                  </span>
+                                </div>
+                              ))}
+                          </div>
+                        </Tab>
+                        <Tab
+                          eventKey={1}
+                          title={<TabTitleText>Closed</TabTitleText>}
+                        >
+                          {closedMilestonesLoading && (
+                            <div
+                              style={{ padding: '1rem', textAlign: 'center' }}
+                            >
+                              <Spinner
+                                size="md"
+                                aria-label="Loading closed milestones"
+                              />
+                            </div>
+                          )}
+                          {closedMilestonesError && (
+                            <Alert
+                              variant="danger"
+                              isInline
+                              title="Error loading closed milestones"
+                            >
+                              {closedMilestonesError}
+                            </Alert>
+                          )}
+
+                          {!closedMilestonesLoading &&
+                            !closedMilestonesError &&
+                            closedMilestones.map((milestone) => (
+                              <div
+                                key={milestone.number}
+                                style={{
+                                  padding: '0.5rem',
+                                  cursor: 'pointer',
+                                  backgroundColor:
+                                    currentMilestone?.number ===
+                                    milestone.number
+                                      ? '#f0f0f0'
+                                      : 'transparent',
+                                }}
+                                onClick={() =>
+                                  selectMilestone(milestone.number)
+                                }
+                                onMouseEnter={(e) => {
+                                  if (
+                                    currentMilestone?.number !==
+                                    milestone.number
+                                  ) {
+                                    e.currentTarget.style.backgroundColor =
+                                      '#f0f0f0';
+                                  }
+                                }}
+                                onMouseLeave={(e) => {
+                                  if (
+                                    currentMilestone?.number !==
+                                    milestone.number
+                                  ) {
+                                    e.currentTarget.style.backgroundColor =
+                                      'transparent';
+                                  }
+                                }}
+                              >
+                                <span style={{ fontSize: '0.875rem' }}>
+                                  {milestone.title}
+                                </span>
+                              </div>
+                            ))}
+                        </Tab>
+                      </Tabs>
+                    </div>
+                  ) : (
+                    <div
+                      role="menu"
+                      aria-label={`Actions for issue #${issue.number}`}
+                      style={{ padding: '0.25rem' }}
+                    >
+                      {isClosableIssue && (
+                        <button
+                          type="button"
+                          role="menuitem"
+                          onClick={showCloseAction}
+                          style={actionMenuItemStyle}
+                        >
+                          <TimesCircleIcon
+                            aria-hidden="true"
+                            style={{
+                              fontSize: '0.875rem',
+                              color: '#6a6e73',
+                            }}
+                          />
+                          <span>Close issue</span>
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={showMilestoneAction}
+                        style={actionMenuItemStyle}
+                      >
+                        <FlagIcon
+                          aria-hidden="true"
+                          style={{ fontSize: '0.875rem', color: '#6a6e73' }}
+                        />
+                        <span>Change milestone</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </td>
       </tr>
@@ -2957,56 +2912,6 @@ const IssueCard = ({
         submitLabel="Create Issue"
         onSubmit={handleCreateSubIssue}
       />
-      <Modal
-        title={`Change type for #${issue.number}`}
-        isOpen={isTypeDialogOpen}
-        onClose={cancelTypeEdit}
-        actions={[
-          <Button
-            key="save"
-            variant="primary"
-            onClick={handleUpdateType}
-            isLoading={typeBusy}
-            isDisabled={typeBusy}
-          >
-            Save
-          </Button>,
-          <Button
-            key="cancel"
-            variant="link"
-            onClick={cancelTypeEdit}
-            isDisabled={typeBusy}
-          >
-            Cancel
-          </Button>,
-        ]}
-      >
-        <Form>
-          <FormGroup label="Type" fieldId={`issue-type-${issue.number}`}>
-            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-              {ISSUE_TYPES.map((typeName) => (
-                <Button
-                  key={typeName}
-                  variant={typeDraft === typeName ? 'primary' : 'secondary'}
-                  onClick={() => setTypeDraft(typeName)}
-                  isDisabled={typeBusy}
-                  style={{
-                    padding: '0.25rem 0.75rem',
-                    fontSize: '0.875rem',
-                  }}
-                >
-                  {typeName}
-                </Button>
-              ))}
-            </div>
-          </FormGroup>
-          {typeError && (
-            <Alert variant="danger" title="Unable to update type" isInline>
-              {typeError}
-            </Alert>
-          )}
-        </Form>
-      </Modal>
       <Modal
         title="Create New Label"
         isOpen={isCreateLabelDialogOpen}

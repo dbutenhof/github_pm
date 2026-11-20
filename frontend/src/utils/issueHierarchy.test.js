@@ -1,5 +1,6 @@
 // Assisted-by: Codex
 // Generated-by: Cursor
+// Assisted-by: Cline
 import { describe, it, expect } from 'vitest';
 import {
   flattenVisibleIssues,
@@ -51,6 +52,40 @@ describe('issueHierarchy utils', () => {
     expect(removed.children.map((c) => c.number)).toEqual([3]);
     expect(next[0].children).toEqual([]);
     expect(next[0].child_count).toBe(0);
+  });
+
+  it('keeps summarized sub-issue totals in sync with forest edits', () => {
+    const parent = {
+      number: 1,
+      id: 1,
+      children: [],
+      child_count: 0,
+      sub_issues_summary: { total: 0, completed: 0, percent_completed: 0 },
+    };
+    const inserted = insertIssueInForest(
+      [parent],
+      { number: 9, id: 9, children: [] },
+      1
+    );
+    expect(inserted[0].sub_issues_summary.total).toBe(1);
+
+    const { forest: next } = removeIssueFromForest(inserted, 9);
+    expect(next[0].sub_issues_summary.total).toBe(0);
+  });
+
+  it('preserves summarized sub-issues that are not visible', () => {
+    const parent = {
+      number: 1,
+      id: 1,
+      children: [{ number: 2, id: 2, children: [], child_count: 0 }],
+      child_count: 1,
+      sub_issues_summary: { total: 3, completed: 1, percent_completed: 33 },
+    };
+    const unlinked = removeIssueFromForest([parent], 2);
+    expect(unlinked.forest[0].sub_issues_summary.total).toBe(2);
+
+    const closed = removeClosedIssueFromForest([parent], 2);
+    expect(closed.forest[0].sub_issues_summary.total).toBe(3);
   });
 
   it('promotes children to roots when removing a closed issue', () => {

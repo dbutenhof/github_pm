@@ -194,6 +194,16 @@ def apply_graphql_links(issue: dict, issue_node: dict | None) -> None:
         issue["blocking"] = blocking
 
 
+def apply_graphql_field_values(issue: dict, issue_node: dict | None) -> None:
+    """Attach repository issue field values from a GraphQL issue node.
+
+    Generated-by: Cline
+    """
+    if not issue_node:
+        return
+    issue["issue_field_values"] = issue_node.get("issue_field_values") or []
+
+
 def collect_descendant_numbers(
     list_sub_issues: Callable[[int], list[int]],
     root_number: int,

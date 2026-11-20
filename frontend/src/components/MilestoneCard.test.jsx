@@ -1,12 +1,14 @@
 // Assisted-by: Codex
 // Generated-by: Cursor
 // Assisted-by: Cursor
+// Assisted-by: Cline
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import MilestoneCard from './MilestoneCard';
 import * as api from '../services/api';
 import assigneesCache from '../utils/assigneesCache';
+import issueFieldsCache from '../utils/issueFieldsCache';
 
 vi.mock('../services/api');
 
@@ -47,6 +49,7 @@ describe('MilestoneCard', () => {
     vi.clearAllMocks();
     api.fetchLabels.mockResolvedValue([]);
     api.fetchAssignees.mockResolvedValue([]);
+    issueFieldsCache.clear();
     // Clear assignees cache before each test
     assigneesCache.data = [];
     assigneesCache.loading = false;
@@ -55,6 +58,7 @@ describe('MilestoneCard', () => {
   });
 
   afterEach(() => {
+    issueFieldsCache.clear();
     // Clear assignees cache after each test
     assigneesCache.data = [];
     assigneesCache.loading = false;
@@ -69,13 +73,51 @@ describe('MilestoneCard', () => {
       pull_requests: [],
     });
     const { rerender } = render(
-      <MilestoneCard milestone={mockMilestone} sortOrder={[]} />
+      <MilestoneCard
+        milestone={mockMilestone}
+        sortOrder={[]}
+        sortMode="labels"
+      />
     );
     await user.click(screen.getByRole('button', { name: /show issues/i }));
     await screen.findByText(/Test Issue/);
-    rerender(<MilestoneCard milestone={mockMilestone} sortOrder={['bug']} />);
+    rerender(
+      <MilestoneCard
+        milestone={mockMilestone}
+        sortOrder={['bug']}
+        sortMode="labels"
+      />
+    );
     expect(screen.getByText(/Test Issue/)).toBeInTheDocument();
     expect(api.fetchIssues).toHaveBeenCalledTimes(1);
+  });
+
+  it('invokes column and label sort actions from the table headers', async () => {
+    const user = userEvent.setup();
+    const onSortColumn = vi.fn();
+    const onOpenSort = vi.fn();
+    api.fetchIssues.mockResolvedValue({
+      issues: [mockIssue],
+      pull_requests: [],
+    });
+    render(
+      <MilestoneCard
+        milestone={mockMilestone}
+        columnSort={{ key: 'number', direction: 'asc' }}
+        onSortColumn={onSortColumn}
+        onOpenSort={onOpenSort}
+      />
+    );
+    await user.click(screen.getByRole('button', { name: /show issues/i }));
+    await screen.findByText(/Test Issue/);
+
+    await user.click(screen.getByRole('button', { name: /Sort by Number/ }));
+    expect(onSortColumn).toHaveBeenCalledWith('number');
+
+    await user.click(
+      screen.getByRole('button', { name: 'Sort issues by labels' })
+    );
+    expect(onOpenSort).toHaveBeenCalled();
   });
 
   it('reloads authoritative data after a partially failed hierarchy edit', async () => {
@@ -438,7 +480,7 @@ describe('MilestoneCard', () => {
       expect(screen.getByText(/Brand New Epic/)).toBeInTheDocument();
     });
     // Creating before expand still loads the list (then inserts from POST).
-    expect(api.fetchIssues).toHaveBeenCalledWith(6, []);
+    expect(api.fetchIssues).toHaveBeenCalledWith(6);
   });
 
   it('loads existing issues when creating before the list is expanded', async () => {
@@ -478,13 +520,18 @@ describe('MilestoneCard', () => {
       expect(screen.getByText(/Brand New Epic/)).toBeInTheDocument();
       expect(screen.getByText(/Already Open Issue/)).toBeInTheDocument();
     });
-    expect(api.fetchIssues).toHaveBeenCalledWith(6, []);
+    expect(api.fetchIssues).toHaveBeenCalledWith(6);
   });
 
   it('shows a newly created sub-issue under its parent immediately', async () => {
     const user = userEvent.setup();
     const parent = {
       ...mockIssue,
+      type: {
+        name: 'Feature',
+        color: 'blue',
+        description: 'A request, idea, or new functionality',
+      },
       hierarchy_depth: 0,
       child_count: 0,
       children: [],
@@ -514,6 +561,7 @@ describe('MilestoneCard', () => {
     await waitFor(() => {
       expect(screen.getByText(/Test Issue/)).toBeInTheDocument();
     });
+    expect(screen.getByTitle('Feature')).toBeInTheDocument();
 
     const fetchCountAfterLoad = api.fetchIssues.mock.calls.length;
 
@@ -535,8 +583,73 @@ describe('MilestoneCard', () => {
     });
     await waitFor(() => {
       expect(screen.getByText(/Fresh Sub-issue/)).toBeInTheDocument();
+      expect(screen.getByTitle('Epic')).toBeInTheDocument();
     });
+    expect(screen.queryByTitle('Feature')).not.toBeInTheDocument();
     expect(api.fetchIssues.mock.calls.length).toBe(fetchCountAfterLoad);
+  });
+
+  it('returns the parent to its issue type when the last sub-issue is removed', async () => {
+    const user = userEvent.setup();
+    const child = {
+      id: 901,
+      number: 901,
+      title: 'Linked Child',
+      html_url: 'https://github.com/test/issue/901',
+      user: { login: 'testuser', avatar_url: 'https://avatar.url' },
+      created_at: '2025-01-01T00:00:00Z',
+      labels: [],
+      comments: 0,
+      parent_number: mockIssue.number,
+      hierarchy_depth: 1,
+      child_count: 0,
+      children: [],
+    };
+    const parent = {
+      ...mockIssue,
+      type: { name: 'Feature', color: 'blue' },
+      hierarchy_depth: 0,
+      child_count: 1,
+      children: [child],
+      sub_issues_summary: {
+        total: 1,
+        completed: 0,
+        percent_completed: 0,
+      },
+    };
+    api.fetchIssues.mockResolvedValue({
+      issues: [parent],
+      pull_requests: [],
+    });
+
+    const { rerender } = await act(async () =>
+      render(<MilestoneCard milestone={mockMilestone} hierarchyAction={null} />)
+    );
+
+    await user.click(screen.getByRole('button', { name: /show issues/i }));
+    await waitFor(() => {
+      expect(screen.getByText(/Test Issue/)).toBeInTheDocument();
+    });
+    expect(screen.getByTitle('Epic')).toBeInTheDocument();
+
+    await act(async () => {
+      rerender(
+        <MilestoneCard
+          milestone={mockMilestone}
+          hierarchyAction={{
+            key: 12345,
+            type: 'unlink',
+            issueNumber: child.number,
+            sourceMilestoneNumber: mockMilestone.number,
+          }}
+        />
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTitle('Feature')).toBeInTheDocument();
+    });
+    expect(screen.queryByTitle('Epic')).not.toBeInTheDocument();
   });
 
   it('removes a closed issue from the milestone view immediately', async () => {
@@ -559,7 +672,10 @@ describe('MilestoneCard', () => {
       expect(screen.getByText(/Test Issue/)).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole('button', { name: 'Close issue #459' }));
+    await user.click(
+      screen.getByRole('button', { name: 'Actions for issue #459' })
+    );
+    await user.click(screen.getByRole('menuitem', { name: 'Close issue' }));
     await user.click(screen.getByRole('button', { name: 'Proceed' }));
 
     await waitFor(() => {
@@ -650,5 +766,54 @@ describe('MilestoneCard', () => {
     await waitFor(() => {
       expect(screen.getAllByText(/Relinked Child/)).toHaveLength(1);
     });
+  });
+
+  it('shows Priority and Effort columns between Links and Labels', async () => {
+    const user = userEvent.setup();
+    api.fetchIssueFields.mockResolvedValue({
+      can_view: true,
+      fields: [
+        {
+          id: 'F1',
+          name: 'Priority',
+          data_type: 'SINGLE_SELECT',
+          options: [{ id: 'O1', name: 'High', color: 'RED', priority: 1 }],
+        },
+        {
+          id: 'F2',
+          name: 'Effort',
+          data_type: 'SINGLE_SELECT',
+          options: [{ id: 'O2', name: 'Medium', color: 'YELLOW', priority: 1 }],
+        },
+        {
+          id: 'F3',
+          name: 'Start date',
+          data_type: 'DATE',
+        },
+      ],
+    });
+    api.fetchIssues.mockResolvedValue({
+      issues: [{ ...mockIssue, issue_field_values: [] }],
+      pull_requests: [],
+    });
+    await act(async () => {
+      render(<MilestoneCard milestone={mockMilestone} />);
+    });
+    await user.click(screen.getByRole('button', { name: /show issues/i }));
+    await screen.findByText(/Test Issue/);
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: 'Change Priority for issue #459' })
+      ).toBeInTheDocument();
+    });
+
+    const headers = screen
+      .getAllByRole('columnheader')
+      .map((header) => header.textContent);
+    expect(
+      headers.slice(headers.indexOf('Links') + 1, headers.indexOf('Labels'))
+    ).toEqual(['Priority', 'Effort']);
+    expect(headers).not.toContain('Milestone');
+    expect(headers).not.toContain('Start date');
   });
 });

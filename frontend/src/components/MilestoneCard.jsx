@@ -1,6 +1,7 @@
 // Assisted-by: Codex
 // Generated-by: Cursor
 // Assisted-by: Cursor
+// Assisted-by: Cline
 import React, {
   useState,
   useEffect,
@@ -23,14 +24,24 @@ import {
   TextInput,
   TextArea,
 } from '@patternfly/react-core';
+import {
+  LongArrowAltDownIcon,
+  LongArrowAltUpIcon,
+  SortIcon,
+} from '@patternfly/react-icons';
 import { fetchIssues, createIssue, updateMilestone } from '../services/api';
 import milestonesCache from '../utils/milestonesCache';
+import { findPlanningIssueFields } from '../utils/issueFields';
+import { loadIssueFields } from '../utils/issueFieldsCache';
+import {
+  planningFieldSortKey,
+  sortIssueForestBySpec,
+} from '../utils/issueSort';
 import IssueCard from './IssueCard';
 import MarkdownInputModal from './MarkdownInputModal';
 import { usePlanningDnD } from './PlanningDnDContext';
 import {
   flattenVisibleIssues,
-  sortIssueForest,
   collectSubtreeNumbers,
   removeIssueFromForest,
   removeClosedIssueFromForest,
@@ -47,17 +58,146 @@ const thStyle = {
   textTransform: 'uppercase',
 };
 
-const itemTableHeader = (includeType) => (
+const headerButtonStyle = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '0.3rem',
+  padding: 0,
+  border: 0,
+  background: 'transparent',
+  color: 'inherit',
+  font: 'inherit',
+  textTransform: 'inherit',
+  cursor: 'pointer',
+};
+
+const SortableHeader = ({
+  label,
+  sortKey,
+  title,
+  sortMode,
+  columnSort,
+  onSort,
+}) => {
+  const active = sortMode === 'column' && columnSort?.key === sortKey;
+  const direction = active ? columnSort.direction : null;
+  const ActiveSortIcon =
+    direction === 'desc' ? LongArrowAltDownIcon : LongArrowAltUpIcon;
+  const nextDirection =
+    active && direction === 'asc' ? 'descending' : 'ascending';
+  return (
+    <th
+      style={thStyle}
+      title={title}
+      aria-sort={
+        active ? (direction === 'desc' ? 'descending' : 'ascending') : 'none'
+      }
+    >
+      <button
+        type="button"
+        onClick={() => onSort?.(sortKey)}
+        style={headerButtonStyle}
+        aria-label={`Sort by ${label} ${nextDirection}`}
+      >
+        {label}
+        <span
+          aria-hidden="true"
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            color: active ? '#0066cc' : '#6a6e73',
+          }}
+        >
+          {active ? (
+            <ActiveSortIcon style={{ fontSize: '0.7rem' }} />
+          ) : (
+            <SortIcon style={{ fontSize: '0.7rem' }} />
+          )}
+        </span>
+      </button>
+    </th>
+  );
+};
+
+const itemTableHeader = ({
+  includeType,
+  fields = [],
+  sortMode = 'column',
+  columnSort,
+  onSortColumn,
+  onOpenSort,
+  labelSortActive,
+}) => (
   <thead>
     <tr style={{ borderBottom: '2px solid #0066cc' }}>
       <th style={{ ...thStyle, width: '2rem' }} />
-      <th style={thStyle}>Number</th>
-      {includeType && <th style={thStyle}>Type</th>}
-      <th style={thStyle}>Author</th>
+      <SortableHeader
+        label="Number"
+        sortKey="number"
+        sortMode={sortMode}
+        columnSort={columnSort}
+        onSort={onSortColumn}
+      />
+      {includeType && (
+        <SortableHeader
+          label="Type"
+          sortKey="type"
+          sortMode={sortMode}
+          columnSort={columnSort}
+          onSort={onSortColumn}
+          title="Epic = has sub-issues; otherwise the GitHub issue type"
+        />
+      )}
+      <SortableHeader
+        label="Author"
+        sortKey="author"
+        sortMode={sortMode}
+        columnSort={columnSort}
+        onSort={onSortColumn}
+      />
       <th style={thStyle}>Links</th>
-      <th style={thStyle}>Milestone</th>
-      <th style={thStyle}>Labels</th>
-      <th style={thStyle}>Title</th>
+      {fields.map((field) => (
+        <SortableHeader
+          key={field.id}
+          label={field.name}
+          sortKey={planningFieldSortKey(field)}
+          sortMode={sortMode}
+          columnSort={columnSort}
+          onSort={onSortColumn}
+        />
+      ))}
+      <th style={thStyle}>
+        <span
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '0.35rem',
+          }}
+        >
+          Labels
+          <Button
+            variant="plain"
+            onClick={onOpenSort}
+            aria-label="Sort issues by labels"
+            title="Configure label sort order"
+            style={{ padding: '0.125rem' }}
+          >
+            <SortIcon
+              style={{
+                fontSize: '0.75rem',
+                color: labelSortActive ? '#0066cc' : '#6a6e73',
+              }}
+            />
+          </Button>
+        </span>
+      </th>
+      <SortableHeader
+        label="Title"
+        sortKey="title"
+        sortMode={sortMode}
+        columnSort={columnSort}
+        onSort={onSortColumn}
+      />
     </tr>
   </thead>
 );
@@ -65,9 +205,14 @@ const itemTableHeader = (includeType) => (
 const MilestoneCard = ({
   milestone,
   sortOrder = [],
+  sortMode = 'column',
+  columnSort,
+  onSortColumn,
+  onOpenSort,
   issueMilestoneRefresh = 0,
   hierarchyAction,
   onMilestoneUpdated,
+  onMilestoneChange,
 }) => {
   const [isIssuesExpanded, setIsIssuesExpanded] = useState(false);
   const [isPrsExpanded, setIsPrsExpanded] = useState(false);
@@ -76,6 +221,7 @@ const MilestoneCard = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  const [planningFields, setPlanningFields] = useState([]);
   const [expandedHierarchy, setExpandedHierarchy] = useState(() => new Set());
   const [isCreateIssueOpen, setIsCreateIssueOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
@@ -96,6 +242,17 @@ const MilestoneCard = ({
     },
     []
   );
+
+  // Assisted-by: Cline
+  useEffect(() => {
+    let active = true;
+    loadIssueFields().then((fields) => {
+      if (active) setPlanningFields(findPlanningIssueFields(fields));
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const openMilestoneEditor = () => {
     setEditMilestone({
@@ -200,17 +357,63 @@ const MilestoneCard = ({
     milestone.number,
     hasLoadedOnce,
     loading,
-    sortOrder,
     applyFetchedData,
   ]);
 
+  const effectiveColumnSort = columnSort || {
+    key: 'number',
+    direction: 'asc',
+  };
+  const labelsSortActive = sortMode === 'labels' && sortOrder.length > 0;
+  const activeSortMode = labelsSortActive ? 'labels' : 'column';
+  const prColumnSort = ['number', 'author', 'title'].includes(
+    effectiveColumnSort.key
+  )
+    ? effectiveColumnSort
+    : { key: 'number', direction: 'asc' };
+
   const sortedIssues = useMemo(
-    () => sortIssueForest(issues, sortOrder),
-    [issues, sortOrder]
+    () =>
+      sortIssueForestBySpec(
+        issues,
+        activeSortMode === 'labels'
+          ? { mode: 'labels', labelOrder: sortOrder }
+          : {
+              mode: 'column',
+              key: effectiveColumnSort.key,
+              direction: effectiveColumnSort.direction,
+              fields: planningFields,
+            }
+      ),
+    [
+      issues,
+      activeSortMode,
+      sortOrder,
+      effectiveColumnSort.key,
+      effectiveColumnSort.direction,
+      planningFields,
+    ]
   );
   const sortedPrs = useMemo(
-    () => sortIssueForest(pullRequests, sortOrder),
-    [pullRequests, sortOrder]
+    () =>
+      sortIssueForestBySpec(
+        pullRequests,
+        activeSortMode === 'labels'
+          ? { mode: 'labels', labelOrder: sortOrder }
+          : {
+              mode: 'column',
+              key: prColumnSort.key,
+              direction: prColumnSort.direction,
+              fields: [],
+            }
+      ),
+    [
+      pullRequests,
+      activeSortMode,
+      sortOrder,
+      prColumnSort.key,
+      prColumnSort.direction,
+    ]
   );
 
   useEffect(() => {
@@ -381,7 +584,7 @@ const MilestoneCard = ({
     setLoading(true);
     setError(null);
     try {
-      const data = await fetchIssues(milestone.number, sortOrder);
+      const data = await fetchIssues(milestone.number);
       applyFetchedData(data);
       setHasLoadedOnce(true);
       insertCreatedIssue(created, parentNumber);
@@ -431,15 +634,25 @@ const MilestoneCard = ({
           border: '1px solid #d2d2d2',
         }}
       >
-        {itemTableHeader(true)}
+        {itemTableHeader({
+          includeType: true,
+          fields: planningFields,
+          sortMode: activeSortMode,
+          columnSort: effectiveColumnSort,
+          onSortColumn,
+          onOpenSort,
+          labelSortActive: labelsSortActive,
+        })}
         <tbody>
           {visible.map((issue) => (
             <IssueCard
               key={issue.id}
               issue={issue}
               enableHierarchy
-              columnCount={8}
+              columnCount={7 + planningFields.length}
+              issueFields={planningFields}
               milestoneNumber={milestone.number}
+              onMilestoneChange={onMilestoneChange}
               isHierarchyExpanded={expandedHierarchy.has(issue.number)}
               onToggleHierarchy={() => toggleHierarchy(issue.number)}
               isDropTarget={
@@ -494,14 +707,23 @@ const MilestoneCard = ({
         border: '1px solid #d2d2d2',
       }}
     >
-      {itemTableHeader(false)}
+      {itemTableHeader({
+        includeType: false,
+        fields: [],
+        sortMode: activeSortMode,
+        columnSort: prColumnSort,
+        onSortColumn,
+        onOpenSort,
+        labelSortActive: labelsSortActive,
+      })}
       <tbody>
         {sortedPrs.map((issue) => (
           <IssueCard
             key={issue.id}
             issue={issue}
             enableHierarchy={false}
-            columnCount={7}
+            columnCount={6}
+            onMilestoneChange={onMilestoneChange}
             onIssueUpdate={updateItemInForest(setPullRequests)}
           />
         ))}
